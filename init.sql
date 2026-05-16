@@ -162,3 +162,5 @@ ON CONFLICT (key) DO NOTHING;
 -- Initial Roles/Users seeding can be done here or via application logic.
 -- Default Administrator (Seed)
 -- INSERT INTO users (username, email, password_hash, role) VALUES ('admin', 'admin@haujee.com', '...', 'Admin');
+
+INSERT INTO users (username, email, password_hash, role) VALUES ('admin', 'admin@haujee.com', '$2b$10$HC4mocVNzdwGPHxu8J/HyeoWDglmA9NlTAXjcrz2MtMO5N3Ycw3LS', 'Admin');
