@@ -31,10 +31,3 @@ services:
 
 volumes:
   postgres_data:
-
-networks:
-  jewelms_net:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.42.0.0/16

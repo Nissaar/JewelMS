@@ -1,0 +1,10 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M256 48L448 192L256 464L64 192L256 48Z" fill="#F59E0B"/>
+  <path d="M256 48L320 192H192L256 48Z" fill="#FBBF24"/>
+  <path d="M448 192H320L256 48L448 192Z" fill="#D97706"/>
+  <path d="M64 192H192L256 48L64 192Z" fill="#D97706"/>
+  <path d="M256 464L320 192H192L256 464Z" fill="#FBBF24"/>
+  <path d="M448 192H320L256 464L448 192Z" fill="#92400E"/>
+  <path d="M64 192H192L256 464L64 192Z" fill="#92400E"/>
+  <text x="50%" y="210" dominant-baseline="middle" text-anchor="middle" font-family="serif" font-weight="bold" font-size="100" fill="white">H</text>
+</svg>

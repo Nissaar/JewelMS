@@ -3,13 +3,11 @@ FROM node:20-slim AS builder
 
 WORKDIR /app
 
-#ENV NODE_OPTIONS=--no-network-family-autoselection
-
 # Copy package files
 COPY package*.json ./
 
 # Install all dependencies (including devDependencies for build)
-RUN npm install --verbose
+RUN npm install
 
 # Copy source code
 COPY . .
