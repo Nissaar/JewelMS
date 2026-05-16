@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 import { 
@@ -11,6 +12,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import BarcodeScanner from '../components/BarcodeScanner';
 
 const Sales = () => {
+  const navigate = useNavigate();
   const { token } = useAuth();
   const [saleStep, setSaleStep] = useState<'item' | 'customer' | 'payment' | 'completed'>('item');
   const [isLoading, setIsLoading] = useState(false);
@@ -42,6 +44,7 @@ const Sales = () => {
   const [completedSale, setCompletedSale] = useState<any>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
 
   const barcodeInputRef = useRef<HTMLInputElement>(null);
 
@@ -166,6 +169,31 @@ const Sales = () => {
       setMessage({ type: 'error', text: err.response?.data?.error || 'Échec de la vente' });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleDownloadPDF = async () => {
+    if (!completedSale) return;
+    setIsGeneratingPDF(true);
+    try {
+      const response = await axios.get(`/api/receipts/${completedSale.id}/pdf`, {
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: 'blob'
+      });
+      
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `facture_${completedSale.id}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode?.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      setMessage({ type: 'error', text: 'Échec du téléchargement du PDF' });
+    } finally {
+      setIsGeneratingPDF(false);
     }
   };
 
@@ -646,10 +674,14 @@ const Sales = () => {
 
              <div className="p-12 space-y-8">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
-                   <div className="p-6 bg-slate-50 rounded-3xl hover:bg-emerald-50 transition-colors cursor-pointer group" onClick={() => window.open(`/api/receipts/${completedSale.id}/pdf`, '_blank')}>
-                      <Download className="mx-auto text-slate-400 mb-4 group-hover:text-emerald-600" size={32} />
-                      <p className="font-black text-slate-900">Télécharger PDF</p>
-                      <p className="text-xs text-slate-500 font-medium">Impression directe</p>
+                   <div className="p-6 bg-slate-50 rounded-3xl hover:bg-emerald-50 transition-colors cursor-pointer group" onClick={handleDownloadPDF}>
+                      {isGeneratingPDF ? (
+                        <Loader2 className="mx-auto text-emerald-600 mb-4 animate-spin" size={32} />
+                      ) : (
+                        <Download className="mx-auto text-slate-400 mb-4 group-hover:text-emerald-600" size={32} />
+                      )}
+                      <p className="font-black text-slate-900">{isGeneratingPDF ? 'Génération...' : 'Télécharger PDF'}</p>
+                      <p className="text-xs text-slate-500 font-medium">{isGeneratingPDF ? 'Veuillez patienter' : 'Impression directe'}</p>
                    </div>
                    <div className="p-6 bg-slate-50 rounded-3xl hover:bg-emerald-50 transition-colors cursor-pointer group" onClick={() => handleUploadAndSend('whatsapp')}>
                       <Smartphone className="mx-auto text-slate-400 mb-4 group-hover:text-emerald-600" size={32} />
@@ -693,7 +725,10 @@ const Sales = () => {
                    >
                      Nouvelle Vente
                    </button>
-                   <button className="px-8 bg-slate-100 text-slate-600 py-4 rounded-2xl font-bold flex items-center gap-2">
+                   <button 
+                    onClick={() => navigate('/sales-history')}
+                    className="px-8 bg-slate-100 text-slate-600 py-4 rounded-2xl font-bold flex items-center gap-2 hover:bg-slate-200 transition-all"
+                   >
                      <History size={20}/> Historique
                    </button>
                 </div>

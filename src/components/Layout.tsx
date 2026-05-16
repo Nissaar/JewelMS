@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Search, User, LogOut, Package, Users, ShoppingCart, FileText, Settings, Menu, X, PlusCircle, Fingerprint, BarChart3, Download } from 'lucide-react';
+import { Search, User, LogOut, Package, Users, ShoppingCart, FileText, Settings, Menu, X, PlusCircle, Fingerprint, BarChart3, Download, History } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'motion/react';
@@ -80,6 +80,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
     { name: 'Stock', icon: Package, path: '/stock', show: hasPermission('stock') },
     { name: 'Clients', icon: Users, path: '/customers', show: hasPermission('customers') },
     { name: 'Ventes', icon: ShoppingCart, path: '/sales', show: hasPermission('sales') },
+    { name: 'Historique des Ventes', icon: History, path: '/sales-history', show: hasPermission('sales') },
     { name: 'Commandes', icon: FileText, path: '/orders', show: hasPermission('orders') },
     { name: 'Trade-ins (ODF)', icon: PlusCircle, path: '/odf', show: hasPermission('odf') },
     { name: 'Rapports', icon: FileText, path: '/reports', show: hasPermission('reports') },

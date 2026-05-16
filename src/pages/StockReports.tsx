@@ -94,9 +94,10 @@ const StockReports = () => {
               onChange={(e) => handleFilterChange('category', e.target.value)}
             >
               <option value="">Toutes Catégories</option>
-              {metadata.stock_categories?.map((cat: string) => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
+              {metadata.stock_categories?.map((cat: any) => {
+                const val = typeof cat === 'string' ? cat : (cat.name || cat.category || '');
+                return <option key={val} value={val}>{val}</option>;
+              })}
             </select>
           </div>
           <div className="flex items-center gap-2">
@@ -106,9 +107,10 @@ const StockReports = () => {
               onChange={(e) => handleFilterChange('subCategory', e.target.value)}
             >
               <option value="">Toutes Sous-Catégories</option>
-              {metadata.stock_sub_categories?.map((sc: string) => (
-                <option key={sc} value={sc}>{sc}</option>
-              ))}
+              {metadata.stock_sub_categories?.map((sc: any) => {
+                const val = typeof sc === 'string' ? sc : (sc.name || sc.category || '');
+                return <option key={val} value={val}>{val}</option>;
+              })}
             </select>
           </div>
           <button 

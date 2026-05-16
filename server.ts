@@ -197,7 +197,7 @@ async function startServer() {
     try {
       const result = await db.transaction(async (tx) => {
         // 1. Fetch item from stock to verify and get details
-        const stockItems = await tx.select().from(stock).where(eq(stock.barcode, barcode)).limit(1);
+        const stockItems = await tx.select().from(stock).where(and(eq(stock.barcode, barcode), eq(stock.status, 'Disponible'))).limit(1);
         if (stockItems.length === 0) {
           throw new Error("Item not found in stock or already sold");
         }
@@ -222,8 +222,10 @@ async function startServer() {
           metalType: item.metalType,
         }).returning();
 
-        // 4. Deduct from stock (remove the unique item)
-        await tx.delete(stock).where(eq(stock.id, item.id));
+        // 4. Mark as sold in stock
+        await tx.update(stock)
+          .set({ status: 'Vendu', soldAt: new Date(), updatedAt: new Date() })
+          .where(eq(stock.id, item.id));
 
         return newSale[0];
       });
@@ -250,10 +252,35 @@ async function startServer() {
 
   app.get("/api/stock", authenticateToken, checkPermission('stock', 'view'), async (req, res) => {
     try {
-      const items = await db.select().from(stock);
+      const items = await db.select().from(stock).where(eq(stock.status, 'Disponible'));
       res.json(items);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch stock" });
+    }
+  });
+
+  app.get("/api/stock/sold", authenticateToken, checkPermission('reports', 'view'), async (req, res) => {
+    try {
+      const items = await db.select({
+        id: stock.id,
+        barcode: stock.barcode,
+        category: stock.category,
+        subCategory: stock.subCategory,
+        metalType: stock.metalType,
+        weightGrams: stock.weightGrams,
+        soldAt: stock.soldAt,
+        customerName: customers.name,
+        price: sales.amount
+      })
+      .from(stock)
+      .leftJoin(sales, eq(stock.id, sales.stockId))
+      .leftJoin(customers, eq(sales.customerId, customers.id))
+      .where(eq(stock.status, 'Vendu'))
+      .orderBy(sql`${stock.soldAt} DESC`);
+      res.json(items);
+    } catch (error) {
+      console.error("Sold Stock Error:", error);
+      res.status(500).json({ error: "Failed to fetch sold items" });
     }
   });
 
@@ -266,10 +293,13 @@ async function startServer() {
       const results = await db.select()
         .from(stock)
         .where(
-          or(
-            ilike(stock.barcode, searchStr),
-            ilike(stock.category, searchStr),
-            ilike(stock.subCategory, searchStr)
+          and(
+            eq(stock.status, 'Disponible'),
+            or(
+              ilike(stock.barcode, searchStr),
+              ilike(stock.category, searchStr),
+              ilike(stock.subCategory, searchStr)
+            )
           )
         )
         .limit(10);
@@ -282,8 +312,10 @@ async function startServer() {
 
   app.get("/api/stock/:barcode", authenticateToken, checkPermission('stock', 'view'), async (req, res) => {
     try {
-      const item = await db.select().from(stock).where(eq(stock.barcode, req.params.barcode)).limit(1);
-      if (item.length === 0) return res.status(404).json({ error: "Stock item not found" });
+      const item = await db.select().from(stock)
+        .where(and(eq(stock.barcode, req.params.barcode), eq(stock.status, 'Disponible')))
+        .limit(1);
+      if (item.length === 0) return res.status(404).json({ error: "Stock item not found or already sold" });
       res.json(item[0]);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch stock item" });
@@ -422,7 +454,7 @@ async function startServer() {
       const [todaySalesRes, newClientsRes, stockCountRes, pendingOrdersRes, recentSalesRes] = await Promise.all([
         db.select({ total: sql<string>`SUM(${sales.amount})` }).from(sales).where(and(gte(sales.datetime, startOfDay), lte(sales.datetime, endOfDay))),
         db.select({ count: sql<number>`COUNT(${customers.id})`.mapWith(Number) }).from(customers).where(and(gte(customers.createdAt, startOfDay), lte(customers.createdAt, endOfDay))),
-        db.select({ count: sql<number>`COUNT(${stock.id})`.mapWith(Number) }).from(stock),
+        db.select({ count: sql<number>`COUNT(${stock.id})`.mapWith(Number) }).from(stock).where(eq(stock.status, 'Disponible')),
         db.select({ count: sql<number>`COUNT(${orders.id})`.mapWith(Number) }).from(orders).where(eq(orders.status, 'Pending')),
         db.select({
           id: sales.id,
@@ -457,7 +489,12 @@ async function startServer() {
     const searchStr = `%${q}%`;
     try {
       const [stockResults, customerResults, receiptResults, orderResults] = await Promise.all([
-        db.select().from(stock).where(or(ilike(stock.barcode, searchStr), ilike(stock.serialNumber, searchStr))),
+        db.select().from(stock).where(
+          and(
+            eq(stock.status, 'Disponible'),
+            or(ilike(stock.barcode, searchStr), ilike(stock.serialNumber, searchStr))
+          )
+        ),
         db.select().from(customers).where(or(ilike(customers.name, searchStr), ilike(customers.idNumber, searchStr))),
         // For serial numbers, we try exact match if q is numeric
         db.select().from(receipts).where(sql`CAST(${receipts.receiptSerialNumber} AS TEXT) ILIKE ${searchStr}`),
@@ -479,8 +516,7 @@ async function startServer() {
   app.get("/api/reports/stock-weight", authenticateToken, checkPermission('reports', 'view'), async (req, res) => {
     const { category, subCategory } = req.query;
     try {
-      // Build filters
-      const conditions = [];
+      const conditions = [eq(stock.status, 'Disponible')];
       if (category) conditions.push(eq(stock.category, category as string));
       if (subCategory) conditions.push(eq(stock.subCategory, subCategory as string));
 
@@ -901,6 +937,38 @@ async function startServer() {
       res.json(allReceipts);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch receipts" });
+    }
+  });
+
+  app.get("/api/sales/history", authenticateToken, async (req, res) => {
+    try {
+      const history = await db.select({
+        id: sales.id,
+        receiptId: receipts.id,
+        receiptNo: receipts.receiptSerialNumber,
+        date: sales.datetime,
+        customerName: customers.name,
+        totalAmount: sales.amount,
+        paymentMode: sales.paymentMode,
+        vat15: sales.vat15,
+        itemDetails: sales.itemDetails,
+        weight: sales.weight,
+        unitSalesPrice: sales.unitSalesPrice,
+        qty: sales.qty,
+        chequeNumber: sales.chequeNumber,
+        metalType: sales.metalType,
+        fineness: sales.fineness,
+        fileUrl: receipts.fileUrl
+      })
+      .from(sales)
+      .leftJoin(customers, eq(sales.customerId, customers.id))
+      .leftJoin(receipts, eq(sales.id, receipts.saleId))
+      .orderBy(sql`${sales.datetime} DESC`);
+
+      res.json(history);
+    } catch (error) {
+      console.error("Sales History Error:", error);
+      res.status(500).json({ error: "Failed to fetch sales history" });
     }
   });
 

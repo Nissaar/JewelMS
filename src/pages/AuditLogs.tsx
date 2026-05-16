@@ -32,13 +32,13 @@ const AuditLogs = () => {
     }
   };
 
-  const filteredLogs = logs.filter(l => {
-    const query = searchQuery.toLowerCase();
-    const username = l.username?.toLowerCase() || '';
-    const action = l.action?.toLowerCase() || '';
+  const filteredLogs = (logs || []).filter(l => {
+    const query = String(searchQuery || '').toLowerCase();
+    const username = String(l.username || '').toLowerCase();
+    const action = String(l.action || '').toLowerCase();
     const details = typeof l.details === 'object' 
       ? JSON.stringify(l.details).toLowerCase() 
-      : l.details?.toLowerCase() || '';
+      : String(l.details || '').toLowerCase();
     
     return username.includes(query) || action.includes(query) || details.includes(query);
   });

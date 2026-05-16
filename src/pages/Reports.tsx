@@ -79,10 +79,12 @@ const Reports = () => {
     setTimeout(() => setMessage({ type: '', text: '' }), 3000);
   };
 
-  const filteredReceipts = receipts.filter(r => 
-    r.receiptNo?.toLowerCase().includes(receiptSearch.toLowerCase()) ||
-    r.customerName?.toLowerCase().includes(receiptSearch.toLowerCase())
-  );
+  const filteredReceipts = (receipts || []).filter(r => {
+    const rNo = String(r?.receiptNo || '').toLowerCase();
+    const cName = String(r?.customerName || '').toLowerCase();
+    const search = String(receiptSearch || '').toLowerCase();
+    return rNo.includes(search) || cName.includes(search);
+  });
 
   return (
     <div className="max-w-7xl mx-auto space-y-8">

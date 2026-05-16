@@ -11,6 +11,8 @@ import Settings from './pages/Settings';
 import Stock from './pages/Stock';
 import Sales from './pages/Sales';
 import Reports from './pages/Reports';
+import SalesHistory from './pages/SalesHistory';
+import SoldItems from './pages/SoldItems';
 import AuditLogs from './pages/AuditLogs';
 import ODF from './pages/ODF';
 import Orders from './pages/Orders';
@@ -54,6 +56,22 @@ const App: React.FC = () => {
             <ProtectedRoute>
               <Layout>
                 <Sales />
+              </Layout>
+            </ProtectedRoute>
+          } />
+
+          <Route path="/sales-history" element={
+            <ProtectedRoute requiredPermission={{ functionality: 'sales', action: 'canView' }}>
+              <Layout>
+                <SalesHistory />
+              </Layout>
+            </ProtectedRoute>
+          } />
+
+          <Route path="/stock/sold" element={
+            <ProtectedRoute requiredPermission={{ functionality: 'stock', action: 'canView' }}>
+              <Layout>
+                <SoldItems />
               </Layout>
             </ProtectedRoute>
           } />

@@ -50,6 +50,9 @@ export const stock = pgTable('stock', {
   fineness: varchar('fineness', { length: 20 }),
   weightGrams: numeric('weight_grams', { precision: 10, scale: 3 }),
 
+  status: varchar('status', { length: 20 }).default('Disponible').notNull(), // 'Disponible' | 'Vendu'
+  soldAt: timestamp('sold_at', { withTimezone: true }),
+
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });

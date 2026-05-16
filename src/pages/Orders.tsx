@@ -103,10 +103,12 @@ const Orders = () => {
     }
   };
 
-  const filteredOrders = orders.filter(o => 
-    o.customerName?.toLowerCase().includes(orderSearch.toLowerCase()) ||
-    o.itemDescription?.toLowerCase().includes(orderSearch.toLowerCase())
-  );
+  const filteredOrders = (orders || []).filter(o => {
+    const search = String(orderSearch || '').toLowerCase();
+    const cName = String(o?.customerName || '').toLowerCase();
+    const desc = String(o?.itemDescription || '').toLowerCase();
+    return cName.includes(search) || desc.includes(search);
+  });
 
   return (
     <div className="max-w-6xl mx-auto space-y-8">

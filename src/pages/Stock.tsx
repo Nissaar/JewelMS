@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 import { 
   Package, Plus, Search, Filter, Edit2, Trash2, Save, X, 
   Settings as SettingsIcon, Check, AlertCircle, Loader2,
-  ChevronDown, Barcode, Scale, Info, Tag
+  ChevronDown, Barcode, Scale, Info, Tag, History
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -25,6 +26,7 @@ interface StockItem {
 
 const Stock = () => {
   const { token, user } = useAuth();
+  const navigate = useNavigate();
   const [stockItems, setStockItems] = useState<StockItem[]>([]);
   const [metadata, setMetadata] = useState<any>({});
   const [isLoading, setIsLoading] = useState(true);
@@ -146,9 +148,12 @@ const Stock = () => {
     setTimeout(() => setMessage({ type: '', text: '' }), 3000);
   };
 
-  const filteredItems = stockItems.filter(item => {
-    const matchesSearch = item.barcode.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                         (item.serialNumber?.toLowerCase().includes(searchQuery.toLowerCase()));
+  const filteredItems = (stockItems || []).filter(item => {
+    const search = String(searchQuery || '').toLowerCase();
+    const barcode = String(item?.barcode || '').toLowerCase();
+    const serial = String(item?.serialNumber || '').toLowerCase();
+    
+    const matchesSearch = barcode.includes(search) || serial.includes(search);
     const matchesCategory = filterCategory === 'All' || item.category === filterCategory;
     return matchesSearch && matchesCategory;
   });
@@ -177,6 +182,13 @@ const Stock = () => {
                   <span className="hidden sm:inline">Options</span>
                 </button>
               )}
+              <button 
+                onClick={() => navigate('/stock/sold')}
+                className="p-3 bg-red-50 border border-red-100 rounded-xl text-red-600 hover:bg-red-100 transition-all flex items-center gap-2 font-bold"
+              >
+                <History size={20} />
+                <span className="hidden sm:inline">Historique Ventes</span>
+              </button>
               <button 
                 onClick={() => setView('add')}
                 className="p-3 bg-amber-500 text-slate-900 rounded-xl hover:bg-amber-400 transition-all shadow-lg flex items-center gap-2 font-bold"
@@ -225,9 +237,10 @@ const Stock = () => {
                   onChange={(e) => setFilterCategory(e.target.value)}
                 >
                   <option value="All">Toutes Catégories</option>
-                  {metadata.stock_categories?.map((cat: string) => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
+                  {metadata.stock_categories?.map((cat: any) => {
+                    const val = typeof cat === 'string' ? cat : (cat.name || cat.category || '');
+                    return <option key={val} value={val}>{val}</option>;
+                  })}
                 </select>
               </div>
             </div>
@@ -365,9 +378,10 @@ const Stock = () => {
                         value={formData.category}
                         onChange={(e) => handleCategoryChange(e.target.value)}
                       >
-                        {metadata.stock_categories?.map((cat: string) => (
-                          <option key={cat} value={cat}>{cat}</option>
-                        ))}
+                        {metadata.stock_categories?.map((cat: any) => {
+                          const val = typeof cat === 'string' ? cat : (cat.name || cat.category || '');
+                          return <option key={val} value={val}>{val}</option>;
+                        })}
                       </select>
                       <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
                     </div>
