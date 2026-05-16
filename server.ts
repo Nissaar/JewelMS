@@ -410,15 +410,22 @@ async function startServer() {
     try {
       const [customerReceipts, customerOrders, customerOdfs] = await Promise.all([
         db.select({
-          id: receipts.id,
+          id: sales.id,
+          receiptId: receipts.id,
           receiptNo: receipts.receiptSerialNumber,
-          date: receipts.createdAt,
+          date: sales.datetime,
           amount: sales.amount,
-          itemDetails: sales.itemDetails
+          itemDetails: sales.itemDetails,
+          barcode: stock.barcode,
+          category: stock.category,
+          subCategory: stock.subCategory,
+          fileUrl: receipts.fileUrl
         })
-        .from(receipts)
-        .innerJoin(sales, eq(receipts.saleId, sales.id))
-        .where(eq(sales.customerId, customerId)),
+        .from(sales)
+        .leftJoin(receipts, eq(sales.id, receipts.saleId))
+        .leftJoin(stock, eq(sales.stockId, stock.id))
+        .where(eq(sales.customerId, customerId))
+        .orderBy(sql`${sales.datetime} DESC`),
 
         db.select()
         .from(orders)
@@ -443,19 +450,24 @@ async function startServer() {
   // --- Search & Reporting Endpoints ---
   app.get("/api/reports/dashboard-summary", authenticateToken, checkPermission('reports', 'view'), async (req: any, res) => {
     try {
-      // Basic summary is usually visible to all logged in users, 
-      // but we could restrict it to those with any "view" permission or Admin
-      const { gte, lte } = await import("drizzle-orm");
-      const startOfDay = new Date();
-      startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date();
-      endOfDay.setHours(23, 59, 59, 999);
-
+      // Use PostgreSQL's CURRENT_DATE for more reliable "today" filtering
       const [todaySalesRes, newClientsRes, stockCountRes, pendingOrdersRes, recentSalesRes] = await Promise.all([
-        db.select({ total: sql<string>`SUM(${sales.amount})` }).from(sales).where(and(gte(sales.datetime, startOfDay), lte(sales.datetime, endOfDay))),
-        db.select({ count: sql<number>`COUNT(${customers.id})`.mapWith(Number) }).from(customers).where(and(gte(customers.createdAt, startOfDay), lte(customers.createdAt, endOfDay))),
-        db.select({ count: sql<number>`COUNT(${stock.id})`.mapWith(Number) }).from(stock).where(eq(stock.status, 'Disponible')),
-        db.select({ count: sql<number>`COUNT(${orders.id})`.mapWith(Number) }).from(orders).where(eq(orders.status, 'Pending')),
+        db.select({ total: sql<string>`SUM(${sales.amount})` })
+          .from(sales)
+          .where(sql`DATE(${sales.datetime} AT TIME ZONE 'UTC') = CURRENT_DATE`),
+        
+        db.select({ count: sql<number>`COUNT(${customers.id})`.mapWith(Number) })
+          .from(customers)
+          .where(sql`DATE(${customers.createdAt} AT TIME ZONE 'UTC') = CURRENT_DATE`),
+        
+        db.select({ count: sql<number>`COUNT(${stock.id})`.mapWith(Number) })
+          .from(stock)
+          .where(eq(stock.status, 'Disponible')),
+        
+        db.select({ count: sql<number>`COUNT(${orders.id})`.mapWith(Number) })
+          .from(orders)
+          .where(eq(orders.status, 'Pending')),
+        
         db.select({
           id: sales.id,
           amount: sales.amount,
@@ -583,7 +595,7 @@ async function startServer() {
   // --- ODF (Trade-ins) Endpoints ---
   app.post("/api/odf", authenticateToken, upload.single('image'), async (req, res) => {
     try {
-      const { customerId, itemReservedRepair, comments, weight, metalType, fineness, amount } = req.body;
+      const { customerId, itemReservedRepair, comments, weight, metalType, fineness, amount, fileUrl } = req.body;
       const imageUrl = req.file ? `/uploads/${req.file.filename}` : null;
 
       const newOdf = await db.insert(odf).values({
@@ -595,6 +607,7 @@ async function startServer() {
         fineness,
         amount: amount ? amount.toString() : null,
         imageUrl,
+        fileUrl,
         date: new Date()
       }).returning();
 
@@ -621,12 +634,14 @@ async function startServer() {
 
   app.post("/api/orders", authenticateToken, checkPermission('orders', 'create'), async (req, res) => {
     try {
-      const { customerId, itemDescription, estimatedWeight } = req.body;
+      const { customerId, itemDescription, estimatedWeight, finalWeight, finalPrice, status } = req.body;
       const newOrder = await db.insert(orders).values({
         customerId: customerId ? parseInt(customerId) : null,
         itemDescription,
         estimatedWeight: estimatedWeight ? estimatedWeight.toString() : null,
-        status: 'Pending'
+        finalWeight: finalWeight ? finalWeight.toString() : null,
+        finalPrice: finalPrice ? finalPrice.toString() : null,
+        status: status || 'Pending'
       }).returning();
 
       res.status(201).json({
@@ -675,7 +690,12 @@ async function startServer() {
 
         // 4. Mark Order as Finalized
         await tx.update(orders)
-          .set({ status: 'Finalized', updatedAt: new Date() })
+          .set({ 
+            status: 'Finalized', 
+            finalWeight: weight.toString(),
+            finalPrice: amount.toString(),
+            updatedAt: new Date() 
+          })
           .where(eq(orders.orderNumber, orderNumber));
 
         return { saleId: newSale[0].id, orderNumber: order.orderNumber };
@@ -927,11 +947,14 @@ async function startServer() {
         fileUrl: receipts.fileUrl,
         createdAt: receipts.createdAt,
         customerName: customers.name,
-        totalAmount: sales.amount
+        totalAmount: sales.amount,
+        barcode: stock.barcode,
+        itemDetails: sales.itemDetails
       })
       .from(receipts)
       .innerJoin(sales, eq(receipts.saleId, sales.id))
       .innerJoin(customers, eq(sales.customerId, customers.id))
+      .leftJoin(stock, eq(sales.stockId, stock.id))
       .orderBy(receipts.createdAt);
 
       res.json(allReceipts);
@@ -952,6 +975,9 @@ async function startServer() {
         paymentMode: sales.paymentMode,
         vat15: sales.vat15,
         itemDetails: sales.itemDetails,
+        barcode: stock.barcode,
+        category: stock.category,
+        subCategory: stock.subCategory,
         weight: sales.weight,
         unitSalesPrice: sales.unitSalesPrice,
         qty: sales.qty,
@@ -963,6 +989,7 @@ async function startServer() {
       .from(sales)
       .leftJoin(customers, eq(sales.customerId, customers.id))
       .leftJoin(receipts, eq(sales.id, receipts.saleId))
+      .leftJoin(stock, eq(sales.stockId, stock.id))
       .orderBy(sql`${sales.datetime} DESC`);
 
       res.json(history);

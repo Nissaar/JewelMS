@@ -12,6 +12,7 @@ import {
   ShoppingCart
 } from 'lucide-react';
 import { motion } from 'motion/react';
+import { formatCurrency } from '../lib/utils';
 
 const Dashboard = () => {
   const { token } = useAuth();
@@ -49,7 +50,7 @@ const Dashboard = () => {
   const stats = [
     { 
       label: 'Ventes du jour', 
-      value: `${data?.todaySales?.toLocaleString() || 0} Rs`, 
+      value: `${formatCurrency(data?.todaySales || 0)} Rs`, 
       icon: DollarSign, 
       color: 'text-emerald-600', 
       bgColor: 'bg-emerald-50' 
@@ -132,7 +133,7 @@ const Dashboard = () => {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="font-black text-slate-900">{parseFloat(sale.amount).toLocaleString()} Rs</p>
+                    <p className="font-black text-slate-900">{formatCurrency(sale.amount)} Rs</p>
                     <p className="text-[10px] font-bold text-slate-400">{new Date(sale.datetime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                   </div>
                 </div>

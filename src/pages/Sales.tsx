@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import BarcodeScanner from '../components/BarcodeScanner';
+import { formatCurrency } from '../lib/utils';
 
 const Sales = () => {
   const navigate = useNavigate();
@@ -580,12 +581,12 @@ const Sales = () => {
                     </div>
                     <div className="flex justify-between items-center text-amber-400">
                       <span className="font-bold uppercase text-xs tracking-widest">TVA (15%)</span>
-                      <span className="text-xl font-bold">{vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })} Rs</span>
+                      <span className="text-xl font-bold">{formatCurrency(vatAmount)} Rs</span>
                     </div>
                     <div className="pt-4 border-t border-slate-800 flex justify-between items-center">
                       <span className="text-slate-200 font-black uppercase text-sm tracking-widest">Total TTC</span>
                       <span className="text-4xl font-black text-white tracking-tighter">
-                        {totalWithVat.toLocaleString(undefined, { minimumFractionDigits: 2 })} <span className="text-lg">Rs</span>
+                        {formatCurrency(totalWithVat)} <span className="text-lg">Rs</span>
                       </span>
                     </div>
                   </div>

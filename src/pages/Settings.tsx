@@ -350,9 +350,9 @@ const Settings = () => {
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-4xl overflow-hidden"
+              className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-4xl max-h-[95vh] flex flex-col overflow-hidden"
             >
-              <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 flex-shrink-0">
                 <div className="flex items-center space-x-4">
                   <div className="h-14 w-14 bg-amber-500 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-amber-500/20">
                     <Shield size={28} />
@@ -367,7 +367,7 @@ const Settings = () => {
                 </button>
               </div>
 
-              <div className="p-8 lg:p-10">
+              <div className="p-8 lg:p-10 overflow-y-auto flex-1">
                 <form onSubmit={handleSaveUser} className="space-y-10">
                   {/* Basic Info Section */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8 bg-slate-50 p-6 rounded-3xl border border-slate-100">
@@ -397,14 +397,14 @@ const Settings = () => {
                   <div className="space-y-6">
                     <div className="flex items-center justify-between">
                       <h4 className="text-xl font-black text-slate-900 px-1">Permissions Granulaires</h4>
-                      <div className="h-1 flex-1 mx-6 bg-slate-100 rounded-full"></div>
+                      <div className="h-1 flex-1 mx-6 bg-slate-100 rounded-full hidden sm:block"></div>
                     </div>
                     
-                    <div className="bg-white rounded-3xl border-2 border-slate-50 overflow-hidden">
-                      <table className="w-full border-collapse">
+                    <div className="bg-white rounded-3xl border-2 border-slate-50 overflow-x-auto shadow-inner">
+                      <table className="w-full min-w-[600px] border-collapse">
                         <thead>
                           <tr className="bg-slate-50/50">
-                            <th className="text-left py-5 px-6 font-black text-slate-400 uppercase text-[10px] tracking-[0.2em]">Module Système</th>
+                            <th className="text-left py-5 px-6 font-black text-slate-400 uppercase text-[10px] tracking-[0.2em] sticky left-0 bg-slate-50/50 z-10">Module Système</th>
                             <th className="text-center py-5 px-4 font-black text-slate-400 uppercase text-[10px] tracking-[0.2em]">Voir</th>
                             <th className="text-center py-5 px-4 font-black text-slate-400 uppercase text-[10px] tracking-[0.2em]">Créer</th>
                             <th className="text-center py-5 px-4 font-black text-slate-400 uppercase text-[10px] tracking-[0.2em]">Éditer</th>
@@ -414,8 +414,8 @@ const Settings = () => {
                         <tbody>
                           {functionalities.map((f) => (
                             <tr key={f.id} className="border-t border-slate-50 hover:bg-amber-50/30 transition-colors">
-                              <td className="py-5 px-6">
-                                <span className="font-bold text-slate-900">{f.name}</span>
+                              <td className="py-5 px-6 sticky left-0 bg-white group-hover:bg-amber-50/30 font-bold text-slate-900 min-w-[150px]">
+                                {f.name}
                               </td>
                               {['canView', 'canCreate', 'canEdit', 'canDelete'].map((action) => {
                                 const permId = `${f.id}:${action}`;

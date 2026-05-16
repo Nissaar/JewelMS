@@ -8,6 +8,7 @@ import {
   Loader2, AlertCircle, Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { formatCurrency } from '../lib/utils';
 
 const Reports = () => {
   const { token, user } = useAuth();
@@ -145,7 +146,7 @@ const Reports = () => {
                 </div>
                 <p className="text-slate-400 font-bold uppercase text-xs tracking-widest mb-2">Total Collecté TVA</p>
                 <div className="flex items-baseline gap-2">
-                  <span className="text-4xl font-black">{parseFloat(totalVat).toLocaleString()}</span>
+                  <span className="text-4xl font-black">{formatCurrency(totalVat)}</span>
                   <span className="text-lg font-bold text-amber-400">Rs</span>
                 </div>
                 <div className="mt-4 flex items-center gap-2 text-xs text-slate-400">
@@ -230,9 +231,9 @@ const Reports = () => {
                                <span className="font-bold">{row.weight || '0'}g</span>
                              </div>
                            </td>
-                           <td className="px-6 py-4 font-bold text-slate-900">{parseFloat(row.amountExclVat).toLocaleString()} Rs</td>
-                           <td className="px-6 py-4 font-bold text-amber-600">{parseFloat(row.vatAmount).toLocaleString()} Rs</td>
-                           <td className="px-6 py-4 text-right font-black text-slate-900">{parseFloat(row.total).toLocaleString()} Rs</td>
+                           <td className="px-6 py-4 font-bold text-slate-900">{formatCurrency(row.amountExclVat)} Rs</td>
+                           <td className="px-6 py-4 font-bold text-amber-600">{formatCurrency(row.vatAmount)} Rs</td>
+                           <td className="px-6 py-4 text-right font-black text-slate-900">{formatCurrency(row.total)} Rs</td>
                          </tr>
                        ))
                      )}
@@ -278,7 +279,7 @@ const Reports = () => {
                     
                     <div className="flex justify-between items-center mb-6 p-3 bg-slate-50 rounded-xl">
                        <span className="text-xs font-bold text-slate-400 uppercase">Total</span>
-                       <span className="font-black text-slate-900">{parseFloat(r.totalAmount || "0").toLocaleString()} Rs</span>
+                       <span className="font-black text-slate-900">{formatCurrency(r.totalAmount || "0")} Rs</span>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2">

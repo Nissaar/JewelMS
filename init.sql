@@ -55,6 +55,9 @@ CREATE TABLE IF NOT EXISTS stock (
     fineness VARCHAR(20), -- 18K, 24K, etc.
     weight_grams NUMERIC(10, 3),
 
+    status VARCHAR(20) DEFAULT 'Disponible' NOT NULL,
+    sold_at TIMESTAMP WITH TIME ZONE,
+
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -111,6 +114,8 @@ CREATE TABLE IF NOT EXISTS orders (
     customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
     item_description TEXT,
     estimated_weight NUMERIC(10, 3),
+    final_weight NUMERIC(10, 3),
+    final_price NUMERIC(15, 2),
     status VARCHAR(20) DEFAULT 'Pending' CHECK (status IN ('Pending', 'Finalized')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -129,6 +134,7 @@ CREATE TABLE IF NOT EXISTS odf (
     fineness VARCHAR(20),
     amount NUMERIC(15, 2),
     image_url TEXT, -- Field for uploaded serial number/form photo
+    file_url TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

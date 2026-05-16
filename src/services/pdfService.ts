@@ -1,7 +1,8 @@
 import PDFDocument from 'pdfkit';
 import { db } from '../db';
-import { sales, customers, receipts, settings, odf } from '../db/schema';
+import { sales, customers, receipts, settings, odf, stock } from '../db/schema';
 import { eq } from 'drizzle-orm';
+import { formatCurrency } from '../lib/utils';
 
 export interface ReceiptData {
   saleId: number;
@@ -9,9 +10,18 @@ export interface ReceiptData {
 
 export async function generateReceiptPDF(saleId: number): Promise<{ doc: PDFKit.PDFDocument, receipt: any }> {
   // 1. Fetch data
-  const saleRecords = await db.select().from(sales).where(eq(sales.id, saleId)).limit(1);
+  const saleRecords = await db.select({
+    sale: sales,
+    stock: stock
+  })
+  .from(sales)
+  .leftJoin(stock, eq(sales.stockId, stock.id))
+  .where(eq(sales.id, saleId))
+  .limit(1);
+
   if (saleRecords.length === 0) throw new Error('Sale not found');
-  const sale = saleRecords[0];
+  const record = saleRecords[0];
+  const sale = record.sale;
 
   const customerRecords = sale.customerId 
     ? await db.select().from(customers).where(eq(customers.id, sale.customerId)).limit(1)
@@ -78,10 +88,18 @@ export async function generateReceiptPDF(saleId: number): Promise<{ doc: PDFKit.
 
   // Items Table Row
   const itemY = tableTop + 20;
-  doc.text(sale.itemDetails || 'Article Bijouterie', 35, itemY, { width: 140 });
+  
+  // Construct a better description: Barcode - Category SubCategory
+  let description = sale.itemDetails || 'Article Bijouterie';
+  if (record.stock) {
+    const s = record.stock;
+    description = `${s.barcode} - ${s.category} ${s.subCategory || ''}`.trim();
+  }
+
+  doc.text(description, 35, itemY, { width: 140 });
   doc.text(sale.weight ? sale.weight.toString() : '-', 180, itemY);
-  doc.text(Number(sale.unitSalesPrice).toLocaleString('fr-FR'), 240, itemY);
-  doc.text(Number(sale.amount).toLocaleString('fr-FR'), 320, itemY);
+  doc.text(formatCurrency(sale.unitSalesPrice), 240, itemY);
+  doc.text(formatCurrency(sale.amount), 320, itemY);
 
   doc.moveTo(30, itemY + 25).lineTo(385, itemY + 25).stroke();
 
@@ -89,15 +107,15 @@ export async function generateReceiptPDF(saleId: number): Promise<{ doc: PDFKit.
   doc.moveDown(2);
   const summaryX = 240;
   doc.text('Sous-Total:', summaryX);
-  doc.text(Number(sale.amount).toLocaleString('fr-FR'), 320, doc.y - 12);
+  doc.text(formatCurrency(sale.amount), 320, doc.y - 12);
   
   doc.text('TVA (15%):', summaryX);
-  doc.text(Number(sale.vat15).toLocaleString('fr-FR'), 320, doc.y - 12);
+  doc.text(formatCurrency(sale.vat15), 320, doc.y - 12);
   
   doc.font('Helvetica-Bold');
   doc.text('GRAND TOTAL:', summaryX);
   const total = Number(sale.amount) + Number(sale.vat15);
-  doc.text(total.toLocaleString('fr-FR'), 320, doc.y - 12);
+  doc.text(formatCurrency(total), 320, doc.y - 12);
   doc.font('Helvetica');
 
   doc.moveDown(2);
@@ -169,7 +187,7 @@ export async function generateODFPDF(odfId: number): Promise<{ doc: PDFKit.PDFDo
   doc.text(`Métal: ${odfRecord.metalType}`);
   doc.text(`Finesse: ${odfRecord.fineness}`);
   doc.text(`Poids: ${odfRecord.weight} g`);
-  doc.text(`Montant Estimé: ${Number(odfRecord.amount || 0).toLocaleString('fr-FR')} Rs`);
+  doc.text(`Montant Estimé: ${formatCurrency(odfRecord.amount || 0)} Rs`);
   doc.moveDown();
 
   if (odfRecord.itemReservedRepair) {

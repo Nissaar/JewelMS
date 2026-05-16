@@ -9,6 +9,7 @@ import {
   Check, AlertCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { formatCurrency } from '../lib/utils';
 
 const Customers = () => {
   const { token } = useAuth();
@@ -441,12 +442,12 @@ const Customers = () => {
                               <div className="flex items-center gap-4">
                                 <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl"><TrendingUp size={18} /></div>
                                 <div>
-                                  <p className="font-bold text-slate-900">{r.itemDetails}</p>
-                                  <p className="text-[10px] font-black text-slate-400">FACTURE #{r.receiptNo}</p>
+                                  <p className="font-bold text-slate-900">{r.barcode ? `${r.barcode} - ` : ''}{r.itemDetails}</p>
+                                  <p className="text-[10px] font-black text-slate-400">{r.receiptNo ? `FACTURE #${r.receiptNo}` : 'PAS DE FACTURE'}</p>
                                 </div>
                               </div>
                               <div className="text-right">
-                                <p className="font-black text-indigo-600">{parseFloat(r.amount).toLocaleString()} Rs</p>
+                                <p className="font-black text-indigo-600">{formatCurrency(r.amount)} Rs</p>
                                 <p className="text-[10px] font-bold text-slate-400">{new Date(r.date).toLocaleDateString()}</p>
                               </div>
                             </div>
@@ -491,7 +492,7 @@ const Customers = () => {
                                 <div className="p-3 bg-red-50 text-red-600 rounded-xl"><TrendingDown size={18} /></div>
                                 <div>
                                   <p className="font-bold text-slate-900">{od.metalType} {od.fineness}</p>
-                                  <p className="text-[10px] font-black text-slate-400">{od.weight}g est. {parseFloat(od.amount || 0).toLocaleString()} Rs</p>
+                                  <p className="text-[10px] font-black text-slate-400">{od.weight}g est. {formatCurrency(od.amount || 0)} Rs</p>
                                 </div>
                               </div>
                               <div className="text-right text-[10px] font-bold text-slate-400">
