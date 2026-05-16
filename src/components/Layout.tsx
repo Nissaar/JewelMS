@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Search, User, LogOut, Package, Users, ShoppingCart, FileText, Settings, Menu, X, PlusCircle, Fingerprint, BarChart3 } from 'lucide-react';
+import { Search, User, LogOut, Package, Users, ShoppingCart, FileText, Settings, Menu, X, PlusCircle, Fingerprint, BarChart3, Download } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'motion/react';
@@ -12,9 +12,29 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   const [searchResults, setSearchResults] = useState<any>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showInstallBtn, setShowInstallBtn] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
+
+  useEffect(() => {
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setShowInstallBtn(true);
+    });
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setDeferredPrompt(null);
+      setShowInstallBtn(false);
+    }
+  };
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -70,48 +90,60 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
     <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
       {/* Sidebar */}
       <aside className={`fixed inset-y-0 left-0 bg-slate-900 text-white w-64 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 transition-transform duration-200 ease-in-out z-30 lg:relative`}>
-        <div className="p-6 flex items-center justify-between">
-          <Link to="/" className="text-2xl font-bold tracking-tighter text-amber-400">
-            HAUJEE
-          </Link>
-          <button className="lg:hidden" onClick={() => setIsSidebarOpen(false)}>
-            <X size={24} />
-          </button>
-        </div>
-
-        <nav className="mt-6 px-4 space-y-1">
-          {navItems.map((item) => (
-            <Link
-              key={item.name}
-              to={item.path}
-              className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
-                location.pathname === item.path ? 'bg-slate-800 text-amber-400 shadow-sm' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-              }`}
-              onClick={() => setIsSidebarOpen(false)}
-            >
-              <item.icon size={20} />
-              <span className="font-medium">{item.name}</span>
+        <div className="flex flex-col h-screen">
+          <div className="p-6 flex items-center justify-between shrink-0">
+            <Link to="/" className="text-2xl font-bold tracking-tighter text-amber-400">
+              HAUJEE
             </Link>
-          ))}
-        </nav>
-
-        <div className="absolute bottom-0 w-full p-6 border-t border-slate-800">
-          <div className="flex items-center space-x-3 mb-4">
-            <div className="h-8 w-8 rounded-full bg-amber-500 flex items-center justify-center text-slate-900 font-bold">
-              {user?.username?.charAt(0).toUpperCase()}
-            </div>
-            <div className="overflow-hidden">
-              <p className="text-sm font-semibold truncate">{user?.username}</p>
-              <p className="text-xs text-slate-400 capitalize">{user?.role}</p>
-            </div>
+            <button className="lg:hidden" onClick={() => setIsSidebarOpen(false)}>
+              <X size={24} />
+            </button>
           </div>
-          <button
-            onClick={logout}
-            className="flex items-center space-x-2 text-slate-400 hover:text-red-400 transition-colors w-full"
-          >
-            <LogOut size={18} />
-            <span className="text-sm font-medium">Déconnexion</span>
-          </button>
+
+          <nav className="flex-1 overflow-y-auto px-4 space-y-1 py-2">
+            {navItems.map((item) => (
+              <Link
+                key={item.name}
+                to={item.path}
+                className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
+                  location.pathname === item.path ? 'bg-slate-800 text-amber-400 shadow-sm' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                }`}
+                onClick={() => setIsSidebarOpen(false)}
+              >
+                <item.icon size={20} />
+                <span className="font-medium">{item.name}</span>
+              </Link>
+            ))}
+          </nav>
+
+          <div className="p-6 border-t border-slate-800 shrink-0">
+            {showInstallBtn && (
+              <button 
+                onClick={handleInstallClick}
+                className="flex items-center space-x-3 px-4 py-3 mb-6 w-full bg-amber-500 text-slate-900 rounded-xl font-bold text-sm shadow-lg shadow-amber-500/20 hover:bg-amber-400 transition-all active:scale-95"
+              >
+                <Download size={18} />
+                <span>Installer l'App</span>
+              </button>
+            )}
+            
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="h-8 w-8 rounded-full bg-amber-500 flex items-center justify-center text-slate-900 font-bold shrink-0">
+                {user?.username?.charAt(0).toUpperCase()}
+              </div>
+              <div className="overflow-hidden">
+                <p className="text-sm font-semibold truncate">{user?.username}</p>
+                <p className="text-xs text-slate-400 capitalize">{user?.role}</p>
+              </div>
+            </div>
+            <button
+              onClick={logout}
+              className="flex items-center space-x-2 text-slate-400 hover:text-red-400 transition-colors w-full"
+            >
+              <LogOut size={18} />
+              <span className="text-sm font-medium">Déconnexion</span>
+            </button>
+          </div>
         </div>
       </aside>
 

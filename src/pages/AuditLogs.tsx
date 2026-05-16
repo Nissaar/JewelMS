@@ -32,20 +32,10 @@ const AuditLogs = () => {
     }
   };
 
-  const formatDetails = (details: unknown) => {
-    if (!details) return '';
-    if (typeof details === 'string') return details;
-    try {
-      return JSON.stringify(details);
-    } catch {
-      return String(details);
-    }
-  };
-
   const filteredLogs = logs.filter(l => 
     l.username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     l.action?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    formatDetails(l.details).toLowerCase().includes(searchQuery.toLowerCase())
+    l.details?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   if (user?.role !== 'Admin') {
@@ -165,8 +155,8 @@ const AuditLogs = () => {
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="max-w-md truncate text-sm text-slate-500 font-medium" title={formatDetails(log.details)}>
-                        {formatDetails(log.details)}
+                      <div className="max-w-md truncate text-sm text-slate-500 font-medium" title={log.details}>
+                        {log.details}
                       </div>
                     </td>
                   </tr>

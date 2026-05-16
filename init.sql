@@ -1,4 +1,4 @@
--- Haujee Jewellery Database Schema (PostgreSQL)
+# Haujee Jewellery Database Schema (PostgreSQL)
 
 -- User Management
 CREATE TABLE IF NOT EXISTS users (

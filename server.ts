@@ -39,7 +39,7 @@ async function startServer() {
   const upload = multer({ storage });
 
   // JSON middleware
-  app.use(express.json());
+  app.use(express.json({ limit: '10kb' }));
 
   // Audit Logging Middleware
   app.use(auditLogger);
@@ -347,6 +347,45 @@ async function startServer() {
   });
 
   // --- Search & Reporting Endpoints ---
+  app.get("/api/reports/dashboard-summary", authenticateToken, async (req, res) => {
+    try {
+      const { gte, lte } = await import("drizzle-orm");
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date();
+      endOfDay.setHours(23, 59, 59, 999);
+
+      const [todaySalesRes, newClientsRes, stockCountRes, pendingOrdersRes, recentSalesRes] = await Promise.all([
+        db.select({ total: sql<string>`SUM(${sales.amount})` }).from(sales).where(and(gte(sales.datetime, startOfDay), lte(sales.datetime, endOfDay))),
+        db.select({ count: sql<number>`COUNT(${customers.id})`.mapWith(Number) }).from(customers).where(and(gte(customers.createdAt, startOfDay), lte(customers.createdAt, endOfDay))),
+        db.select({ count: sql<number>`COUNT(${stock.id})`.mapWith(Number) }).from(stock),
+        db.select({ count: sql<number>`COUNT(${orders.id})`.mapWith(Number) }).from(orders).where(eq(orders.status, 'Pending')),
+        db.select({
+          id: sales.id,
+          amount: sales.amount,
+          itemDetails: sales.itemDetails,
+          datetime: sales.datetime,
+          customerName: customers.name
+        })
+        .from(sales)
+        .leftJoin(customers, eq(sales.customerId, customers.id))
+        .orderBy(sql`${sales.datetime} DESC`)
+        .limit(5)
+      ]);
+
+      res.json({
+        todaySales: parseFloat(todaySalesRes[0].total || "0"),
+        newClients: newClientsRes[0].count,
+        stockCount: stockCountRes[0].count,
+        pendingOrders: pendingOrdersRes[0].count,
+        recentSales: recentSalesRes
+      });
+    } catch (error) {
+      console.error("Dashboard Summary Error:", error);
+      res.status(500).json({ error: "Failed to fetch dashboard summary" });
+    }
+  });
+
   app.get("/api/search", authenticateToken, async (req, res) => {
     const { q } = req.query;
     if (!q || typeof q !== 'string') return res.status(400).json({ error: "Query string required" });

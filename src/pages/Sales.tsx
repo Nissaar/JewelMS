@@ -5,9 +5,10 @@ import {
   ShoppingCart, Barcode, User, CreditCard, Search, 
   Plus, Check, AlertCircle, Loader2, IndianRupee,
   Smartphone, Mail, Download, History, X, UserPlus,
-  Scale, Tag, Info
+  Scale, Tag, Info, Camera
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import BarcodeScanner from '../components/BarcodeScanner';
 
 const Sales = () => {
   const { token } = useAuth();
@@ -18,6 +19,7 @@ const Sales = () => {
   // Scanned Item State
   const [barcode, setBarcode] = useState('');
   const [scannedItem, setScannedItem] = useState<any>(null);
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
   
   // Customer State
   const [customerSearch, setCustomerSearch] = useState('');
@@ -57,22 +59,28 @@ const Sales = () => {
     }
   }, [finalPrice]);
 
-  const handleBarcodeScan = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!barcode) return;
+  const fetchItemByBarcode = async (codeToFetch: string) => {
+    if (!codeToFetch) return;
     
     setIsLoading(true);
+    setBarcode(codeToFetch);
     try {
-      const res = await axios.get(`/api/stock/${barcode}`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await axios.get(`/api/stock/${codeToFetch}`, { headers: { Authorization: `Bearer ${token}` } });
       setScannedItem(res.data);
       setFinalPrice(''); // Reset price for new item
       setMessage({ type: '', text: '' });
+      setIsScannerOpen(false);
     } catch (err: any) {
       setMessage({ type: 'error', text: 'Article non trouvé dans le stock.' });
       setScannedItem(null);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleBarcodeScan = (e: React.FormEvent) => {
+    e.preventDefault();
+    fetchItemByBarcode(barcode);
   };
 
   const handleCustomerSearch = async () => {
@@ -187,7 +195,35 @@ const Sales = () => {
             className="space-y-6"
           >
             <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100">
-               <h2 className="text-2xl font-black text-slate-900 mb-6">Scanner l'Article</h2>
+               <div className="flex items-center justify-between mb-6">
+                 <h2 className="text-2xl font-black text-slate-900">Identifier l'Article</h2>
+                 <button 
+                  onClick={() => setIsScannerOpen(!isScannerOpen)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold transition-all ${
+                    isScannerOpen ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'
+                  }`}
+                 >
+                   {isScannerOpen ? <X size={18} /> : <Camera size={18} />}
+                   {isScannerOpen ? 'Fermer Scanner' : 'Scanner Barcode'}
+                 </button>
+               </div>
+
+               <AnimatePresence>
+                 {isScannerOpen && (
+                   <motion.div 
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="overflow-hidden mb-8"
+                   >
+                     <BarcodeScanner 
+                        onScanSuccess={(code) => fetchItemByBarcode(code)}
+                        onScanError={(err) => console.log(err)}
+                     />
+                   </motion.div>
+                 )}
+               </AnimatePresence>
+
                <form onSubmit={handleBarcodeScan} className="flex gap-4 mb-8">
                  <div className="relative flex-1">
                    <Barcode className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={24} />

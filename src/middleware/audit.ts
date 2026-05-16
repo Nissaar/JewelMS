@@ -3,6 +3,24 @@ import { db } from '../db/index';
 import { auditLogs } from '../db/schema';
 import { AuthRequest } from './auth';
 
+const redactSensitiveData = (data: any): any => {
+  if (!data || typeof data !== 'object') return data;
+
+  const sensitiveKeys = ['password', 'token', 'authorization', 'secret', 'passwordhash', 'jwt'];
+  
+  const redacted = Array.isArray(data) ? [...data] : { ...data };
+
+  for (const key in redacted) {
+    if (sensitiveKeys.includes(key.toLowerCase())) {
+      redacted[key] = '[REDACTED]';
+    } else if (typeof redacted[key] === 'object') {
+      redacted[key] = redactSensitiveData(redacted[key]);
+    }
+  }
+
+  return redacted;
+};
+
 export const auditLogger = async (req: AuthRequest, res: Response, next: NextFunction) => {
   const methodsToLog = ['POST', 'PUT', 'DELETE', 'PATCH'];
   
@@ -17,8 +35,9 @@ export const auditLogger = async (req: AuthRequest, res: Response, next: NextFun
         details: {
           method: req.method,
           path: req.path,
-          body: req.body,
-          query: req.query,
+          body: redactSensitiveData(req.body),
+          query: redactSensitiveData(req.query),
+          headers: redactSensitiveData(req.headers),
           statusCode: res.statusCode
         },
         ipAddress: req.ip || req.socket.remoteAddress,
