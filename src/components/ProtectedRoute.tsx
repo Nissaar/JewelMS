@@ -1,13 +1,18 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import Unauthorized from '../pages/Unauthorized';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
   requiredRole?: 'Admin' | 'User';
+  requiredPermission?: {
+    functionality: string;
+    action: 'canView' | 'canCreate' | 'canEdit' | 'canDelete';
+  };
 }
 
-export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requiredRole }) => {
+export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requiredRole, requiredPermission }) => {
   const { user, isLoading } = useAuth();
   const location = useLocation();
 
@@ -23,8 +28,23 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requir
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  if (requiredRole && user.role !== requiredRole && user.role !== 'Admin') {
-    return <Navigate to="/" replace />;
+  // Admin bypass
+  if (user.role === 'Admin') return <>{children}</>;
+
+  // Check Role
+  if (requiredRole && user.role !== requiredRole) {
+    return <Unauthorized />;
+  }
+
+  // Check granular permission
+  if (requiredPermission) {
+    const hasPermission = user.permissions?.find(
+      p => p.functionality === requiredPermission.functionality && p[requiredPermission.action]
+    );
+
+    if (!hasPermission) {
+      return <Unauthorized />;
+    }
   }
 
   return <>{children}</>;

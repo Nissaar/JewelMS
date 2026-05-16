@@ -4,6 +4,13 @@ interface User {
   id: number;
   username: string;
   role: 'Admin' | 'User';
+  permissions?: {
+    functionality: string;
+    canView: boolean;
+    canCreate: boolean;
+    canEdit: boolean;
+    canDelete: boolean;
+  }[];
 }
 
 interface AuthContextType {

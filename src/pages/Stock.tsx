@@ -80,13 +80,30 @@ const Stock = () => {
           category: metaObj.stock_categories[0],
           metalType: metaObj.stock_metal_types?.[0] || '',
           fineness: metaObj.stock_fineness_options?.[0] || '',
-          subCategory: metaObj.stock_sub_categories?.[0] || '',
-          brand: metaObj.stock_pen_brands?.[0] || ''
+          subCategory: metaObj.stock_sub_categories?.find((sc: any) => sc.category === metaObj.stock_categories[0])?.name || '',
+          brand: metaObj.stock_sewing_machine_brands?.[0] || ''
         }));
       }
     } catch (err) {
       console.error(err);
     }
+  };
+
+  const handleCategoryChange = (val: string) => {
+    const filteredSubs = metadata.stock_sub_categories?.filter((sc: any) => sc.category === val) || [];
+    const defaultSub = filteredSubs.length > 0 ? filteredSubs[0].name : '';
+      
+    setFormData((prev: any) => ({
+      ...prev,
+      category: val,
+      subCategory: defaultSub,
+      metalType: val === 'Jewellery' ? (metadata.stock_metal_types?.[0] || '') : '',
+      fineness: val === 'Jewellery' ? (metadata.stock_fineness_options?.[0] || '') : '',
+      weightGrams: '',
+      brand: val === 'Sewing Machine' ? (metadata.stock_sewing_machine_brands?.[0] || '') : '',
+      yearsOfGuarantee: 0,
+      serialNumber: ''
+    }));
   };
 
   const handleCreateStock = async (e: React.FormEvent) => {
@@ -110,7 +127,7 @@ const Stock = () => {
       fetchStock();
       setView('list');
     } catch (err: any) {
-      setMessage({ type: 'error', text: err.response?.data?.error || 'Échec de la création' });
+      setMessage({ type: 'error', text: err.response?.data?.message || err.response?.data?.error || 'Échec de la création' });
     } finally {
       setIsSaving(false);
       setTimeout(() => setMessage({ type: '', text: '' }), 3000);
@@ -269,7 +286,7 @@ const Stock = () => {
                                 </>
                               )}
                               {item.category === 'Pen' && (
-                                <p className="text-slate-700 font-medium">{item.brand}</p>
+                                <p className="text-slate-700 font-medium">{item.subCategory}</p>
                               )}
                               {item.category === 'Sewing Machine' && (
                                 <p className="text-slate-700 font-medium">Garantie: {item.yearsOfGuarantee} ans</p>
@@ -346,7 +363,7 @@ const Stock = () => {
                       <select 
                         className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-10 pr-4 outline-none focus:border-amber-400 font-bold appearance-none"
                         value={formData.category}
-                        onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                        onChange={(e) => handleCategoryChange(e.target.value)}
                       >
                         {metadata.stock_categories?.map((cat: string) => (
                           <option key={cat} value={cat}>{cat}</option>
@@ -357,43 +374,27 @@ const Stock = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                   <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-2">Sous-Catégorie</label>
-                    <select 
-                      className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 outline-none focus:border-amber-400 font-bold"
-                      value={formData.subCategory}
-                      onChange={(e) => setFormData({ ...formData, subCategory: e.target.value })}
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Emplacement par défaut</label>
+                  <div className="flex bg-slate-100 p-1 rounded-xl max-w-md">
+                    <button 
+                      type="button"
+                      onClick={() => setFormData({ ...formData, stockType: 'on-display' })}
+                      className={`flex-1 py-3 rounded-lg text-sm font-black transition-all ${
+                        formData.stockType === 'on-display' ? 'bg-white shadow-md text-slate-900' : 'text-slate-500'
+                      }`}
                     >
-                      {metadata.stock_sub_categories?.map((sc: string) => (
-                        <option key={sc} value={sc}>{sc}</option>
-                      ))}
-                      <option value="Autre">Autre</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-2">Emplacement</label>
-                    <div className="flex bg-slate-100 p-1 rounded-xl">
-                      <button 
-                        type="button"
-                        onClick={() => setFormData({ ...formData, stockType: 'on-display' })}
-                        className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${
-                          formData.stockType === 'on-display' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'
-                        }`}
-                      >
-                        En Vitrine
-                      </button>
-                      <button 
-                        type="button"
-                        onClick={() => setFormData({ ...formData, stockType: 'in-store' })}
-                        className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${
-                          formData.stockType === 'in-store' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'
-                        }`}
-                      >
-                        En Réserve
-                      </button>
-                    </div>
+                      En Vitrine
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => setFormData({ ...formData, stockType: 'in-store' })}
+                      className={`flex-1 py-3 rounded-lg text-sm font-black transition-all ${
+                        formData.stockType === 'in-store' ? 'bg-white shadow-md text-slate-900' : 'text-slate-500'
+                      }`}
+                    >
+                      En Réserve
+                    </button>
                   </div>
                 </div>
 
@@ -401,45 +402,67 @@ const Stock = () => {
                 <motion.div 
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: 'auto', opacity: 1 }}
+                  key={formData.category}
                   className="pt-6 border-t border-slate-100"
                 >
                   {formData.category === 'Jewellery' && (
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      <div>
-                        <label className="block text-sm font-bold text-slate-700 mb-2">Métal</label>
-                        <select 
-                          className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 outline-none focus:border-amber-400 font-bold"
-                          value={formData.metalType}
-                          onChange={(e) => setFormData({ ...formData, metalType: e.target.value })}
-                        >
-                          {metadata.stock_metal_types?.map((m: string) => (
-                            <option key={m} value={m}>{m}</option>
-                          ))}
-                        </select>
+                    <div className="space-y-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                          <label className="block text-sm font-bold text-slate-700 mb-2">Type de Bijou (Sous-Catégorie)</label>
+                          <select 
+                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 outline-none focus:border-amber-400 font-bold"
+                            value={formData.subCategory}
+                            onChange={(e) => setFormData({ ...formData, subCategory: e.target.value })}
+                          >
+                            {(metadata.stock_sub_categories || [])
+                              .filter((sc: any) => sc.category === 'Jewellery')
+                              .map((sc: any) => (
+                                <option key={sc.name} value={sc.name}>{sc.name}</option>
+                              ))}
+                            <option value="Autre">Autre</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-bold text-slate-700 mb-2">Métal</label>
+                          <select 
+                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 outline-none focus:border-amber-400 font-bold"
+                            value={formData.metalType}
+                            onChange={(e) => setFormData({ ...formData, metalType: e.target.value })}
+                          >
+                            {metadata.stock_metal_types?.map((m: string) => (
+                              <option key={m} value={m}>{m}</option>
+                            ))}
+                          </select>
+                        </div>
                       </div>
-                      <div>
-                        <label className="block text-sm font-bold text-slate-700 mb-2">Pureté (Finesse)</label>
-                        <select 
-                          className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 outline-none focus:border-amber-400 font-bold"
-                          value={formData.fineness}
-                          onChange={(e) => setFormData({ ...formData, fineness: e.target.value })}
-                        >
-                          {metadata.stock_fineness_options?.map((f: string) => (
-                            <option key={f} value={f}>{f}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-bold text-slate-700 mb-2">Poids (Grammes)</label>
-                        <div className="relative">
-                          <Scale className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                          <input 
-                            type="number" 
-                            step="0.001"
-                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-10 pr-4 outline-none focus:border-amber-400 font-bold"
-                            value={formData.weightGrams}
-                            onChange={(e) => setFormData({ ...formData, weightGrams: e.target.value })}
-                          />
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                          <label className="block text-sm font-bold text-slate-700 mb-2">Pureté (Finesse)</label>
+                          <select 
+                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 outline-none focus:border-amber-400 font-bold"
+                            value={formData.fineness}
+                            onChange={(e) => setFormData({ ...formData, fineness: e.target.value })}
+                          >
+                            {metadata.stock_fineness_options?.map((f: string) => (
+                              <option key={f} value={f}>{f}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-bold text-slate-700 mb-2">Poids (Grammes)</label>
+                          <div className="relative">
+                            <Scale className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                            <input 
+                              type="number" 
+                              step="0.001"
+                              placeholder="0.000"
+                              className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-10 pr-4 outline-none focus:border-amber-400 font-bold"
+                              value={formData.weightGrams}
+                              onChange={(e) => setFormData({ ...formData, weightGrams: e.target.value })}
+                            />
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -448,21 +471,25 @@ const Stock = () => {
                   {formData.category === 'Pen' && (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                        <div>
-                        <label className="block text-sm font-bold text-slate-700 mb-2">Marque</label>
+                        <label className="block text-sm font-bold text-slate-700 mb-2">Marque (Brand)</label>
                         <select 
                           className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 outline-none focus:border-amber-400 font-bold"
-                          value={formData.brand}
-                          onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
+                          value={formData.subCategory}
+                          onChange={(e) => setFormData({ ...formData, subCategory: e.target.value })}
                         >
-                          {metadata.stock_pen_brands?.map((b: string) => (
-                            <option key={b} value={b}>{b}</option>
-                          ))}
+                          {(metadata.stock_sub_categories || [])
+                            .filter((sc: any) => sc.category === 'Pen')
+                            .map((sc: any) => (
+                              <option key={sc.name} value={sc.name}>{sc.name}</option>
+                            ))}
+                          <option value="Autre">Autre</option>
                         </select>
                       </div>
                       <div>
                         <label className="block text-sm font-bold text-slate-700 mb-2">N° de Série (Optionnel)</label>
                         <input 
                           type="text" 
+                          placeholder="Ex: P123456"
                           className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 outline-none focus:border-amber-400 font-bold"
                           value={formData.serialNumber}
                           onChange={(e) => setFormData({ ...formData, serialNumber: e.target.value })}
@@ -480,9 +507,12 @@ const Stock = () => {
                            value={formData.brand}
                            onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
                          >
-                           {metadata.stock_sewing_machine_brands?.map((b: string) => (
-                             <option key={b} value={b}>{b}</option>
-                           ))}
+                           {(metadata.stock_sub_categories || [])
+                            .filter((sc: any) => typeof sc === 'object' && sc.category === 'Sewing Machine')
+                            .map((sc: any) => (
+                              <option key={sc.name} value={sc.name}>{sc.name}</option>
+                            ))}
+                           <option value="Autre">Autre</option>
                          </select>
                        </div>
                       <div>
@@ -501,10 +531,30 @@ const Stock = () => {
                         <label className="block text-sm font-bold text-slate-700 mb-2">N° de Série</label>
                         <input 
                           type="text" 
+                          placeholder="Ex: SM-9988"
                           className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 outline-none focus:border-amber-400 font-bold"
                           value={formData.serialNumber}
                           onChange={(e) => setFormData({ ...formData, serialNumber: e.target.value })}
                         />
+                      </div>
+                    </div>
+                  )}
+                  {formData.category === 'Parts' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                       <div>
+                        <label className="block text-sm font-bold text-slate-700 mb-2">Type de Pièce</label>
+                        <select 
+                          className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 outline-none focus:border-amber-400 font-bold"
+                          value={formData.subCategory}
+                          onChange={(e) => setFormData({ ...formData, subCategory: e.target.value })}
+                        >
+                          {(metadata.stock_sub_categories || [])
+                            .filter((sc: any) => typeof sc === 'object' && sc.category === 'Parts')
+                            .map((sc: any) => (
+                              <option key={sc.name} value={sc.name}>{sc.name}</option>
+                            ))}
+                          <option value="Autre">Autre</option>
+                        </select>
                       </div>
                     </div>
                   )}
@@ -576,8 +626,104 @@ const Stock = () => {
              </div>
 
              <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
-                {Object.keys(metadata).map((key) => (
-                  <div key={key} className="space-y-4">
+                {/* Categories Management */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-bold text-slate-700">Catégories Principales</label>
+                    <button 
+                      onClick={async () => {
+                        const val = (document.getElementById(`input-categories`) as HTMLInputElement).value;
+                        if (!val) return;
+                        const newArr = [...(metadata.stock_categories || []), val];
+                        try {
+                          await axios.put(`/api/settings/stock_categories`, { value: JSON.stringify(newArr) }, { headers: { Authorization: `Bearer ${token}` } });
+                          setMetadata({ ...metadata, stock_categories: newArr });
+                          (document.getElementById(`input-categories`) as HTMLInputElement).value = '';
+                        } catch (err) { console.error(err); }
+                      }}
+                      className="text-xs font-bold text-amber-600 hover:text-amber-700"
+                    >
+                      + Ajouter
+                    </button>
+                  </div>
+                  <input id="input-categories" type="text" placeholder="Nouvelle catégorie..." className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm outline-none focus:border-amber-400" />
+                  <div className="flex flex-wrap gap-2">
+                    {metadata.stock_categories?.map((val: string, idx: number) => (
+                      <div key={idx} className="flex items-center gap-1 bg-slate-100 px-3 py-1 rounded-full text-xs font-bold text-slate-600">
+                        {val}
+                        <button onClick={async () => {
+                          const newArr = metadata.stock_categories.filter((_: any, i: number) => i !== idx);
+                          await axios.put(`/api/settings/stock_categories`, { value: JSON.stringify(newArr) }, { headers: { Authorization: `Bearer ${token}` } });
+                          setMetadata({ ...metadata, stock_categories: newArr });
+                        }} className="text-slate-400 hover:text-red-500"><X size={14} /></button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Linked Subcategories Management */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-bold text-slate-700">Sous-Catégories & Marques</label>
+                  </div>
+                  <div className="bg-slate-50 p-4 rounded-2xl space-y-3">
+                    <input id="input-sub-name" type="text" placeholder="Nom (ex: Ring, Parker...)" className="w-full bg-white border border-slate-200 rounded-lg py-2 px-3 text-sm outline-none focus:border-amber-400" />
+                    <div className="flex gap-2">
+                      <select id="select-sub-parent" className="flex-1 bg-white border border-slate-200 rounded-lg py-2 px-3 text-sm outline-none focus:border-amber-400 font-bold">
+                        {metadata.stock_categories?.map((cat: string) => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                      </select>
+                      <button 
+                        onClick={async () => {
+                          const name = (document.getElementById(`input-sub-name`) as HTMLInputElement).value;
+                          const parent = (document.getElementById(`select-sub-parent`) as HTMLSelectElement).value;
+                          if (!name || !parent) return;
+                          
+                          const newArr = Array.isArray(metadata.stock_sub_categories) 
+                            ? (typeof metadata.stock_sub_categories[0] === 'string' ? [] : metadata.stock_sub_categories) 
+                            : [];
+                          
+                          const updated = [...newArr, { name, category: parent }];
+                          try {
+                            await axios.put(`/api/settings/stock_sub_categories`, { value: JSON.stringify(updated) }, { headers: { Authorization: `Bearer ${token}` } });
+                            setMetadata({ ...metadata, stock_sub_categories: updated });
+                            (document.getElementById(`input-sub-name`) as HTMLInputElement).value = '';
+                          } catch (err) { console.error(err); }
+                        }}
+                        className="bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-slate-800 transition-colors"
+                      >
+                        Ajouter
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2">
+                    {metadata.stock_categories?.map((cat: string) => (
+                      <div key={cat} className="space-y-2">
+                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{cat}</h4>
+                        <div className="flex flex-wrap gap-2">
+                          {(metadata.stock_sub_categories || [])
+                            .filter((sc: any) => typeof sc === 'object' && sc.category === cat)
+                            .map((sc: any, idx: number) => (
+                              <div key={idx} className="flex items-center gap-1 bg-white border border-slate-100 px-3 py-1 rounded-full text-xs font-bold text-slate-600 shadow-sm">
+                                {sc.name}
+                                <button onClick={async () => {
+                                  const updated = metadata.stock_sub_categories.filter((item: any) => item !== sc);
+                                  await axios.put(`/api/settings/stock_sub_categories`, { value: JSON.stringify(updated) }, { headers: { Authorization: `Bearer ${token}` } });
+                                  setMetadata({ ...metadata, stock_sub_categories: updated });
+                                }} className="text-slate-400 hover:text-red-500"><X size={14} /></button>
+                              </div>
+                            ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Other standard settings */}
+                {Object.keys(metadata).filter(k => !['stock_categories', 'stock_sub_categories', 'stock_pen_brands', 'stock_sewing_machine_brands'].includes(k)).map((key) => (
+                  <div key={key} className="space-y-4 pt-4 border-t border-slate-100">
                     <div className="flex items-center justify-between">
                        <label className="text-sm font-bold text-slate-700 capitalize">{key.replace(/_/g, ' ')}</label>
                        <button 

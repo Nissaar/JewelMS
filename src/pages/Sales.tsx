@@ -21,6 +21,9 @@ const Sales = () => {
   const [scannedItem, setScannedItem] = useState<any>(null);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   
+  // Stock Search State
+  const [stockSearchResults, setStockSearchResults] = useState<any[]>([]);
+  
   // Customer State
   const [customerSearch, setCustomerSearch] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -58,6 +61,38 @@ const Sales = () => {
       }
     }
   }, [finalPrice]);
+
+  // Debounce Stock Search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (barcode.length >= 2 && !scannedItem && saleStep === 'item') {
+        handleStockSearch();
+      } else if (barcode.length < 2) {
+        setStockSearchResults([]);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [barcode, scannedItem, saleStep]);
+
+  const handleStockSearch = async () => {
+    try {
+      const res = await axios.get(`/api/stock/autocomplete?q=${barcode}`, { 
+        headers: { Authorization: `Bearer ${token}` } 
+      });
+      setStockSearchResults(res.data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleSelectStockItem = (item: any) => {
+    setScannedItem(item);
+    setBarcode(item.barcode);
+    setStockSearchResults([]);
+    setFinalPrice(''); 
+    setMessage({ type: '', text: '' });
+  };
 
   const fetchItemByBarcode = async (codeToFetch: string) => {
     if (!codeToFetch) return;
@@ -224,22 +259,62 @@ const Sales = () => {
                  )}
                </AnimatePresence>
 
-               <form onSubmit={handleBarcodeScan} className="flex gap-4 mb-8">
+               <form onSubmit={handleBarcodeScan} className="flex gap-4 mb-8 relative">
                  <div className="relative flex-1">
                    <Barcode className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={24} />
                    <input 
                     ref={barcodeInputRef}
                     type="text"
-                    placeholder="Scanner le code-barres ici..."
+                    placeholder="Saisir barcode ou catégorie..."
                     className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-4 pl-14 pr-4 text-lg font-bold outline-none focus:border-amber-400 transition-all font-mono"
                     value={barcode}
-                    onChange={(e) => setBarcode(e.target.value)}
+                    onChange={(e) => {
+                      setBarcode(e.target.value);
+                      if (scannedItem) setScannedItem(null); // Clear item if user starts re-typing
+                    }}
+                    onFocus={() => {
+                      if (barcode.length >= 2 && !scannedItem) handleStockSearch();
+                    }}
                    />
+                   
+                   {/* Autocomplete Dropdown */}
+                   <AnimatePresence>
+                    {stockSearchResults.length > 0 && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: 5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 5 }}
+                        className="absolute left-0 right-0 top-full mt-2 bg-white border-2 border-slate-100 rounded-2xl shadow-2xl z-50 overflow-hidden max-h-[300px] overflow-y-auto"
+                      >
+                        {stockSearchResults.map((item) => (
+                          <div 
+                            key={item.id}
+                            onClick={() => handleSelectStockItem(item)}
+                            className="p-4 hover:bg-slate-50 cursor-pointer border-b border-slate-50 last:border-0 flex items-center justify-between group transition-colors"
+                          >
+                            <div className="flex items-center gap-4">
+                              <div className="bg-amber-100 text-amber-600 p-2 rounded-lg">
+                                <Tag size={18} />
+                              </div>
+                              <div>
+                                <p className="font-bold text-slate-900">{item.subCategory || item.category}</p>
+                                <p className="text-xs text-slate-500 font-mono">{item.barcode}</p>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-black text-amber-600 italic">{item.weightGrams ? `${item.weightGrams}g` : 'N/A'}</p>
+                              <p className="text-[10px] uppercase font-bold text-slate-400">{item.metalType} {item.fineness}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </motion.div>
+                    )}
+                   </AnimatePresence>
                  </div>
                  <button 
                   type="submit"
                   disabled={isLoading}
-                  className="bg-slate-900 text-white px-8 rounded-2xl font-bold hover:bg-slate-800 transition-all disabled:opacity-50"
+                  className="bg-slate-900 text-white px-8 rounded-2xl font-bold hover:bg-slate-800 transition-all disabled:opacity-50 h-[60px]"
                  >
                    {isLoading ? <Loader2 className="animate-spin" /> : 'Rechercher'}
                  </button>

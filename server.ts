@@ -70,9 +70,23 @@ async function startServer() {
         { expiresIn: "12h" }
       );
 
+      // Fetch user permissions to include in response for frontend UI filtering
+      const permissions = await db.select().from(rolesPermissions).where(eq(rolesPermissions.userId, user.id));
+
       res.json({
         token,
-        user: { id: user.id, username: user.username, role: user.role }
+        user: { 
+          id: user.id, 
+          username: user.username, 
+          role: user.role,
+          permissions: permissions.map(p => ({
+            functionality: p.functionality,
+            canView: p.canView,
+            canCreate: p.canCreate,
+            canEdit: p.canEdit,
+            canDelete: p.canDelete
+          }))
+        }
       });
     } catch (error) {
       console.error("Login Error:", error);
@@ -115,6 +129,25 @@ async function startServer() {
     } catch (error) {
       console.error("User Creation Error:", error);
       res.status(500).json({ error: "Failed to create user" });
+    }
+  });
+
+  app.put("/api/users/:id", authenticateToken, async (req: any, res) => {
+    if (req.user?.role !== 'Admin') return res.status(403).json({ error: "Admin access required" });
+    const { email, role } = req.body;
+    const userId = parseInt(req.params.id);
+
+    try {
+      const updated = await db.update(users)
+        .set({ email, role, updatedAt: new Date() })
+        .where(eq(users.id, userId))
+        .returning();
+      
+      if (updated.length === 0) return res.status(404).json({ error: "User not found" });
+      res.json(updated[0]);
+    } catch (error) {
+      console.error("User Update Error:", error);
+      res.status(500).json({ error: "Failed to update user" });
     }
   });
 
@@ -224,6 +257,29 @@ async function startServer() {
     }
   });
 
+  app.get("/api/stock/autocomplete", authenticateToken, async (req, res) => {
+    const { q } = req.query;
+    if (!q || typeof q !== 'string' || q.length < 2) return res.json([]);
+
+    const searchStr = `%${q}%`;
+    try {
+      const results = await db.select()
+        .from(stock)
+        .where(
+          or(
+            ilike(stock.barcode, searchStr),
+            ilike(stock.category, searchStr),
+            ilike(stock.subCategory, searchStr)
+          )
+        )
+        .limit(10);
+      res.json(results);
+    } catch (error) {
+      console.error("Autocomplete Error:", error);
+      res.status(500).json({ error: "Failed to search stock" });
+    }
+  });
+
   app.get("/api/stock/:barcode", authenticateToken, checkPermission('stock', 'view'), async (req, res) => {
     try {
       const item = await db.select().from(stock).where(eq(stock.barcode, req.params.barcode)).limit(1);
@@ -238,7 +294,10 @@ async function startServer() {
     try {
       const newItem = await db.insert(stock).values(req.body).returning();
       res.status(201).json(newItem[0]);
-    } catch (error) {
+    } catch (error: any) {
+      if (error.code === '23505') {
+        return res.status(400).json({ message: "Ce code-barres existe déjà." });
+      }
       res.status(500).json({ error: "Failed to create stock item" });
     }
   });
@@ -293,7 +352,10 @@ async function startServer() {
     try {
       const newCustomer = await db.insert(customers).values(req.body).returning();
       res.status(201).json(newCustomer[0]);
-    } catch (error) {
+    } catch (error: any) {
+      if (error.code === '23505') {
+        return res.status(400).json({ message: "Ce client existe déjà." });
+      }
       res.status(500).json({ error: "Failed to create customer profile" });
     }
   });
@@ -347,8 +409,10 @@ async function startServer() {
   });
 
   // --- Search & Reporting Endpoints ---
-  app.get("/api/reports/dashboard-summary", authenticateToken, async (req, res) => {
+  app.get("/api/reports/dashboard-summary", authenticateToken, checkPermission('reports', 'view'), async (req: any, res) => {
     try {
+      // Basic summary is usually visible to all logged in users, 
+      // but we could restrict it to those with any "view" permission or Admin
       const { gte, lte } = await import("drizzle-orm");
       const startOfDay = new Date();
       startOfDay.setHours(0, 0, 0, 0);
@@ -443,51 +507,6 @@ async function startServer() {
     } catch (error) {
       console.error("Reporting Error:", error);
       res.status(500).json({ error: "Failed to generate weight report" });
-    }
-  });
-
-  app.get("/api/reports/vat", authenticateToken, checkPermission('reports', 'view'), async (req, res) => {
-    const { day, month, year } = req.query;
-    try {
-      const conditions = [];
-      if (day) conditions.push(sql`EXTRACT(DAY FROM ${sales.datetime}) = ${day}`);
-      if (month) conditions.push(sql`EXTRACT(MONTH FROM ${sales.datetime}) = ${month}`);
-      if (year) conditions.push(sql`EXTRACT(YEAR FROM ${sales.datetime}) = ${year}`);
-
-      const salesData = await db
-        .select({
-          date: sales.datetime,
-          receiptNo: receipts.receiptSerialNumber,
-          amountWithoutVat: sales.amount,
-          vatAmount: sales.vat15,
-          itemSold: sales.itemDetails,
-          weight: sales.weight,
-          metalType: sales.metalType,
-          fineness: sales.fineness,
-        })
-        .from(sales)
-        .leftJoin(receipts, eq(sales.id, receipts.saleId))
-        .where(and(...conditions))
-        .orderBy(sales.datetime);
-
-      const formattedSales = salesData.map(s => {
-        const amount = Number(s.amountWithoutVat || 0);
-        const vat = Number(s.vatAmount || 0);
-        return {
-          ...s,
-          totalAmount: (amount + vat).toFixed(2)
-        };
-      });
-
-      const totalVatAmount = formattedSales.reduce((acc, curr) => acc + Number(curr.vatAmount), 0);
-
-      res.json({
-        data: formattedSales,
-        total_vat_amount: totalVatAmount.toFixed(2)
-      });
-    } catch (error) {
-      console.error("VAT Reporting Error:", error);
-      res.status(500).json({ error: "Failed to generate VAT report" });
     }
   });
 
@@ -823,7 +842,7 @@ async function startServer() {
   });
 
   // --- Reports & Audit Endpoints ---
-  app.get("/api/reports/vat", authenticateToken, async (req: any, res) => {
+  app.get("/api/reports/vat", authenticateToken, checkPermission('reports', 'view'), async (req: any, res) => {
     const { day, month, year } = req.query;
     try {
       let conditions = [];

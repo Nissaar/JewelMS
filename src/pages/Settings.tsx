@@ -13,13 +13,14 @@ const Settings = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
 
-  // User creation state
+  // User creation/edit state
   const [showAddUser, setShowAddUser] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [newUser, setNewUser] = useState({ username: '', email: '', password: '', role: 'User' });
+  const [editingUser, setEditingUser] = useState<any>(null);
 
   // Permissions state
-  const [selectedUser, setSelectedUser] = useState<any>(null);
-  const [userPermissions, setUserPermissions] = useState<any[]>([]);
+  const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]); // format: "funcId:action"
 
   const functionalities = [
     { id: 'stock', name: 'Gestion du Stock' },
@@ -83,42 +84,67 @@ const Settings = () => {
   const fetchPermissions = async (userId: number) => {
     try {
       const res = await axios.get(`/api/users/${userId}/permissions`, { headers: { Authorization: `Bearer ${token}` } });
-      // Initialize with all functionalities if empty
-      const existing = res.data;
-      const merged = functionalities.map(f => {
-        const found = existing.find((p: any) => p.functionality === f.id);
-        return found || { functionality: f.id, canView: false, canCreate: false, canEdit: false, canDelete: false };
+      const perms: string[] = [];
+      res.data.forEach((p: any) => {
+        if (p.canView) perms.push(`${p.functionality}:canView`);
+        if (p.canCreate) perms.push(`${p.functionality}:canCreate`);
+        if (p.canEdit) perms.push(`${p.functionality}:canEdit`);
+        if (p.canDelete) perms.push(`${p.functionality}:canDelete`);
       });
-      setUserPermissions(merged);
+      setSelectedPermissions(perms);
     } catch (err) {
       console.error(err);
     }
   };
 
-  const handleSavePermissions = async () => {
-    if (!selectedUser) return;
+  const handleEditUser = (user: any) => {
+    setEditingUser(user);
+    fetchPermissions(user.id);
+    setIsEditModalOpen(true);
+  };
+
+  const handleSaveUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
     setIsSaving(true);
     try {
-      await axios.put(`/api/users/${selectedUser.id}/permissions`, { permissions: userPermissions }, {
+      // 1. Update basic info (role/email)
+      await axios.put(`/api/users/${editingUser.id}`, {
+        email: editingUser.email,
+        role: editingUser.role
+      }, { headers: { Authorization: `Bearer ${token}` } });
+
+      // 2. Prepare permissions objects for backend
+      const permsToSave = functionalities.map(f => {
+        return {
+          functionality: f.id,
+          canView: selectedPermissions.includes(`${f.id}:canView`),
+          canCreate: selectedPermissions.includes(`${f.id}:canCreate`),
+          canEdit: selectedPermissions.includes(`${f.id}:canEdit`),
+          canDelete: selectedPermissions.includes(`${f.id}:canDelete`),
+        };
+      });
+
+      // 3. Update permissions
+      await axios.put(`/api/users/${editingUser.id}/permissions`, { permissions: permsToSave }, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setMessage({ type: 'success', text: 'Permissions mises à jour' });
-      setSelectedUser(null);
+
+      setMessage({ type: 'success', text: 'Utilisateur mis à jour' });
+      setIsEditModalOpen(false);
+      fetchData();
     } catch (err) {
-      setMessage({ type: 'error', text: 'Erreur lors de la sauvegarde' });
+      setMessage({ type: 'error', text: 'Erreur lors de la mise à jour' });
     } finally {
       setIsSaving(false);
       setTimeout(() => setMessage({ type: '', text: '' }), 3000);
     }
   };
 
-  const togglePermission = (funcId: string, action: string) => {
-    setUserPermissions(prev => prev.map(p => {
-      if (p.functionality === funcId) {
-        return { ...p, [action]: !p[action] };
-      }
-      return p;
-    }));
+  const togglePermission = (permId: string) => {
+    setSelectedPermissions(prev => 
+      prev.includes(permId) ? prev.filter(p => p !== permId) : [...prev, permId]
+    );
   };
 
   return (
@@ -229,11 +255,11 @@ const Settings = () => {
                     <h4 className="text-lg font-bold text-slate-900">{u.username}</h4>
                     <p className="text-sm text-slate-500 mb-6">{u.email}</p>
                     <button
-                      onClick={() => { setSelectedUser(u); fetchPermissions(u.id); }}
-                      className="w-full flex items-center justify-center space-x-2 py-3 rounded-xl bg-slate-50 text-slate-600 font-bold hover:bg-slate-900 hover:text-white transition-all"
+                      onClick={() => handleEditUser(u)}
+                      className="w-full flex items-center justify-center space-x-2 py-3 rounded-xl bg-slate-50 text-slate-600 font-bold hover:bg-slate-900 hover:text-white transition-all underline decoration-amber-400 decoration-2 underline-offset-4"
                     >
                       <Shield size={18} />
-                      <span>Permissions</span>
+                      <span>Éditer l'Accès</span>
                     </button>
                   </div>
                 ))}
@@ -316,80 +342,129 @@ const Settings = () => {
         )}
       </AnimatePresence>
 
-      {/* Permissions Modal */}
+      {/* Edit User & Permissions Modal */}
       <AnimatePresence>
-        {selectedUser && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        {isEditModalOpen && editingUser && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
             <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl overflow-hidden"
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-4xl overflow-hidden"
             >
-              <div className="p-8">
-                <div className="flex items-center justify-between mb-8">
-                  <div>
-                    <h3 className="text-2xl font-bold text-slate-900">Permissions: {selectedUser.username}</h3>
-                    <p className="text-sm text-slate-500 italic">Configuration granulaire des accès</p>
+              <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                <div className="flex items-center space-x-4">
+                  <div className="h-14 w-14 bg-amber-500 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-amber-500/20">
+                    <Shield size={28} />
                   </div>
-                  <button onClick={() => setSelectedUser(null)} className="text-slate-400 hover:text-slate-900">
-                    <X size={24} />
-                  </button>
+                  <div>
+                    <h3 className="text-2xl font-black text-slate-900">Éditer: {editingUser.username}</h3>
+                    <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Configuration des accès système</p>
+                  </div>
                 </div>
+                <button onClick={() => setIsEditModalOpen(false)} className="p-2 hover:bg-white hover:shadow-md rounded-full transition-all">
+                  <X size={24} className="text-slate-400" />
+                </button>
+              </div>
 
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse">
-                    <thead>
-                      <tr className="border-b border-slate-100">
-                        <th className="text-left py-4 px-2 font-bold text-slate-500 uppercase text-xs tracking-wider">Fonctionnalité</th>
-                        <th className="text-center py-4 px-2 font-bold text-slate-500 uppercase text-xs tracking-wider">Voir</th>
-                        <th className="text-center py-4 px-2 font-bold text-slate-500 uppercase text-xs tracking-wider">Créer</th>
-                        <th className="text-center py-4 px-2 font-bold text-slate-500 uppercase text-xs tracking-wider">Éditer</th>
-                        <th className="text-center py-4 px-2 font-bold text-slate-500 uppercase text-xs tracking-wider">Supprimer</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {userPermissions.map((p) => (
-                        <tr key={p.functionality} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
-                          <td className="py-4 px-2 font-bold text-slate-800">{functionalities.find(f => f.id === p.functionality)?.name}</td>
-                          {['canView', 'canCreate', 'canEdit', 'canDelete'].map((action) => (
-                            <td key={action} className="text-center py-4 px-2">
-                              <button
-                                onClick={() => togglePermission(p.functionality, action)}
-                                className={`h-6 w-6 rounded-md border-2 flex items-center justify-center transition-all ${
-                                  p[action] ? 'bg-amber-400 border-amber-400 text-slate-900' : 'bg-white border-slate-200'
-                                }`}
-                              >
-                                {p[action] && <Check size={14} strokeWidth={4} />}
-                              </button>
-                            </td>
+              <div className="p-8 lg:p-10">
+                <form onSubmit={handleSaveUser} className="space-y-10">
+                  {/* Basic Info Section */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                    <div className="space-y-2">
+                       <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Email de l'utilisateur</label>
+                       <input 
+                         type="email"
+                         className="w-full bg-white border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-amber-400 font-bold"
+                         value={editingUser.email}
+                         onChange={(e) => setEditingUser({ ...editingUser, email: e.target.value })}
+                       />
+                    </div>
+                    <div className="space-y-2">
+                       <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Rôle Principal</label>
+                       <select 
+                         className="w-full bg-white border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-amber-400 font-bold appearance-none"
+                         value={editingUser.role}
+                         onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })}
+                       >
+                         <option value="User">Utilisateur (Standard)</option>
+                         <option value="Admin">Administrateur (Complet)</option>
+                       </select>
+                    </div>
+                  </div>
+
+                  {/* Permissions Section */}
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xl font-black text-slate-900 px-1">Permissions Granulaires</h4>
+                      <div className="h-1 flex-1 mx-6 bg-slate-100 rounded-full"></div>
+                    </div>
+                    
+                    <div className="bg-white rounded-3xl border-2 border-slate-50 overflow-hidden">
+                      <table className="w-full border-collapse">
+                        <thead>
+                          <tr className="bg-slate-50/50">
+                            <th className="text-left py-5 px-6 font-black text-slate-400 uppercase text-[10px] tracking-[0.2em]">Module Système</th>
+                            <th className="text-center py-5 px-4 font-black text-slate-400 uppercase text-[10px] tracking-[0.2em]">Voir</th>
+                            <th className="text-center py-5 px-4 font-black text-slate-400 uppercase text-[10px] tracking-[0.2em]">Créer</th>
+                            <th className="text-center py-5 px-4 font-black text-slate-400 uppercase text-[10px] tracking-[0.2em]">Éditer</th>
+                            <th className="text-center py-5 px-4 font-black text-slate-400 uppercase text-[10px] tracking-[0.2em]">Suppr.</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {functionalities.map((f) => (
+                            <tr key={f.id} className="border-t border-slate-50 hover:bg-amber-50/30 transition-colors">
+                              <td className="py-5 px-6">
+                                <span className="font-bold text-slate-900">{f.name}</span>
+                              </td>
+                              {['canView', 'canCreate', 'canEdit', 'canDelete'].map((action) => {
+                                const permId = `${f.id}:${action}`;
+                                const isSelected = selectedPermissions.includes(permId);
+                                return (
+                                  <td key={action} className="text-center py-5 px-4">
+                                    <button
+                                      type="button"
+                                      onClick={() => togglePermission(permId)}
+                                      className={`h-7 w-7 rounded-lg border-2 flex items-center justify-center mx-auto transition-all ${
+                                        isSelected 
+                                          ? 'bg-amber-500 border-amber-500 text-white shadow-lg shadow-amber-500/30' 
+                                          : 'bg-white border-slate-200 text-transparent'
+                                      }`}
+                                    >
+                                      <Check size={16} strokeWidth={4} />
+                                    </button>
+                                  </td>
+                                );
+                              })}
+                            </tr>
                           ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
 
-                <div className="flex space-x-4 mt-8">
-                  <button
-                    onClick={handleSavePermissions}
-                    disabled={isSaving}
-                    className="flex-1 bg-slate-900 text-white font-bold py-4 rounded-2xl shadow-xl hover:bg-slate-800 transition-all flex items-center justify-center space-x-2"
-                  >
-                    {isSaving ? <Loader2 className="animate-spin" size={20} /> : (
-                      <>
-                        <Save size={20} />
-                        <span>Enregistrer les Permissions</span>
-                      </>
-                    )}
-                  </button>
-                  <button
-                    onClick={() => setSelectedUser(null)}
-                    className="flex-1 bg-slate-100 text-slate-600 font-bold py-4 rounded-2xl hover:bg-slate-200 transition-all"
-                  >
-                    Annuler
-                  </button>
-                </div>
+                  <div className="flex gap-4 pt-4">
+                    <button
+                      type="button"
+                      onClick={() => setIsEditModalOpen(false)}
+                      className="flex-1 bg-slate-100 text-slate-500 font-black py-4 rounded-2xl hover:bg-slate-200 transition-all"
+                    >
+                      Annuler
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSaving}
+                      className="flex-[2] bg-slate-900 text-white font-black py-4 rounded-2xl shadow-xl shadow-slate-900/10 hover:bg-slate-800 transition-all flex items-center justify-center space-x-3"
+                    >
+                      {isSaving ? <Loader2 className="animate-spin" size={24} /> : (
+                        <>
+                          <Save size={20} />
+                          <span>Mettre à jour l'utilisateur</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
               </div>
             </motion.div>
           </div>

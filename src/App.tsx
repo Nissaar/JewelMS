@@ -35,7 +35,7 @@ const App: React.FC = () => {
           } />
 
           <Route path="/stock/*" element={
-            <ProtectedRoute>
+            <ProtectedRoute requiredPermission={{ functionality: 'stock', action: 'canView' }}>
               <Layout>
                 <Stock />
               </Layout>
@@ -75,7 +75,7 @@ const App: React.FC = () => {
           } />
 
           <Route path="/reports/*" element={
-            <ProtectedRoute>
+            <ProtectedRoute requiredPermission={{ functionality: 'reports', action: 'canView' }}>
               <Layout>
                 <Reports />
               </Layout>

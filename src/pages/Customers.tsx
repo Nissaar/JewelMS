@@ -30,10 +30,23 @@ const Customers = () => {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
+  const [isSearching, setIsSearching] = useState(false);
 
+  // Debounce Search
   useEffect(() => {
-    fetchCustomers();
-  }, []);
+    if (search === '') {
+      fetchCustomers();
+      return;
+    }
+    
+    setIsSearching(true);
+    const timer = setTimeout(() => {
+      fetchCustomers(search);
+      setIsSearching(false);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [search]);
 
   const fetchCustomers = async (query = '') => {
     setIsLoading(true);
@@ -63,11 +76,6 @@ const Customers = () => {
     }
   };
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    fetchCustomers(search);
-  };
-
   const openDetails = (customer: any) => {
     setSelectedCustomer(customer);
     fetchCustomerHistory(customer.id);
@@ -92,7 +100,7 @@ const Customers = () => {
       });
       fetchCustomers(search);
     } catch (err: any) {
-      setMessage({ type: 'error', text: err.response?.data?.error || 'Erreur lors de la création du client.' });
+      setMessage({ type: 'error', text: err.response?.data?.message || err.response?.data?.error || 'Erreur lors de la création du client.' });
     } finally {
       setIsSubmitting(false);
     }
@@ -119,21 +127,22 @@ const Customers = () => {
         </div>
         
         <div className="flex gap-4">
-          <form onSubmit={handleSearch} className="flex gap-2">
+          <div className="flex gap-2">
             <div className="relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+              {isSearching || isLoading ? (
+                <Loader2 className="absolute left-4 top-1/2 -translate-y-1/2 text-amber-500 animate-spin" size={20} />
+              ) : (
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+              )}
               <input 
                 type="text" 
                 placeholder="Nom ou N° de Carte..."
-                className="bg-slate-50 border-2 border-slate-100 rounded-2xl py-3 pl-12 pr-4 font-bold outline-none focus:border-amber-400 w-64"
+                className="bg-slate-50 border-2 border-slate-100 rounded-2xl py-3 pl-12 pr-4 font-bold outline-none focus:border-amber-400 w-64 transition-all"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
-            <button type="submit" className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-black hover:bg-slate-800 transition-all">
-              Chercher
-            </button>
-          </form>
+          </div>
           
           <button 
             onClick={() => setIsCreateModalOpen(true)}
@@ -410,7 +419,7 @@ const Customers = () => {
                 {/* History Sections */}
                 <div className="space-y-8">
                   <h3 className="text-lg font-black text-slate-900 flex items-center gap-3">
-                    <History className="text-amber-500" /> Historial de Transacciones
+                    <History className="text-amber-500" /> Historique des Transactions
                   </h3>
 
                   {isHistoryLoading ? (

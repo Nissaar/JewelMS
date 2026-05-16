@@ -70,21 +70,28 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
     return () => clearTimeout(delayDebounceFn);
   }, [searchQuery, token]);
 
+  const hasPermission = (funcId: string, action: 'canView' | 'canCreate' | 'canEdit' | 'canDelete' = 'canView') => {
+    if (user?.role === 'Admin') return true;
+    return user?.permissions?.some(p => p.functionality === funcId && p[action]);
+  };
+
   const navItems = [
-    { name: 'Dashboard', icon: Menu, path: '/' },
-    { name: 'Stock', icon: Package, path: '/stock' },
-    { name: 'Clients', icon: Users, path: '/customers' },
-    { name: 'Ventes', icon: ShoppingCart, path: '/sales' },
-    { name: 'Commandes', icon: FileText, path: '/orders' },
-    { name: 'Trade-ins (ODF)', icon: PlusCircle, path: '/odf' },
-    { name: 'Rapports', icon: FileText, path: '/reports' },
+    { name: 'Dashboard', icon: Menu, path: '/', show: true },
+    { name: 'Stock', icon: Package, path: '/stock', show: hasPermission('stock') },
+    { name: 'Clients', icon: Users, path: '/customers', show: hasPermission('customers') },
+    { name: 'Ventes', icon: ShoppingCart, path: '/sales', show: hasPermission('sales') },
+    { name: 'Commandes', icon: FileText, path: '/orders', show: hasPermission('orders') },
+    { name: 'Trade-ins (ODF)', icon: PlusCircle, path: '/odf', show: hasPermission('odf') },
+    { name: 'Rapports', icon: FileText, path: '/reports', show: hasPermission('reports') },
   ];
 
   if (user?.role === 'Admin') {
-    navItems.push({ name: 'Stock Reports', icon: BarChart3, path: '/stock-reports' });
-    navItems.push({ name: 'Audit Logs', icon: Fingerprint, path: '/audit-logs' });
-    navItems.push({ name: 'Paramètres', icon: Settings, path: '/settings' });
+    navItems.push({ name: 'Stock Reports', icon: BarChart3, path: '/stock-reports', show: true });
+    navItems.push({ name: 'Audit Logs', icon: Fingerprint, path: '/audit-logs', show: true });
+    navItems.push({ name: 'Paramètres', icon: Settings, path: '/settings', show: true });
   }
+
+  const filteredNavItems = navItems.filter(item => item.show);
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
@@ -101,7 +108,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
           </div>
 
           <nav className="flex-1 overflow-y-auto px-4 space-y-1 py-2">
-            {navItems.map((item) => (
+            {filteredNavItems.map((item) => (
               <Link
                 key={item.name}
                 to={item.path}

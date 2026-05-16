@@ -32,11 +32,16 @@ const AuditLogs = () => {
     }
   };
 
-  const filteredLogs = logs.filter(l => 
-    l.username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    l.action?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    l.details?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredLogs = logs.filter(l => {
+    const query = searchQuery.toLowerCase();
+    const username = l.username?.toLowerCase() || '';
+    const action = l.action?.toLowerCase() || '';
+    const details = typeof l.details === 'object' 
+      ? JSON.stringify(l.details).toLowerCase() 
+      : l.details?.toLowerCase() || '';
+    
+    return username.includes(query) || action.includes(query) || details.includes(query);
+  });
 
   if (user?.role !== 'Admin') {
     return (
@@ -47,6 +52,12 @@ const AuditLogs = () => {
       </div>
     );
   }
+
+  const renderDetails = (details: any) => {
+    if (!details) return 'N/A';
+    if (typeof details === 'string') return details;
+    return JSON.stringify(details);
+  };
 
   return (
     <div className="max-w-6xl mx-auto space-y-8">
@@ -155,8 +166,8 @@ const AuditLogs = () => {
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="max-w-md truncate text-sm text-slate-500 font-medium" title={log.details}>
-                        {log.details}
+                      <div className="max-w-md truncate text-sm text-slate-500 font-mono bg-slate-50 p-2 rounded-lg border border-slate-100" title={renderDetails(log.details)}>
+                        {renderDetails(log.details)}
                       </div>
                     </td>
                   </tr>
