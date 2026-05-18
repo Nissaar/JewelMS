@@ -48,14 +48,16 @@ export async function generateReceiptPDF(saleId: number): Promise<{ doc: PDFKit.
   // Watermark for copies
   if (receipt.printCount > 0) {
     doc.save()
-       .opacity(0.1)
+       .opacity(0.15)
        .fontSize(80)
        .fillColor('red')
        .rotate(-45, { origin: [doc.page.width / 2, doc.page.height / 2] })
-       .text('COPIE', doc.page.width / 2 - 120, doc.page.height / 2 - 40)
-       .restore()
-       .fillColor('black') // Reset color
-       .opacity(1); // Reset opacity
+       .text('COPIE', 0, doc.page.height / 2 - 40, { 
+         align: 'center', 
+         width: doc.page.width,
+         lineBreak: false 
+       })
+       .restore();
   }
 
   // Header
@@ -89,11 +91,11 @@ export async function generateReceiptPDF(saleId: number): Promise<{ doc: PDFKit.
   // Items Table Row
   const itemY = tableTop + 20;
   
-  // Construct a better description: Barcode - Category SubCategory
+  // Construct a better description: Barcode - Category SubCategory (MetalType)
   let description = sale.itemDetails || 'Article Bijouterie';
   if (record.stock) {
     const s = record.stock;
-    description = `${s.barcode} - ${s.category} ${s.subCategory || ''}`.trim();
+    description = `${s.barcode || ''} - ${s.category || ''} ${s.subCategory || ''} ${s.metalType ? `(${s.metalType})` : ''}`.trim().replace(/\s+/g, ' ');
   }
 
   doc.text(description, 35, itemY, { width: 140 });
@@ -187,7 +189,7 @@ export async function generateODFPDF(odfId: number): Promise<{ doc: PDFKit.PDFDo
   doc.text(`Métal: ${odfRecord.metalType}`);
   doc.text(`Finesse: ${odfRecord.fineness}`);
   doc.text(`Poids: ${odfRecord.weight} g`);
-  doc.text(`Montant Estimé: ${formatCurrency(odfRecord.amount || 0)} Rs`);
+  doc.text(`Montant Estimé: ${formatCurrency(odfRecord.amount || 0)}`);
   doc.moveDown();
 
   if (odfRecord.itemReservedRepair) {

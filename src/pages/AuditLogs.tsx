@@ -8,6 +8,71 @@ import {
 } from 'lucide-react';
 import { motion } from 'motion/react';
 
+const AuditLogDetails = ({ data }: { data: any }) => {
+  if (!data) return <span className="text-slate-400 italic text-xs">No details</span>;
+  
+  // If it's a string, just show it
+  if (typeof data === 'string') {
+    try {
+      const parsed = JSON.parse(data);
+      if (typeof parsed === 'object') return <AuditLogDetails data={parsed} />;
+    } catch {
+      return <span className="text-xs">{data}</span>;
+    }
+  }
+
+  // Handle object display
+  if (typeof data === 'object') {
+    const keys = Object.keys(data);
+    
+    // Check if it's a change-set (old/new pairs)
+    const isChangeSet = keys.some(k => {
+      const val = data[k];
+      return val && typeof val === 'object' && ('old' in val || 'new' in val);
+    });
+
+    if (isChangeSet) {
+      return (
+        <ul className="space-y-1 py-1">
+          {keys.map(key => {
+            const val = data[key];
+            if (val && typeof val === 'object' && ('old' in val || 'new' in val)) {
+              return (
+                <li key={key} className="text-[11px] flex flex-wrap items-center gap-1">
+                  <strong className="text-slate-700 capitalize">{key.replace(/([A-Z])/g, ' $1')}:</strong>
+                  <span className="text-red-500 line-through decoration-red-200">{val.old === null || val.old === undefined ? 'null' : String(val.old)}</span>
+                  <span className="text-slate-400">&rarr;</span>
+                  <span className="text-emerald-600 font-bold">{val.new === null || val.new === undefined ? 'null' : String(val.new)}</span>
+                </li>
+              );
+            }
+            return (
+                <li key={key} className="text-[11px]">
+                  <strong className="text-slate-700 capitalize">{key.replace(/([A-Z])/g, ' $1')}:</strong>
+                  <span className="ml-1">{JSON.stringify(val)}</span>
+                </li>
+            );
+          })}
+        </ul>
+      );
+    }
+
+    // Default object display
+    return (
+      <div className="text-[11px] grid grid-cols-1 gap-1 py-1">
+        {keys.map(key => (
+          <div key={key} className="flex gap-1 truncate">
+            <span className="font-black text-slate-700 capitalize shrink-0">{key.replace(/([A-Z])/g, ' $1')}:</span>
+            <span className="truncate">{JSON.stringify(data[key])}</span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return <span className="text-xs">{String(data)}</span>;
+};
+
 const AuditLogs = () => {
   const { token, user } = useAuth();
   const [logs, setLogs] = useState<any[]>([]);
@@ -52,12 +117,6 @@ const AuditLogs = () => {
       </div>
     );
   }
-
-  const renderDetails = (details: any) => {
-    if (!details) return 'N/A';
-    if (typeof details === 'string') return details;
-    return JSON.stringify(details);
-  };
 
   return (
     <div className="max-w-6xl mx-auto space-y-8">
@@ -166,8 +225,8 @@ const AuditLogs = () => {
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="max-w-md truncate text-sm text-slate-500 font-mono bg-slate-50 p-2 rounded-lg border border-slate-100" title={renderDetails(log.details)}>
-                        {renderDetails(log.details)}
+                      <div className="max-w-md bg-slate-50 p-3 rounded-xl border border-slate-100 overflow-hidden shadow-inner">
+                        <AuditLogDetails data={log.details} />
                       </div>
                     </td>
                   </tr>

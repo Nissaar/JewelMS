@@ -106,7 +106,7 @@ export const orders = pgTable('orders', {
   estimatedWeight: numeric('estimated_weight', { precision: 10, scale: 3 }),
   finalWeight: numeric('final_weight', { precision: 10, scale: 3 }),
   finalPrice: numeric('final_price', { precision: 15, scale: 2 }),
-  status: varchar('status', { length: 20 }).default('Pending').notNull(), // 'Pending' | 'Completed'
+  status: varchar('status', { length: 20 }).default('Pending').notNull(), // 'Pending' | 'Finalized'
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });

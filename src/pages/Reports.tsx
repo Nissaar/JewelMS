@@ -4,7 +4,7 @@ import axios from 'axios';
 import { 
   FileText, Download, Calendar, Filter, Search, 
   RefreshCcw, Smartphone, Mail, ExternalLink,
-  ChevronDown, ArrowUpRight, Scale, IndianRupee,
+  ChevronDown, ArrowUpRight, Scale, Banknote,
   Loader2, AlertCircle, Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -147,7 +147,6 @@ const Reports = () => {
                 <p className="text-slate-400 font-bold uppercase text-xs tracking-widest mb-2">Total Collecté TVA</p>
                 <div className="flex items-baseline gap-2">
                   <span className="text-4xl font-black">{formatCurrency(totalVat)}</span>
-                  <span className="text-lg font-bold text-amber-400">Rs</span>
                 </div>
                 <div className="mt-4 flex items-center gap-2 text-xs text-slate-400">
                   <Calendar size={14} />
@@ -231,9 +230,9 @@ const Reports = () => {
                                <span className="font-bold">{row.weight || '0'}g</span>
                              </div>
                            </td>
-                           <td className="px-6 py-4 font-bold text-slate-900">{formatCurrency(row.amountExclVat)} Rs</td>
-                           <td className="px-6 py-4 font-bold text-amber-600">{formatCurrency(row.vatAmount)} Rs</td>
-                           <td className="px-6 py-4 text-right font-black text-slate-900">{formatCurrency(row.total)} Rs</td>
+                           <td className="px-6 py-4 font-bold text-slate-900">{formatCurrency(row.amountExclVat)}</td>
+                           <td className="px-6 py-4 font-bold text-amber-600">{formatCurrency(row.vatAmount)}</td>
+                           <td className="px-6 py-4 text-right font-black text-slate-900">{formatCurrency(row.total)}</td>
                          </tr>
                        ))
                      )}
@@ -279,7 +278,7 @@ const Reports = () => {
                     
                     <div className="flex justify-between items-center mb-6 p-3 bg-slate-50 rounded-xl">
                        <span className="text-xs font-bold text-slate-400 uppercase">Total</span>
-                       <span className="font-black text-slate-900">{formatCurrency(r.totalAmount || "0")} Rs</span>
+                       <span className="font-black text-slate-900">{formatCurrency(r.totalAmount || "0")}</span>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2">
@@ -296,7 +295,8 @@ const Reports = () => {
                          <Mail size={14} /> Email
                        </button>
                        <a 
-                        href={r.fileUrl} target="_blank" rel="noopener noreferrer"
+                        href={`/api/receipts/${r.saleId}/pdf?token=${token}`}
+                        target="_blank" rel="noopener noreferrer"
                         className="col-span-2 flex items-center justify-center gap-2 py-3 rounded-xl bg-slate-100 text-slate-700 text-sm font-black hover:bg-slate-900 hover:text-white transition-all"
                        >
                          <ExternalLink size={16} /> Voir PDF

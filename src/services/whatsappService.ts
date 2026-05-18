@@ -12,6 +12,7 @@ export async function sendWhatsAppReceipt(phoneNumber: string, pdfUrl: string, r
 
   // Clean phone number (remove +, spaces, etc.)
   const cleanNumber = phoneNumber.replace(/\D/g, '');
+  const absoluteUrl = pdfUrl.startsWith('/') ? (process.env.APP_URL || 'http://localhost:3000') + pdfUrl : pdfUrl;
 
   try {
     const response = await axios.post(
@@ -30,7 +31,7 @@ export async function sendWhatsAppReceipt(phoneNumber: string, pdfUrl: string, r
                 {
                   type: "document",
                   document: {
-                    link: pdfUrl,
+                    link: absoluteUrl,
                     filename: `Reçu_${receiptNumber}.pdf`
                   }
                 }
@@ -71,6 +72,7 @@ export async function sendWhatsAppODF(phoneNumber: string, pdfUrl: string, odfNu
   }
 
   const cleanNumber = phoneNumber.replace(/\D/g, '');
+  const absoluteUrl = pdfUrl.startsWith('/') ? (process.env.APP_URL || 'http://localhost:3000') + pdfUrl : pdfUrl;
 
   try {
     const response = await axios.post(
@@ -89,7 +91,7 @@ export async function sendWhatsAppODF(phoneNumber: string, pdfUrl: string, odfNu
                 {
                   type: "document",
                   document: {
-                    link: pdfUrl,
+                    link: absoluteUrl,
                     filename: `ODF_${odfNumber}.pdf`
                   }
                 }

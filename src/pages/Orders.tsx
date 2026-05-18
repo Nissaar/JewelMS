@@ -3,10 +3,11 @@ import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 import { 
   Package, User, Plus, Check, AlertCircle, 
-  Loader2, Search, IndianRupee, Scale, X,
-  ShoppingCart, Info, Clock, CheckCircle2
+  Loader2, Search, Scale, X,
+  ShoppingCart, Info, Clock, CheckCircle2, Banknote
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { formatCurrency } from '../lib/utils';
 
 const Orders = () => {
   const { token } = useAuth();
@@ -247,10 +248,10 @@ const Orders = () => {
                 <div className="col-span-full py-20 text-center text-slate-400">Aucune commande trouvée</div>
               ) : (
                 filteredOrders.map((order) => (
-                  <div key={order.id} className={`bg-white p-6 rounded-3xl shadow-sm border transition-all ${order.status === 'Completed' ? 'border-emerald-100' : 'border-slate-100 hover:border-amber-200'}`}>
+                  <div key={order.id} className={`bg-white p-6 rounded-3xl shadow-sm border transition-all ${order.status === 'Finalized' ? 'border-emerald-100' : 'border-slate-100 hover:border-amber-200'}`}>
                     <div className="flex justify-between items-start mb-4">
-                      <div className={`h-10 w-10 rounded-xl flex items-center justify-center ${order.status === 'Completed' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
-                        {order.status === 'Completed' ? <CheckCircle2 size={24} /> : <Clock size={24} />}
+                      <div className={`h-10 w-10 rounded-xl flex items-center justify-center ${order.status === 'Finalized' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
+                        {order.status === 'Finalized' ? <CheckCircle2 size={24} /> : <Clock size={24} />}
                       </div>
                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{new Date(order.createdAt).toLocaleDateString()}</span>
                     </div>
@@ -258,12 +259,12 @@ const Orders = () => {
                     <h4 className="text-lg font-black text-slate-900 mb-1">{order.customerName}</h4>
                     <p className="text-sm font-medium text-slate-500 mb-4 line-clamp-2">{order.itemDescription}</p>
 
-                    {order.status === 'Completed' ? (
+                    {order.status === 'Finalized' ? (
                       <div className="p-4 bg-emerald-50 rounded-2xl space-y-1">
                         <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Détails de Finalisation</p>
                         <div className="flex justify-between font-bold">
                           <span>{order.finalWeight}g</span>
-                          <span>{parseFloat(order.finalPrice).toLocaleString()} Rs</span>
+                          <span>{formatCurrency(order.finalPrice)}</span>
                         </div>
                       </div>
                     ) : (
@@ -317,9 +318,9 @@ const Orders = () => {
                     </div>
                   </div>
                   <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase mb-2">Prix TTC (Rs)</label>
+                    <label className="block text-xs font-black text-slate-400 uppercase mb-2">Prix TTC</label>
                     <div className="relative">
-                      <IndianRupee className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                      <Banknote className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
                       <input 
                         type="number" 
                         className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-12 pr-4 font-bold outline-none focus:border-amber-400"

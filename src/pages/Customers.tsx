@@ -447,7 +447,7 @@ const Customers = () => {
                                 </div>
                               </div>
                               <div className="text-right">
-                                <p className="font-black text-indigo-600">{formatCurrency(r.amount)} Rs</p>
+                                <p className="font-black text-indigo-600">{formatCurrency(r.amount)}</p>
                                 <p className="text-[10px] font-bold text-slate-400">{new Date(r.date).toLocaleDateString()}</p>
                               </div>
                             </div>
@@ -468,7 +468,7 @@ const Customers = () => {
                                 <div className="p-3 bg-amber-50 text-amber-600 rounded-xl"><Package size={18} /></div>
                                 <div>
                                   <p className="font-bold text-slate-900 truncate max-w-[250px]">{o.itemDescription}</p>
-                                  <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded ${o.status === 'Completed' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}>{o.status}</span>
+                                  <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded ${o.status === 'Finalized' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}>{o.status}</span>
                                 </div>
                               </div>
                               <div className="text-right text-[10px] font-bold text-slate-400">
@@ -492,7 +492,7 @@ const Customers = () => {
                                 <div className="p-3 bg-red-50 text-red-600 rounded-xl"><TrendingDown size={18} /></div>
                                 <div>
                                   <p className="font-bold text-slate-900">{od.metalType} {od.fineness}</p>
-                                  <p className="text-[10px] font-black text-slate-400">{od.weight}g est. {formatCurrency(od.amount || 0)} Rs</p>
+                                  <p className="text-[10px] font-black text-slate-400">{od.weight}g est. {formatCurrency(od.amount || 0)}</p>
                                 </div>
                               </div>
                               <div className="text-right text-[10px] font-bold text-slate-400">

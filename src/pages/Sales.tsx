@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 import { 
   ShoppingCart, Barcode, User, CreditCard, Search, 
-  Plus, Check, AlertCircle, Loader2, IndianRupee,
+  Plus, Check, AlertCircle, Loader2, Banknote,
   Smartphone, Mail, Download, History, X, UserPlus,
   Scale, Tag, Info, Camera
 } from 'lucide-react';
@@ -577,16 +577,16 @@ const Sales = () => {
                   <div className="space-y-3">
                     <div className="flex justify-between items-center">
                       <span className="text-slate-400 font-bold uppercase text-xs tracking-widest">Sous-Total (Excl. TVA)</span>
-                      <span className="text-xl font-bold">{finalPrice || '0'} Rs</span>
+                      <span className="text-xl font-bold">{finalPrice || '0'}</span>
                     </div>
                     <div className="flex justify-between items-center text-amber-400">
                       <span className="font-bold uppercase text-xs tracking-widest">TVA (15%)</span>
-                      <span className="text-xl font-bold">{formatCurrency(vatAmount)} Rs</span>
+                      <span className="text-xl font-bold">{formatCurrency(vatAmount)}</span>
                     </div>
                     <div className="pt-4 border-t border-slate-800 flex justify-between items-center">
                       <span className="text-slate-200 font-black uppercase text-sm tracking-widest">Total TTC</span>
                       <span className="text-4xl font-black text-white tracking-tighter">
-                        {formatCurrency(totalWithVat)} <span className="text-lg">Rs</span>
+                        {formatCurrency(totalWithVat)}
                       </span>
                     </div>
                   </div>
@@ -600,7 +600,7 @@ const Sales = () => {
                   <div>
                     <label className="block text-sm font-bold text-slate-700 mb-2">Prix de Vente (Sans TVA)</label>
                     <div className="relative">
-                      <IndianRupee className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={24} />
+                      <Banknote className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={24} />
                       <input 
                         type="number"
                         placeholder="Ex: 5000"

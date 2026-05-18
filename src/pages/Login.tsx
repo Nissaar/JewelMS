@@ -8,6 +8,7 @@ import { motion } from 'motion/react';
 const Login = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
@@ -21,8 +22,8 @@ const Login = () => {
     setIsLoading(true);
     setError('');
     try {
-      const response = await axios.post('/api/login', { username, password });
-      login(response.data.token, response.data.user);
+      const response = await axios.post('/api/login', { username, password, rememberMe });
+      login(response.data.token, response.data.user, rememberMe);
       navigate(from, { replace: true });
     } catch (err: any) {
       setError(err.response?.data?.error || 'Échec de la connexion');
@@ -73,6 +74,19 @@ const Login = () => {
                 onChange={(e) => setPassword(e.target.value)}
                 required
               />
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                id="rememberMe"
+                className="w-5 h-5 rounded border-slate-300 text-slate-900 focus:ring-slate-900"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+              />
+              <label htmlFor="rememberMe" className="text-sm font-medium text-slate-600 cursor-pointer">
+                Se souvenir de moi
+              </label>
             </div>
 
             <button

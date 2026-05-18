@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+import BarcodeScanner from '../components/BarcodeScanner';
 import { 
   Package, Plus, Search, Filter, Edit2, Trash2, Save, X, 
   Settings as SettingsIcon, Check, AlertCircle, Loader2,
-  ChevronDown, Barcode, Scale, Info, Tag, History
+  ChevronDown, Barcode, Scale, Info, Tag, History, Camera
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -32,11 +33,13 @@ const Stock = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [view, setView] = useState<'list' | 'add' | 'config'>('list');
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState('All');
 
   // Form State
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [formData, setFormData] = useState<any>({
     barcode: '',
     category: 'Jewellery',
@@ -108,12 +111,35 @@ const Stock = () => {
     }));
   };
 
-  const handleCreateStock = async (e: React.FormEvent) => {
+  const handleEdit = (item: StockItem) => {
+    setEditingId(item.id);
+    setFormData({
+      barcode: item.barcode,
+      category: item.category,
+      subCategory: item.subCategory,
+      stockType: item.stockType,
+      brand: item.brand || '',
+      yearsOfGuarantee: item.yearsOfGuarantee || 0,
+      serialNumber: item.serialNumber || '',
+      metalType: item.metalType || '',
+      fineness: item.fineness || '',
+      weightGrams: item.weightGrams || ''
+    });
+    setView('add');
+  };
+
+  const handleSubmitStock = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
     try {
-      await axios.post('/api/stock', formData, { headers: { Authorization: `Bearer ${token}` } });
-      setMessage({ type: 'success', text: 'Article ajouté au stock' });
+      if (editingId) {
+        await axios.put(`/api/stock/${editingId}`, formData, { headers: { Authorization: `Bearer ${token}` } });
+        setMessage({ type: 'success', text: 'Article mis à jour' });
+      } else {
+        await axios.post('/api/stock', formData, { headers: { Authorization: `Bearer ${token}` } });
+        setMessage({ type: 'success', text: 'Article ajouté au stock' });
+      }
+      
       setFormData({
         barcode: '',
         category: 'Jewellery',
@@ -126,10 +152,11 @@ const Stock = () => {
         fineness: metadata.stock_fineness_options?.[0] || '',
         weightGrams: ''
       });
+      setEditingId(null);
       fetchStock();
       setView('list');
     } catch (err: any) {
-      setMessage({ type: 'error', text: err.response?.data?.message || err.response?.data?.error || 'Échec de la création' });
+      setMessage({ type: 'error', text: err.response?.data?.message || err.response?.data?.error || 'Échec de l\'opération' });
     } finally {
       setIsSaving(false);
       setTimeout(() => setMessage({ type: '', text: '' }), 3000);
@@ -190,7 +217,10 @@ const Stock = () => {
                 <span className="hidden sm:inline">Historique Ventes</span>
               </button>
               <button 
-                onClick={() => setView('add')}
+                onClick={() => {
+                  setEditingId(null);
+                  setView('add');
+                }}
                 className="p-3 bg-amber-500 text-slate-900 rounded-xl hover:bg-amber-400 transition-all shadow-lg flex items-center gap-2 font-bold"
               >
                 <Plus size={20} />
@@ -281,7 +311,9 @@ const Stock = () => {
                               </div>
                               <div>
                                 <p className="font-bold text-slate-900">{item.barcode}</p>
-                                <p className="text-xs text-slate-500">{item.subCategory}</p>
+                                <p className="text-xs text-slate-500">
+                                  {`${item.category || ''} ${item.subCategory || ''} ${item.metalType ? `(${item.metalType})` : ''}`.trim().replace(/\s+/g, ' ')}
+                                </p>
                               </div>
                             </div>
                           </td>
@@ -318,7 +350,10 @@ const Stock = () => {
                           </td>
                           <td className="px-6 py-4 text-right">
                             <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button className="p-2 text-slate-400 hover:text-amber-500 transition-colors">
+                              <button 
+                                onClick={() => handleEdit(item)}
+                                className="p-2 text-slate-400 hover:text-amber-500 transition-colors"
+                              >
                                 <Edit2 size={18} />
                               </button>
                               <button 
@@ -349,14 +384,45 @@ const Stock = () => {
             {/* Form */}
             <div className="lg:col-span-2 bg-white rounded-3xl shadow-xl border border-slate-100 overflow-hidden">
               <div className="p-8 bg-slate-900 text-white">
-                <h3 className="text-2xl font-bold">Nouvel Article</h3>
-                <p className="text-slate-400 font-medium">Remplissez les informations de l'article</p>
+                <h3 className="text-2xl font-bold">{editingId ? 'Modifier l\'Article' : 'Nouvel Article'}</h3>
+                <p className="text-slate-400 font-medium">{editingId ? 'Mettez à jour les informations de l\'article' : 'Remplissez les informations de l\'article'}</p>
               </div>
               
-              <form onSubmit={handleCreateStock} className="p-8 space-y-6">
+              <form onSubmit={handleSubmitStock} className="p-8 space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-2">Code-Barres / SKU</label>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-sm font-bold text-slate-700">Code-Barres / SKU</label>
+                      <button 
+                        type="button"
+                        onClick={() => setIsScannerOpen(!isScannerOpen)}
+                        className={`flex items-center gap-1 text-xs font-black px-2 py-1 rounded-lg transition-all ${
+                          isScannerOpen ? 'bg-red-50 text-red-600' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                        }`}
+                      >
+                        {isScannerOpen ? <X size={14} /> : <Camera size={14} />}
+                        {isScannerOpen ? 'Fermer Caméra' : 'Scan avec Caméra'}
+                      </button>
+                    </div>
+                    
+                    <AnimatePresence>
+                      {isScannerOpen && (
+                        <motion.div 
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          className="mb-4 overflow-hidden"
+                        >
+                          <BarcodeScanner 
+                            onScanSuccess={(code) => {
+                              setFormData({ ...formData, barcode: code });
+                              setIsScannerOpen(false);
+                            }}
+                          />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
                     <div className="relative">
                       <Barcode className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                       <input 
@@ -574,16 +640,38 @@ const Stock = () => {
                   )}
                 </motion.div>
 
-                <div className="pt-8">
+                <div className="pt-8 flex gap-4">
+                   <button 
+                    type="button"
+                    onClick={() => {
+                      setView('list');
+                      setEditingId(null);
+                      setFormData({
+                        barcode: '',
+                        category: 'Jewellery',
+                        subCategory: metadata.stock_sub_categories?.[0] || '',
+                        stockType: 'on-display',
+                        brand: '',
+                        yearsOfGuarantee: 0,
+                        serialNumber: '',
+                        metalType: '',
+                        fineness: '',
+                        weightGrams: ''
+                      });
+                    }}
+                    className="flex-1 bg-slate-100 text-slate-600 font-bold py-4 rounded-2xl hover:bg-slate-200 transition-all"
+                  >
+                    Annuler
+                  </button>
                    <button 
                     type="submit"
                     disabled={isSaving}
-                    className="w-full bg-slate-900 text-white font-bold py-4 rounded-2xl shadow-xl hover:bg-slate-800 transition-all flex items-center justify-center gap-3"
+                    className="flex-[2] bg-slate-900 text-white font-bold py-4 rounded-2xl shadow-xl hover:bg-slate-800 transition-all flex items-center justify-center gap-3"
                   >
                     {isSaving ? <Loader2 className="animate-spin" /> : (
                       <>
                         <Save size={20} />
-                        <span>Enregistrer dans l'Inventaire</span>
+                        <span>{editingId ? 'Mettre à jour l\'Inventaire' : 'Enregistrer dans l\'Inventaire'}</span>
                       </>
                     )}
                   </button>

@@ -3,10 +3,11 @@ import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 import { 
   History, Search, Filter, Loader2, ArrowLeft,
-  Barcode, Tag, User, IndianRupee, Scale, Calendar
+  Barcode, Tag, User, Scale, Calendar
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
+import { formatCurrency } from '../lib/utils';
 
 const SoldItems = () => {
   const { token } = useAuth();
@@ -103,10 +104,11 @@ const SoldItems = () => {
                         </div>
                         <div>
                           <p className="font-black text-slate-900">{item.barcode}</p>
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className="text-[10px] font-black uppercase tracking-widest bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md">{item.category}</span>
-                            <span className="text-[10px] font-black uppercase tracking-widest text-red-600">{item.metalType}</span>
-                            {item.weightGrams && <span className="text-[10px] font-black text-slate-400 flex items-center gap-1"><Scale size={10}/> {item.weightGrams}g</span>}
+                          <div className="flex flex-col mt-1">
+                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                              {`${item.barcode || ''} - ${item.category || ''} ${item.subCategory || ''} ${item.metalType ? `(${item.metalType})` : ''}`.trim().replace(/\s+/g, ' ')}
+                            </span>
+                            {item.weightGrams && <span className="text-[10px] font-black text-amber-600 flex items-center gap-1 mt-1"><Scale size={10}/> {item.weightGrams}g</span>}
                           </div>
                         </div>
                       </div>
@@ -124,7 +126,7 @@ const SoldItems = () => {
                       </div>
                     </td>
                     <td className="px-8 py-6 text-right">
-                      <p className="text-lg font-black text-slate-900">{parseFloat(item.price || "0").toLocaleString()} Rs</p>
+                      <p className="text-lg font-black text-slate-900">{formatCurrency(item.price || "0")}</p>
                     </td>
                   </tr>
                 ))

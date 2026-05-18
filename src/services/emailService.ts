@@ -10,6 +10,8 @@ export async function sendEmailReceipt(email: string, customerName: string, pdfU
     return;
   }
 
+  const absoluteUrl = pdfUrl.startsWith('/') ? (process.env.APP_URL || 'http://localhost:3000') + pdfUrl : pdfUrl;
+
   try {
     const response = await axios.post(
       'https://api.brevo.com/v3/smtp/email',
@@ -23,7 +25,7 @@ export async function sendEmailReceipt(email: string, customerName: string, pdfU
               <p>Bonjour ${customerName},</p>
               <p>Merci pour votre achat chez Haujee Jewellery.</p>
               <p>Veuillez trouver ci-joint votre reçu électronique (N° ${receiptNumber}).</p>
-              <p>Lien vers le reçu: <a href="${pdfUrl}">Télécharger mon reçu</a></p>
+              <p>Lien vers le reçu: <a href="${absoluteUrl}">Télécharger mon reçu</a></p>
               <br/>
               <p>Cordialement,</p>
               <p>L'équipe Haujee Jewellery</p>
@@ -32,7 +34,7 @@ export async function sendEmailReceipt(email: string, customerName: string, pdfU
         `,
         attachment: [
           {
-            url: pdfUrl,
+            url: absoluteUrl,
             name: `Recu_${receiptNumber}.pdf`
           }
         ]
@@ -62,6 +64,8 @@ export async function sendEmailODF(email: string, customerName: string, pdfUrl: 
     return;
   }
 
+  const absoluteUrl = pdfUrl.startsWith('/') ? (process.env.APP_URL || 'http://localhost:3000') + pdfUrl : pdfUrl;
+
   try {
     const response = await axios.post(
       'https://api.brevo.com/v3/smtp/email',
@@ -74,7 +78,7 @@ export async function sendEmailODF(email: string, customerName: string, pdfUrl: 
             <body>
               <p>Bonjour ${customerName},</p>
               <p>Veuillez trouver ci-joint votre formulaire de rachat (ODF N° ${odfNumber}).</p>
-              <p>Lien vers le document: <a href="${pdfUrl}">Télécharger mon ODF</a></p>
+              <p>Lien vers le document: <a href="${absoluteUrl}">Télécharger mon ODF</a></p>
               <br/>
               <p>Cordialement,</p>
               <p>L'équipe Haujee Jewellery</p>
@@ -83,7 +87,7 @@ export async function sendEmailODF(email: string, customerName: string, pdfUrl: 
         `,
         attachment: [
           {
-            url: pdfUrl,
+            url: absoluteUrl,
             name: `ODF_${odfNumber}.pdf`
           }
         ]

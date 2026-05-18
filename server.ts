@@ -22,9 +22,12 @@ async function startServer() {
 
   // Static folder for uploads
   const fs = await import("fs");
-  if (!fs.existsSync("uploads")) {
-    fs.mkdirSync("uploads");
-  }
+  const uploadDirs = ["uploads", "uploads/receipts", "uploads/odf"];
+  uploadDirs.forEach(dir => {
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+  });
   app.use('/uploads', express.static('uploads'));
 
   // Multer setup
@@ -51,7 +54,7 @@ async function startServer() {
 
   // --- Auth Endpoints ---
   app.post("/api/login", async (req, res) => {
-    const { username, password } = req.body;
+    const { username, password, rememberMe } = req.body;
     const { default: bcrypt } = await import("bcryptjs");
     const { default: jwt } = await import("jsonwebtoken");
     const JWT_SECRET = process.env.JWT_SECRET || "your-default-secret";
@@ -64,10 +67,12 @@ async function startServer() {
       const isMatch = await bcrypt.compare(password, user.passwordHash);
       if (!isMatch) return res.status(401).json({ error: "Invalid username or password" });
 
+      const expiresIn = rememberMe ? "7d" : "24h";
+
       const token = jwt.sign(
         { id: user.id, username: user.username, role: user.role },
         JWT_SECRET,
-        { expiresIn: "12h" }
+        { expiresIn }
       );
 
       // Fetch user permissions to include in response for frontend UI filtering
@@ -213,11 +218,11 @@ async function startServer() {
           paymentMode,
           chequeNumber,
           qty,
-          itemDetails: itemDetails || item.subCategory,
+          itemDetails: itemDetails || `${item.barcode || ''} - ${item.category || ''} ${item.subCategory || ''} ${item.metalType ? `(${item.metalType})` : ''}`.trim().replace(/\s+/g, ' '),
           weight: item.weightGrams,
           fineness: item.fineness,
-          unitSalesPrice: unitSalesPrice.toString(),
-          amount: amount.toString(),
+          unitSalesPrice: (unitSalesPrice && unitSalesPrice !== "") ? unitSalesPrice.toString() : null,
+          amount: (amount && amount !== "") ? amount.toString() : null,
           vat15: vat.toFixed(2),
           metalType: item.metalType,
         }).returning();
@@ -324,7 +329,13 @@ async function startServer() {
 
   app.post("/api/stock", authenticateToken, checkPermission('stock', 'create'), async (req, res) => {
     try {
-      const newItem = await db.insert(stock).values(req.body).returning();
+      const payload = { ...req.body };
+      // Sanitize numeric fields that might be empty strings from frontend
+      if (payload.weightGrams === "") payload.weightGrams = null;
+      if (payload.yearsOfGuarantee === "") payload.yearsOfGuarantee = null;
+      if (payload.fineness === "") payload.fineness = null;
+      
+      const newItem = await db.insert(stock).values(payload).returning();
       res.status(201).json(newItem[0]);
     } catch (error: any) {
       if (error.code === '23505') {
@@ -336,8 +347,14 @@ async function startServer() {
 
   app.put("/api/stock/:id", authenticateToken, checkPermission('stock', 'edit'), async (req, res) => {
     try {
+      const payload = { ...req.body };
+      // Sanitize numeric fields that might be empty strings from frontend
+      if (payload.weightGrams === "") payload.weightGrams = null;
+      if (payload.yearsOfGuarantee === "") payload.yearsOfGuarantee = null;
+      if (payload.fineness === "") payload.fineness = null;
+
       const updated = await db.update(stock)
-        .set({ ...req.body, updatedAt: new Date() })
+        .set({ ...payload, updatedAt: new Date() })
         .where(eq(stock.id, parseInt(req.params.id)))
         .returning();
       if (updated.length === 0) return res.status(404).json({ error: "Stock item not found" });
@@ -592,136 +609,36 @@ async function startServer() {
     }
   });
 
-  // --- ODF (Trade-ins) Endpoints ---
-  app.post("/api/odf", authenticateToken, upload.single('image'), async (req, res) => {
-    try {
-      const { customerId, itemReservedRepair, comments, weight, metalType, fineness, amount, fileUrl } = req.body;
-      const imageUrl = req.file ? `/uploads/${req.file.filename}` : null;
-
-      const newOdf = await db.insert(odf).values({
-        customerId: customerId ? parseInt(customerId) : null,
-        itemReservedRepair,
-        comments,
-        weight: weight ? weight.toString() : null,
-        metalType,
-        fineness,
-        amount: amount ? amount.toString() : null,
-        imageUrl,
-        fileUrl,
-        date: new Date()
-      }).returning();
-
-      res.status(201).json({
-        message: "ODF recorded successfully",
-        odf_serial_number: newOdf[0].odfSerialNumber,
-        odf: newOdf[0]
-      });
-    } catch (error) {
-      console.error("ODF Error:", error);
-      res.status(500).json({ error: "Failed to record Trade-in" });
-    }
-  });
-
-  // --- Orders Endpoints ---
-  app.get("/api/orders", authenticateToken, async (req, res) => {
-    try {
-      const allOrders = await db.select().from(orders).orderBy(orders.createdAt);
-      res.json(allOrders);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch orders" });
-    }
-  });
-
-  app.post("/api/orders", authenticateToken, checkPermission('orders', 'create'), async (req, res) => {
-    try {
-      const { customerId, itemDescription, estimatedWeight, finalWeight, finalPrice, status } = req.body;
-      const newOrder = await db.insert(orders).values({
-        customerId: customerId ? parseInt(customerId) : null,
-        itemDescription,
-        estimatedWeight: estimatedWeight ? estimatedWeight.toString() : null,
-        finalWeight: finalWeight ? finalWeight.toString() : null,
-        finalPrice: finalPrice ? finalPrice.toString() : null,
-        status: status || 'Pending'
-      }).returning();
-
-      res.status(201).json({
-        message: "Order created successfully",
-        order_number: newOrder[0].orderNumber,
-        order: newOrder[0]
-      });
-    } catch (error) {
-      console.error("Order Error:", error);
-      res.status(500).json({ error: "Failed to create order" });
-    }
-  });
-
-  // --- Order Finalization ---
-  app.post("/api/orders/finalize", authenticateToken, checkPermission('sales', 'create'), async (req, res) => {
-    const { orderNumber, weight, amount, paymentMode, chequeNumber, itemDetails, fineness, metalType } = req.body;
-
-    try {
-      const result = await db.transaction(async (tx) => {
-        // 1. Fetch order
-        const pendingOrders = await tx.select().from(orders).where(eq(orders.orderNumber, orderNumber)).limit(1);
-        if (pendingOrders.length === 0) throw new Error("Order not found");
-        if (pendingOrders[0].status === 'Finalized') throw new Error("Order already finalized");
-        
-        const order = pendingOrders[0];
-
-        // 2. Calculate VAT (15%)
-        const vat = Number(amount) * 0.15;
-
-        // 3. Create Sale
-        const newSale = await tx.insert(sales).values({
-          customerId: order.customerId,
-          stockId: null, // Manual order sale won't have a stock item
-          paymentMode,
-          chequeNumber,
-          qty: 1,
-          itemDetails: itemDetails || order.itemDescription,
-          weight: weight.toString(),
-          fineness,
-          unitSalesPrice: amount.toString(),
-          amount: amount.toString(),
-          vat15: vat.toFixed(2),
-          metalType,
-          datetime: new Date()
-        }).returning();
-
-        // 4. Mark Order as Finalized
-        await tx.update(orders)
-          .set({ 
-            status: 'Finalized', 
-            finalWeight: weight.toString(),
-            finalPrice: amount.toString(),
-            updatedAt: new Date() 
-          })
-          .where(eq(orders.orderNumber, orderNumber));
-
-        return { saleId: newSale[0].id, orderNumber: order.orderNumber };
-      });
-
-      res.status(200).json({
-        message: "Order finalized successfully",
-        sales_id: result.saleId,
-        order_number: result.orderNumber
-      });
-    } catch (error: any) {
-      console.error("Order Finalization Error:", error);
-      res.status(500).json({ error: error.message || "Failed to finalize order" });
-    }
-  });
-
   // --- Receipt PDF Generation ---
   app.get("/api/receipts/:saleId/pdf", authenticateToken, async (req, res) => {
     try {
       const { saleId } = req.params;
-      const { generateReceiptPDF } = await import("./src/services/pdfService");
+      const sId = parseInt(saleId);
+
+      // Try to fetch from storage first if it exists
+      const receiptArr = await db.select().from(receipts).where(eq(receipts.saleId, sId)).limit(1);
+      const receipt = receiptArr[0];
+
+      if (receipt && receipt.fileUrl) {
+        try {
+          const { getReceiptFromStorage } = await import("./src/services/storageService");
+          const fileName = path.basename(receipt.fileUrl);
+          const buffer = await getReceiptFromStorage(fileName);
+          
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Content-Disposition', `inline; filename=${fileName}`);
+          return res.send(buffer);
+        } catch (storageError) {
+          console.warn("Local storage fetch failed, falling back to dynamic generation:", storageError);
+        }
+      }
       
-      const { doc } = await generateReceiptPDF(parseInt(saleId));
+      // Fallback to dynamic generation
+      const { generateReceiptPDF } = await import("./src/services/pdfService");
+      const { doc } = await generateReceiptPDF(sId);
       
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename=receipt-${saleId}.pdf`);
+      res.setHeader('Content-Disposition', `inline; filename=receipt-${saleId}.pdf`);
       
       doc.pipe(res);
       doc.end();
@@ -734,28 +651,47 @@ async function startServer() {
   app.post("/api/receipts/:saleId/upload", authenticateToken, async (req, res) => {
     try {
       const { saleId } = req.params;
+      const sId = parseInt(saleId);
       const { generateReceiptPDF, getPDFBuffer } = await import("./src/services/pdfService");
-      const { uploadReceiptToR2 } = await import("./src/services/storageService");
+      const { uploadReceiptToStorage } = await import("./src/services/storageService");
+      const { sanitize } = await import("./src/lib/utils");
       
       // 1. Generate PDF
-      const { doc, receipt } = await generateReceiptPDF(parseInt(saleId));
+      const { doc, receipt } = await generateReceiptPDF(sId);
       const buffer = await getPDFBuffer(doc);
+
+      // Fetch info for dynamic naming
+      const saleRec = await db.select({
+        stock: stock,
+        customer: customers
+      })
+      .from(sales)
+      .leftJoin(stock, eq(sales.stockId, stock.id))
+      .leftJoin(customers, eq(sales.customerId, customers.id))
+      .where(eq(sales.id, sId))
+      .limit(1);
       
-      // 2. Upload to R2
-      const publicUrl = await uploadReceiptToR2(receipt.receiptSerialNumber.toString(), buffer);
+      const category = saleRec[0]?.stock?.category || "Jewellery";
+      const subCategory = saleRec[0]?.stock?.subCategory || "Item";
+      const clientId = saleRec[0]?.customer?.idNumber || "Unknown";
+      
+      const fileName = `${sanitize(category)}_${sanitize(subCategory)}_${sanitize(clientId)}_${receipt.id}.pdf`;
+      
+      // 2. Save locally
+      const fileUrl = await uploadReceiptToStorage(fileName, buffer);
       
       // 3. Save URL to receipts table
       await db.update(receipts)
-        .set({ fileUrl: publicUrl })
+        .set({ fileUrl })
         .where(eq(receipts.id, receipt.id));
         
       res.json({
-        message: "Receipt uploaded successfully",
-        public_url: publicUrl
+        message: "Receipt saved locally successfully",
+        file_url: fileUrl
       });
     } catch (error: any) {
       console.error("Receipt Upload Error:", error);
-      res.status(500).json({ error: error.message || "Failed to upload receipt" });
+      res.status(500).json({ error: error.message || "Failed to save receipt" });
     }
   });
 
@@ -812,12 +748,30 @@ async function startServer() {
   app.get("/api/odf/:id/pdf", authenticateToken, async (req, res) => {
     try {
       const odfId = parseInt(req.params.id);
+
+      // Try fetch from storage first
+      const recordArr = await db.select().from(odf).where(eq(odf.id, odfId)).limit(1);
+      const record = recordArr[0];
+
+      if (record && record.fileUrl) {
+        try {
+          const { getODFFromStorage } = await import("./src/services/storageService");
+          const fileName = path.basename(record.fileUrl);
+          const buffer = await getODFFromStorage(fileName);
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Content-Disposition', `inline; filename=${fileName}`);
+          return res.send(buffer);
+        } catch (storageErr) {
+          console.warn("ODF local fetch failed:", storageErr);
+        }
+      }
+
+      // Fallback to dynamic generation
       const { generateODFPDF } = await import("./src/services/pdfService");
-      
       const { doc } = await generateODFPDF(odfId);
       
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename=odf-${odfId}.pdf`);
+      res.setHeader('Content-Disposition', `inline; filename=odf-${odfId}.pdf`);
       
       doc.pipe(res);
       doc.end();
@@ -831,24 +785,37 @@ async function startServer() {
     try {
       const odfId = parseInt(req.params.id);
       const { generateODFPDF, getPDFBuffer } = await import("./src/services/pdfService");
-      const { uploadODFToR2 } = await import("./src/services/storageService");
+      const { uploadODFToStorage } = await import("./src/services/storageService");
+      const { sanitize } = await import("./src/lib/utils");
       
       const { doc, odfRecord } = await generateODFPDF(odfId);
       const buffer = await getPDFBuffer(doc);
       
-      const publicUrl = await uploadODFToR2(odfRecord.odfSerialNumber.toString(), buffer);
+      // Fetch info for dynamic naming
+      const odfData = await db.select({
+        customer: customers
+      })
+      .from(odf)
+      .leftJoin(customers, eq(odf.customerId, customers.id))
+      .where(eq(odf.id, odfId))
+      .limit(1);
+      
+      const clientId = odfData[0]?.customer?.idNumber || "Unknown";
+      const fileName = `odf_${sanitize(clientId)}_${odfId}.pdf`;
+
+      const fileUrl = await uploadODFToStorage(fileName, buffer);
       
       await db.update(odf)
-        .set({ fileUrl: publicUrl })
+        .set({ fileUrl })
         .where(eq(odf.id, odfId));
         
       res.json({
-        message: "ODF uploaded successfully",
-        public_url: publicUrl
+        message: "ODF saved locally successfully",
+        file_url: fileUrl
       });
     } catch (error: any) {
       console.error("ODF Upload Error:", error);
-      res.status(500).json({ error: error.message || "Failed to upload ODF" });
+      res.status(500).json({ error: error.message || "Failed to save ODF" });
     }
   });
 
@@ -1046,8 +1013,8 @@ async function startServer() {
     }
   });
 
-  app.post("/api/odf", authenticateToken, upload.single('image'), async (req: any, res) => {
-    const { customerId, metalType, fineness, weight, amount, itemReservedRepair, comments, createdAt } = req.body;
+  app.post("/api/odf", authenticateToken, checkPermission('odf', 'create'), upload.single('image'), async (req: any, res) => {
+    const { customerId, metalType, fineness, weight, amount, itemReservedRepair, comments, createdAt, fileUrl } = req.body;
     let imageUrl = null;
 
     if (req.file) {
@@ -1056,19 +1023,23 @@ async function startServer() {
 
     try {
       const newOdf = await db.insert(odf).values({
-        customerId: parseInt(customerId),
+        customerId: customerId ? parseInt(customerId) : null,
         metalType,
-        fineness,
-        weight,
-        amount,
+        fineness: (fineness && fineness !== "") ? fineness : null,
+        weight: (weight && weight !== "") ? weight : null,
+        amount: (amount && amount !== "") ? amount : null,
         itemReservedRepair,
         comments,
         imageUrl,
+        fileUrl,
         date: createdAt ? new Date(createdAt) : new Date(),
         createdAt: createdAt ? new Date(createdAt) : new Date()
       }).returning();
 
-      res.status(201).json(newOdf[0]);
+      res.status(201).json({
+        id: newOdf[0].id,
+        ...newOdf[0]
+      });
     } catch (error) {
       console.error("ODF Creation Error:", error);
       res.status(500).json({ error: "Failed to create ODF record" });
@@ -1097,7 +1068,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/orders", authenticateToken, async (req, res) => {
+  app.post("/api/orders", authenticateToken, checkPermission('orders', 'create'), async (req, res) => {
     const { customerId, itemDescription, createdAt } = req.body;
     try {
       const newOrder = await db.insert(orders).values({
@@ -1106,7 +1077,10 @@ async function startServer() {
         status: 'Pending',
         createdAt: createdAt ? new Date(createdAt) : new Date()
       }).returning();
-      res.status(201).json(newOrder[0]);
+      res.status(201).json({
+        id: newOrder[0].id,
+        ...newOrder[0]
+      });
     } catch (error) {
       res.status(500).json({ error: "Failed to create order" });
     }
@@ -1122,18 +1096,18 @@ async function startServer() {
         if (!order) throw new Error("Order not found");
 
         await tx.update(orders)
-          .set({ status: 'Completed', finalWeight, finalPrice })
+          .set({ status: 'Finalized', finalWeight, finalPrice })
           .where(eq(orders.id, orderId));
 
         await tx.insert(sales).values({
           customerId: order.customerId,
-          barcode: `ORDER-${orderId}`,
-          amount: finalPrice.toString(),
-          weight: finalWeight.toString(),
+          stockId: null, // Defaulting to null since it's a generic order sale
+          amount: (finalPrice && finalPrice !== "") ? finalPrice.toString() : "0",
+          weight: (finalWeight && finalWeight !== "") ? finalWeight.toString() : null,
           paymentMode,
           itemDetails: `Finalized Order: ${order.itemDescription}`,
           qty: 1,
-          unitSalesPrice: finalPrice.toString()
+          unitSalesPrice: (finalPrice && finalPrice !== "") ? finalPrice.toString() : "0"
         });
       });
 

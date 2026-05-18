@@ -3,10 +3,11 @@ import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 import { 
   Scale, User, Camera, Plus, Check, AlertCircle, 
-  Loader2, Search, IndianRupee, History, Image as ImageIcon,
-  X, UserPlus, Info, Tag, Calendar, FileText, Printer, Send
+  Loader2, Search, History, Image as ImageIcon,
+  X, UserPlus, Info, Tag, Calendar, FileText, Printer, Send, Banknote
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { formatCurrency } from '../lib/utils';
 
 const ODF = () => {
   const { token } = useAuth();
@@ -78,7 +79,7 @@ const ODF = () => {
   const handleSendFull = async (id: number, method: 'whatsapp' | 'email' | 'both') => {
     setIsProcessing(true);
     try {
-      // 1. Upload to R2 first
+      // 1. Save locally first
       await axios.post(`/api/odf/${id}/upload`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -279,7 +280,7 @@ const ODF = () => {
                 <div>
                   <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Montant du Rachat</label>
                   <div className="relative">
-                    <IndianRupee className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                    <Banknote className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
                     <input 
                       type="number" required placeholder="0"
                       className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-12 pr-4 font-bold outline-none focus:border-amber-400"
@@ -399,7 +400,7 @@ const ODF = () => {
                         </td>
                         <td className="px-6 py-4 text-right">
                           <p className="font-black text-slate-900">{record.weight}g</p>
-                          <p className="font-bold text-emerald-600">-{parseFloat(record.amount).toLocaleString()} Rs</p>
+                          <p className="font-bold text-emerald-600">-{formatCurrency(record.amount)}</p>
                         </td>
                         <td className="px-6 py-4">
                            <div className="flex items-center gap-3">

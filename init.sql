@@ -103,7 +103,7 @@ CREATE TABLE IF NOT EXISTS receipts (
     receipt_serial_number SERIAL, -- Auto-incrementing serial number
     sale_id INTEGER REFERENCES sales(id) ON DELETE CASCADE,
     print_count INTEGER DEFAULT 0,
-    file_url TEXT, -- Link to S3/R2 storage
+    file_url TEXT, -- Relative path to local storage (/uploads/...)
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

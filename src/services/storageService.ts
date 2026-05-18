@@ -1,61 +1,33 @@
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import fs from 'fs';
+import path from 'path';
 
-const s3Client = new S3Client({
-  region: "auto",
-  endpoint: process.env.R2_ENDPOINT,
-  credentials: {
-    accessKeyId: process.env.R2_ACCESS_KEY_ID || "",
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || "",
-  },
-});
+const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
+const RECEIPTS_DIR = path.join(UPLOADS_DIR, 'receipts');
+const ODF_DIR = path.join(UPLOADS_DIR, 'odf');
 
-export async function uploadReceiptToR2(receiptNumber: string, pdfBuffer: Buffer): Promise<string> {
-  const bucketName = process.env.R2_BUCKET_NAME;
-  const key = `receipts/receipt-${receiptNumber}.pdf`;
+// Ensure directories exist
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+if (!fs.existsSync(RECEIPTS_DIR)) fs.mkdirSync(RECEIPTS_DIR, { recursive: true });
+if (!fs.existsSync(ODF_DIR)) fs.mkdirSync(ODF_DIR, { recursive: true });
 
-  if (!bucketName) {
-    throw new Error("R2_BUCKET_NAME is not defined");
-  }
-
-  const command = new PutObjectCommand({
-    Bucket: bucketName,
-    Key: key,
-    Body: pdfBuffer,
-    ContentType: "application/pdf",
-  });
-
-  await s3Client.send(command);
-
-  // Return the public URL if configured, otherwise a generic R2 URL
-  const publicUrl = process.env.R2_PUBLIC_URL;
-  if (publicUrl) {
-    return `${publicUrl}/${key}`;
-  }
-
-  return `${process.env.R2_ENDPOINT}/${bucketName}/${key}`;
+export async function uploadReceiptToStorage(fileName: string, pdfBuffer: Buffer): Promise<string> {
+  const filePath = path.join(RECEIPTS_DIR, fileName);
+  await fs.promises.writeFile(filePath, pdfBuffer);
+  return `/uploads/receipts/${fileName}`;
 }
 
-export async function uploadODFToR2(odfSerialNumber: string, pdfBuffer: Buffer): Promise<string> {
-  const bucketName = process.env.R2_BUCKET_NAME;
-  const key = `odf/odf-${odfSerialNumber}.pdf`;
+export async function getReceiptFromStorage(fileName: string): Promise<Buffer> {
+  const filePath = path.join(RECEIPTS_DIR, fileName);
+  return await fs.promises.readFile(filePath);
+}
 
-  if (!bucketName) {
-    throw new Error("R2_BUCKET_NAME is not defined");
-  }
+export async function uploadODFToStorage(fileName: string, pdfBuffer: Buffer): Promise<string> {
+  const filePath = path.join(ODF_DIR, fileName);
+  await fs.promises.writeFile(filePath, pdfBuffer);
+  return `/uploads/odf/${fileName}`;
+}
 
-  const command = new PutObjectCommand({
-    Bucket: bucketName,
-    Key: key,
-    Body: pdfBuffer,
-    ContentType: "application/pdf",
-  });
-
-  await s3Client.send(command);
-
-  const publicUrl = process.env.R2_PUBLIC_URL;
-  if (publicUrl) {
-    return `${publicUrl}/${key}`;
-  }
-
-  return `${process.env.R2_ENDPOINT}/${bucketName}/${key}`;
+export async function getODFFromStorage(fileName: string): Promise<Buffer> {
+  const filePath = path.join(ODF_DIR, fileName);
+  return await fs.promises.readFile(filePath);
 }
