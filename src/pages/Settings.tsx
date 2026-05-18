@@ -6,12 +6,32 @@ import { motion, AnimatePresence } from 'motion/react';
 
 const Settings = () => {
   const { token, user: currentUser } = useAuth();
-  const [activeTab, setActiveTab] = useState<'general' | 'users'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'users' | 'pwa'>('general');
   const [settings, setSettings] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isInstallable, setIsInstallable] = useState(false);
+
+  useEffect(() => {
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setIsInstallable(true);
+    });
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setDeferredPrompt(null);
+      setIsInstallable(false);
+    }
+  };
 
   // User creation/edit state
   const [showAddUser, setShowAddUser] = useState(false);
@@ -183,6 +203,14 @@ const Settings = () => {
         >
           Contrôle d'Accès
         </button>
+        <button
+          onClick={() => setActiveTab('pwa')}
+          className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${
+            activeTab === 'pwa' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          App Mobile & Bureau
+        </button>
       </div>
 
       {isLoading ? (
@@ -223,7 +251,7 @@ const Settings = () => {
                 );
               })}
             </div>
-          ) : (
+          ) : activeTab === 'users' ? (
             <div className="space-y-6">
               <div className="flex justify-between items-center bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
                 <div>
@@ -263,6 +291,86 @@ const Settings = () => {
                     </button>
                   </div>
                 ))}
+              </div>
+            </div>
+          ) : (
+            <div className="max-w-3xl space-y-8">
+              <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
+                <div className="flex items-center space-x-4 mb-6">
+                  <div className="h-14 w-14 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center">
+                    <Download size={32} />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-black text-slate-900">Installation Standalone</h3>
+                    <p className="text-slate-500 font-medium">Transformez ce site en une application pour votre appareil.</p>
+                  </div>
+                </div>
+
+                <div className="space-y-6">
+                  <p className="text-slate-600 leading-relaxed font-medium">
+                    Une version installée permet une ouverture plus rapide, une icône sur votre écran d'accueil et supprime les barres de navigation inutiles du navigateur.
+                  </p>
+
+                  {isInstallable ? (
+                    <div className="bg-amber-50 border-2 border-amber-100 p-6 rounded-3xl">
+                      <p className="font-bold text-amber-900 mb-4 text-center">Votre navigateur supporte l'installation directe !</p>
+                      <button
+                        onClick={handleInstallClick}
+                        className="w-full bg-amber-500 text-slate-900 font-black py-5 rounded-2xl shadow-xl shadow-amber-500/20 hover:bg-amber-400 transition-all flex items-center justify-center space-x-3"
+                      >
+                        <Download size={24} />
+                        <span>Installer Maintenant</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="bg-slate-50 p-6 rounded-3xl space-y-6 border border-slate-100">
+                      <p className="text-sm font-bold text-slate-400 uppercase tracking-widest text-center">Instructions Manuelles</p>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-3">
+                          <h4 className="font-black text-slate-900 flex items-center space-x-2">
+                            <span className="h-6 w-6 rounded-full bg-slate-900 text-white text-[10px] flex items-center justify-center">iOS</span>
+                            <span>iPhone & iPad</span>
+                          </h4>
+                          <ol className="text-sm text-slate-600 space-y-2 list-decimal pl-4 font-medium">
+                            <li>Ouvrez ce site dans <b>Safari</b></li>
+                            <li>Appuyez sur le bouton <b>Partager</b> <div className="inline-block p-1 bg-white border rounded shadow-sm">↑</div></li>
+                            <li>Faites défiler et choisissez <b>"Sur l'écran d'accueil"</b></li>
+                          </ol>
+                        </div>
+
+                        <div className="space-y-3">
+                          <h4 className="font-black text-slate-900 flex items-center space-x-2">
+                            <span className="h-6 w-6 rounded-full bg-slate-900 text-white text-[10px] flex items-center justify-center">AND</span>
+                            <span>Android & Chrome</span>
+                          </h4>
+                          <ol className="text-sm text-slate-600 space-y-2 list-decimal pl-4 font-medium">
+                            <li>Appuyez sur les <b>3 points</b> <div className="inline-block p-1 bg-white border rounded shadow-sm">⋮</div></li>
+                            <li>Choisissez <b>"Installer l'application"</b> ou "Ajouter à l'écran d'accueil"</li>
+                          </ol>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="bg-slate-900 p-8 rounded-[2.5rem] text-white">
+                <h4 className="font-bold mb-2">Avantages pour Haujee Jewellery</h4>
+                <div className="grid grid-cols-1 gap-4 text-slate-400 text-sm">
+                  <div className="flex items-start space-x-3">
+                    <div className="h-5 w-5 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center flex-shrink-0 mt-0.5 mt-0.5">✓</div>
+                    <p>Accès immédiat dès le démarrage de la tablette en boutique.</p>
+                  </div>
+                  <div className="flex items-start space-x-3">
+                    <div className="h-5 w-5 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center flex-shrink-0 mt-0.5">✓</div>
+                    <p>Utilisation optimisée en mode portrait ou paysage sans perte d'espace.</p>
+                  </div>
+                  <div className="flex items-start space-x-3">
+                    <div className="h-5 w-5 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center flex-shrink-0 mt-0.5">✓</div>
+                    <p>Fiabilité accrue des capteurs (comme l'appareil photo pour le scan de codes-barres).</p>
+                  </div>
+                </div>
               </div>
             </div>
           )}
