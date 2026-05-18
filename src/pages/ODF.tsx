@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatCurrency } from '../lib/utils';
+import CustomerModal from '../components/CustomerModal';
 
 const ODF = () => {
   const { token } = useAuth();
@@ -22,8 +23,7 @@ const ODF = () => {
   const [customerSearch, setCustomerSearch] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
-  const [isAddingCustomer, setIsAddingCustomer] = useState(false);
-  const [newCustomer, setNewCustomer] = useState({ name: '', idNumber: '', phoneNumber: '', email: '', address: '' });
+  const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
 
   const [formData, setFormData] = useState({
     metalType: 'Gold',
@@ -31,6 +31,8 @@ const ODF = () => {
     weight: '',
     amount: '',
     itemReservedRepair: '',
+    description: '',
+    parameters: '',
     comments: '',
     createdAt: new Date().toISOString().split('T')[0]
   });
@@ -90,12 +92,19 @@ const ODF = () => {
       });
       
       setMessage({ type: 'success', text: `Document envoyé par ${method === 'both' ? 'Email & WhatsApp' : method === 'whatsapp' ? 'WhatsApp' : 'Email'}!` });
-    } catch (err) {
+    } catch (err: any) {
       console.error("Send Error:", err);
-      setMessage({ type: 'error', text: "Erreur lors de l'envoi" });
+      if (err.response?.status === 412) {
+        setMessage({ 
+          type: 'error', 
+          text: 'Configuration manquante — Veuillez configurer vos paramètres Email/WhatsApp dans les réglages.' 
+        });
+      } else {
+        setMessage({ type: 'error', text: "Erreur lors de l'envoi" });
+      }
     } finally {
       setIsProcessing(false);
-      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+      setTimeout(() => setMessage({ type: '', text: '' }), 5000); // Increased timeout for reading
     }
   };
 
@@ -133,6 +142,8 @@ const ODF = () => {
       payload.append('weight', formData.weight);
       payload.append('amount', formData.amount);
       payload.append('itemReservedRepair', formData.itemReservedRepair);
+      payload.append('description', formData.description);
+      payload.append('parameters', formData.parameters);
       payload.append('comments', formData.comments);
       payload.append('createdAt', formData.createdAt);
       if (imageFile) payload.append('image', imageFile);
@@ -187,18 +198,28 @@ const ODF = () => {
                   <User className="text-amber-500" size={20} /> Client (KYC)
                 </h3>
                 
-                <div className="relative mb-6">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                  <input 
-                    type="text"
-                    placeholder="Chercher Client..."
-                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-12 pr-4 font-bold outline-none focus:border-amber-400"
-                    value={customerSearch}
-                    onChange={(e) => {
-                      setCustomerSearch(e.target.value);
-                      handleCustomerSearch();
-                    }}
-                  />
+                <div className="flex gap-2 mb-6">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                    <input 
+                      type="text"
+                      placeholder="Chercher Client..."
+                      className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-12 pr-4 font-bold outline-none focus:border-amber-400"
+                      value={customerSearch}
+                      onChange={(e) => {
+                        setCustomerSearch(e.target.value);
+                        handleCustomerSearch();
+                      }}
+                    />
+                  </div>
+                  <button 
+                    type="button"
+                    onClick={() => setIsCustomerModalOpen(true)}
+                    className="p-3 bg-amber-500 text-white rounded-xl hover:bg-amber-600 transition-colors shadow-lg shadow-amber-500/20"
+                    title="Nouveau Client"
+                  >
+                    <Plus size={24} />
+                  </button>
                 </div>
 
                 <div className="space-y-3 max-h-[300px] overflow-y-auto">
@@ -301,6 +322,26 @@ const ODF = () => {
                       onChange={(e) => setFormData({...formData, itemReservedRepair: e.target.value})}
                     />
                   </div>
+                </div>
+
+                <div className="col-span-2 md:col-span-1">
+                  <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Description de l'Article</label>
+                  <input 
+                    type="text" placeholder="Détails de l'article..."
+                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 font-bold outline-none focus:border-amber-400"
+                    value={formData.description}
+                    onChange={(e) => setFormData({...formData, description: e.target.value})}
+                  />
+                </div>
+
+                <div className="col-span-2">
+                  <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Paramètres / Spécifications</label>
+                  <input 
+                    type="text" placeholder="Tailles, mesures, gravures..."
+                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 font-bold outline-none focus:border-amber-400"
+                    value={formData.parameters}
+                    onChange={(e) => setFormData({...formData, parameters: e.target.value})}
+                  />
                 </div>
 
                 <div className="col-span-2">
@@ -438,6 +479,14 @@ const ODF = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <CustomerModal 
+        isOpen={isCustomerModalOpen}
+        onClose={() => setIsCustomerModalOpen(false)}
+        onSuccess={(customer) => setSelectedCustomer(customer)}
+        initialName={customerSearch}
+      />
+
       <AnimatePresence>
         {successData && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

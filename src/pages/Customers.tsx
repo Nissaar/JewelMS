@@ -6,7 +6,7 @@ import {
   ShieldAlert, History, FileText, Package, 
   Scale, X, Loader2, User, ChevronRight,
   TrendingDown, TrendingUp, Minus, UserPlus,
-  Check, AlertCircle
+  Check, AlertCircle, Mail
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatCurrency } from '../lib/utils';
@@ -24,6 +24,7 @@ const Customers = () => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [newCustomer, setNewCustomer] = useState({
     name: '',
+    email: '',
     address: '',
     phoneNumber: '',
     idNumber: '',
@@ -94,6 +95,7 @@ const Customers = () => {
       setIsCreateModalOpen(false);
       setNewCustomer({
         name: '',
+        email: '',
         address: '',
         phoneNumber: '',
         idNumber: '',
@@ -296,6 +298,20 @@ const Customers = () => {
                   </div>
 
                   <div className="space-y-2">
+                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Email</label>
+                    <div className="relative">
+                      <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
+                      <input 
+                        type="email" 
+                        placeholder="client@email.com"
+                        className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-3 pl-12 pr-4 font-bold outline-none focus:border-amber-400"
+                        value={newCustomer.email || ''}
+                        onChange={(e) => setNewCustomer({...newCustomer, email: e.target.value})}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
                     <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Numéro de Téléphone</label>
                     <div className="relative">
                       <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
@@ -411,6 +427,7 @@ const Customers = () => {
                   <div className="p-6 bg-slate-50 rounded-3xl space-y-1">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Coordonnées</p>
                     <div className="space-y-1">
+                      <p className="text-sm font-bold text-slate-900 flex items-center gap-2 font-mono"><Mail size={14} className="text-slate-400" /> {selectedCustomer.email || 'Pas d\'email'}</p>
                       <p className="text-sm font-bold text-slate-900 flex items-center gap-2"><Phone size={14} className="text-slate-400" /> {selectedCustomer.phoneNumber}</p>
                       <p className="text-[10px] font-medium text-slate-500 italic truncate">{selectedCustomer.address}</p>
                     </div>

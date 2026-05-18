@@ -9,68 +9,106 @@ import {
 import { motion } from 'motion/react';
 
 const AuditLogDetails = ({ data }: { data: any }) => {
-  if (!data) return <span className="text-slate-400 italic text-xs">No details</span>;
+  if (!data) return <span className="text-slate-400 italic text-xs">Aucun détail</span>;
   
-  // If it's a string, just show it
+  let details = data;
   if (typeof data === 'string') {
     try {
-      const parsed = JSON.parse(data);
-      if (typeof parsed === 'object') return <AuditLogDetails data={parsed} />;
+      details = JSON.parse(data);
     } catch {
-      return <span className="text-xs">{data}</span>;
+      return <span className="text-xs break-all">{data}</span>;
     }
   }
 
-  // Handle object display
-  if (typeof data === 'object') {
-    const keys = Object.keys(data);
+  if (typeof details === 'object' && details !== null) {
+    // If we have a 'body' property (from audit middleware), focus on that
+    const displayData = details.body && typeof details.body === 'object' ? details.body : details;
+    const keys = Object.keys(displayData);
     
-    // Check if it's a change-set (old/new pairs)
     const isChangeSet = keys.some(k => {
-      const val = data[k];
+      const val = displayData[k];
       return val && typeof val === 'object' && ('old' in val || 'new' in val);
     });
 
     if (isChangeSet) {
       return (
-        <ul className="space-y-1 py-1">
-          {keys.map(key => {
-            const val = data[key];
-            if (val && typeof val === 'object' && ('old' in val || 'new' in val)) {
-              return (
-                <li key={key} className="text-[11px] flex flex-wrap items-center gap-1">
-                  <strong className="text-slate-700 capitalize">{key.replace(/([A-Z])/g, ' $1')}:</strong>
-                  <span className="text-red-500 line-through decoration-red-200">{val.old === null || val.old === undefined ? 'null' : String(val.old)}</span>
-                  <span className="text-slate-400">&rarr;</span>
-                  <span className="text-emerald-600 font-bold">{val.new === null || val.new === undefined ? 'null' : String(val.new)}</span>
-                </li>
-              );
-            }
-            return (
-                <li key={key} className="text-[11px]">
-                  <strong className="text-slate-700 capitalize">{key.replace(/([A-Z])/g, ' $1')}:</strong>
-                  <span className="ml-1">{JSON.stringify(val)}</span>
-                </li>
-            );
-          })}
-        </ul>
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+          <table className="w-full text-[10px] sm:text-xs">
+            <thead className="bg-slate-100 text-slate-500 font-black uppercase tracking-tighter">
+              <tr>
+                <th className="px-4 py-2 text-left">Champ Modifié</th>
+                <th className="px-4 py-2 text-left">Avant</th>
+                <th className="px-4 py-2 text-left">Après</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {keys.map(key => {
+                const val = displayData[key];
+                if (val && typeof val === 'object' && ('old' in val || 'new' in val)) {
+                  const hasChanged = JSON.stringify(val.old) !== JSON.stringify(val.new);
+                  if (!hasChanged) return null;
+
+                  const label = key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ');
+
+                  return (
+                    <tr key={key} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-4 py-3 font-black text-slate-700 capitalize">
+                        {label}
+                      </td>
+                      <td className="px-4 py-3 text-slate-500 italic">
+                        {val.old === null || val.old === undefined ? <span className="text-slate-300">vide</span> : String(val.old)}
+                      </td>
+                      <td className="px-4 py-3 text-emerald-600 font-bold">
+                        {val.new === null || val.new === undefined ? <span className="text-slate-300">vide</span> : String(val.new)}
+                      </td>
+                    </tr>
+                  );
+                }
+                return null;
+              })}
+            </tbody>
+          </table>
+          {details.method && (
+            <div className="px-4 py-2 bg-slate-50 text-[10px] font-black text-slate-400 border-t border-slate-100 flex justify-between items-center uppercase tracking-widest">
+              <span>{details.method} | {details.path}</span>
+              <span className="bg-white px-2 py-0.5 rounded-lg border border-slate-200">Status: {details.statusCode}</span>
+            </div>
+          )}
+        </div>
       );
     }
 
-    // Default object display
+    // Default object display with readable labels
     return (
-      <div className="text-[11px] grid grid-cols-1 gap-1 py-1">
-        {keys.map(key => (
-          <div key={key} className="flex gap-1 truncate">
-            <span className="font-black text-slate-700 capitalize shrink-0">{key.replace(/([A-Z])/g, ' $1')}:</span>
-            <span className="truncate">{JSON.stringify(data[key])}</span>
+      <div className="space-y-3">
+        <div className="text-[11px] grid grid-cols-1 gap-2">
+          {keys.map(key => {
+            if (key === 'method' || key === 'path' || key === 'statusCode' || key === 'body') return null;
+            const value = displayData[key];
+            const label = key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ');
+            
+            return (
+              <div key={key} className="flex items-center gap-3 border-b border-slate-100 pb-1 last:border-0">
+                <span className="font-black text-slate-400 capitalize whitespace-nowrap min-w-[100px]">{label}:</span>
+                <span className="text-slate-900 font-bold truncate">
+                  {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+        {details.method && (
+          <div className="flex items-center gap-3 text-[10px] font-black text-slate-400 uppercase tracking-widest border-t border-slate-100 pt-2">
+            <span className="bg-slate-200 px-2 py-0.5 rounded text-slate-600 font-black">{details.method}</span>
+            <span className="truncate flex-1">{details.path}</span>
+            <span className="text-slate-500 font-bold">Status: {details.statusCode}</span>
           </div>
-        ))}
+        )}
       </div>
     );
   }
 
-  return <span className="text-xs">{String(data)}</span>;
+  return <span className="text-xs font-medium text-slate-700">{String(details)}</span>;
 };
 
 const AuditLogs = () => {

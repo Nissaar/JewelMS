@@ -86,6 +86,8 @@ export const sales = pgTable('sales', {
   amount: numeric('amount', { precision: 15, scale: 2 }),
   vat15: numeric('vat_15', { precision: 15, scale: 2 }),
   metalType: varchar('metal_type', { length: 50 }),
+  goldRate: numeric('gold_rate', { precision: 15, scale: 2 }),
+  orderId: integer('order_id').references(() => orders.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -104,6 +106,9 @@ export const orders = pgTable('orders', {
   customerId: integer('customer_id').references(() => customers.id, { onDelete: 'set null' }),
   itemDescription: text('item_description'),
   estimatedWeight: numeric('estimated_weight', { precision: 10, scale: 3 }),
+  estimatedPrice: numeric('estimated_price', { precision: 15, scale: 2 }),
+  deposit: numeric('deposit', { precision: 15, scale: 2 }),
+  goldRate: numeric('gold_rate', { precision: 15, scale: 2 }),
   finalWeight: numeric('final_weight', { precision: 10, scale: 3 }),
   finalPrice: numeric('final_price', { precision: 15, scale: 2 }),
   status: varchar('status', { length: 20 }).default('Pending').notNull(), // 'Pending' | 'Finalized'
@@ -117,6 +122,8 @@ export const odf = pgTable('odf', {
   date: timestamp('date', { withTimezone: true }).defaultNow().notNull(),
   customerId: integer('customer_id').references(() => customers.id, { onDelete: 'set null' }),
   itemReservedRepair: text('item_reserved_repair'),
+  description: text('description'),
+  parameters: text('parameters'),
   comments: text('comments'),
   weight: numeric('weight', { precision: 10, scale: 3 }),
   metalType: varchar('metal_type', { length: 50 }),

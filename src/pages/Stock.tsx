@@ -324,11 +324,13 @@ const Stock = () => {
                           </td>
                           <td className="px-6 py-4">
                             <div className="text-sm space-y-1">
-                              {item.category === 'Jewellery' && (
+                              {item.category === 'Jewellery' ? (
                                 <>
                                   <p className="text-slate-700 font-medium">{item.metalType} {item.fineness}</p>
                                   <p className="text-amber-600 font-bold">{item.weightGrams}g</p>
                                 </>
+                              ) : (
+                                <p className="text-slate-400 font-medium">-</p>
                               )}
                               {item.category === 'Pen' && (
                                 <p className="text-slate-700 font-medium">{item.subCategory}</p>

@@ -258,6 +258,60 @@ const StockReports = () => {
               </ResponsiveContainer>
             </div>
           </motion.div>
+
+          {/* Category Breakdown Table */}
+          {reportData?.byCategory && Object.keys(reportData.byCategory).length > 0 && (
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="lg:col-span-2 bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-100"
+            >
+              <div className="flex items-center gap-4 mb-8">
+                <div className="h-12 w-12 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center">
+                  <Package size={24} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-slate-900">Répartition par Catégorie</h3>
+                  <p className="text-sm font-bold text-slate-400 italic">Détails granulaires de l'inventaire</p>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="text-xs font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
+                      <th className="px-4 py-3">Catégorie</th>
+                      <th className="px-4 py-3 text-right">Articles</th>
+                      <th className="px-4 py-3 text-right">Poids Or</th>
+                      <th className="px-4 py-3 text-right">Poids Argent</th>
+                      <th className="px-4 py-3 text-right">Total (g)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {Object.entries(reportData.byCategory).map(([cat, stats]: [string, any]) => (
+                      <tr key={cat} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-4 py-4 font-black text-slate-900">{cat}</td>
+                        <td className="px-4 py-4 text-right">
+                          <span className="bg-slate-100 px-3 py-1 rounded-full text-xs font-bold text-slate-600">
+                            {stats.itemCount}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4 text-right font-bold text-amber-600">
+                          {stats.byMetal.Gold?.toFixed(2) || '0.00'} g
+                        </td>
+                        <td className="px-4 py-4 text-right font-bold text-slate-400">
+                          {stats.byMetal.Silver?.toFixed(2) || '0.00'} g
+                        </td>
+                        <td className="px-4 py-4 text-right font-black text-indigo-600">
+                          {stats.totalWeight.toFixed(2)} g
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </motion.div>
+          )}
         </div>
       )}
 

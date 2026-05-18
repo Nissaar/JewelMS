@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
-import { Save, UserPlus, Shield, Check, X, AlertCircle, Loader2 } from 'lucide-react';
+import { Save, UserPlus, Shield, Check, X, AlertCircle, Loader2, Download, Smartphone, Monitor } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { downloadFile } from '../utils/helpers';
 
 const Settings = () => {
   const { token, user: currentUser } = useAuth();
@@ -306,52 +307,54 @@ const Settings = () => {
                   </div>
                 </div>
 
-                <div className="space-y-6">
-                  <p className="text-slate-600 leading-relaxed font-medium">
-                    Une version installée permet une ouverture plus rapide, une icône sur votre écran d'accueil et supprime les barres de navigation inutiles du navigateur.
-                  </p>
-
-                  {isInstallable ? (
-                    <div className="bg-amber-50 border-2 border-amber-100 p-6 rounded-3xl">
-                      <p className="font-bold text-amber-900 mb-4 text-center">Votre navigateur supporte l'installation directe !</p>
-                      <button
-                        onClick={handleInstallClick}
-                        className="w-full bg-amber-500 text-slate-900 font-black py-5 rounded-2xl shadow-xl shadow-amber-500/20 hover:bg-amber-400 transition-all flex items-center justify-center space-x-3"
+                <div className="space-y-8">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 flex flex-col items-center text-center space-y-4">
+                      <div className="h-16 w-16 bg-white rounded-2xl flex items-center justify-center text-amber-500 shadow-sm">
+                        <Smartphone size={32} />
+                      </div>
+                      <div>
+                        <h4 className="font-black text-slate-900">App Mobile</h4>
+                        <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Version Android</p>
+                      </div>
+                      <button 
+                        onClick={() => downloadFile('/installers/haujee-mobile.apk', 'haujee-mobile.apk')}
+                        className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold text-sm shadow-lg hover:bg-slate-800 transition-all flex items-center justify-center gap-2"
                       >
-                        <Download size={24} />
-                        <span>Installer Maintenant</span>
+                        <Download size={16} /> Télécharger l'APK
                       </button>
                     </div>
-                  ) : (
-                    <div className="bg-slate-50 p-6 rounded-3xl space-y-6 border border-slate-100">
-                      <p className="text-sm font-bold text-slate-400 uppercase tracking-widest text-center">Instructions Manuelles</p>
-                      
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="space-y-3">
-                          <h4 className="font-black text-slate-900 flex items-center space-x-2">
-                            <span className="h-6 w-6 rounded-full bg-slate-900 text-white text-[10px] flex items-center justify-center">iOS</span>
-                            <span>iPhone & iPad</span>
-                          </h4>
-                          <ol className="text-sm text-slate-600 space-y-2 list-decimal pl-4 font-medium">
-                            <li>Ouvrez ce site dans <b>Safari</b></li>
-                            <li>Appuyez sur le bouton <b>Partager</b> <div className="inline-block p-1 bg-white border rounded shadow-sm">↑</div></li>
-                            <li>Faites défiler et choisissez <b>"Sur l'écran d'accueil"</b></li>
-                          </ol>
-                        </div>
 
-                        <div className="space-y-3">
-                          <h4 className="font-black text-slate-900 flex items-center space-x-2">
-                            <span className="h-6 w-6 rounded-full bg-slate-900 text-white text-[10px] flex items-center justify-center">AND</span>
-                            <span>Android & Chrome</span>
-                          </h4>
-                          <ol className="text-sm text-slate-600 space-y-2 list-decimal pl-4 font-medium">
-                            <li>Appuyez sur les <b>3 points</b> <div className="inline-block p-1 bg-white border rounded shadow-sm">⋮</div></li>
-                            <li>Choisissez <b>"Installer l'application"</b> ou "Ajouter à l'écran d'accueil"</li>
-                          </ol>
-                        </div>
+                    <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 flex flex-col items-center text-center space-y-4">
+                      <div className="h-16 w-16 bg-white rounded-2xl flex items-center justify-center text-blue-500 shadow-sm">
+                        <Monitor size={32} />
+                      </div>
+                      <div>
+                        <h4 className="font-black text-slate-900">Logiciel Bureau</h4>
+                        <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Windows & macOS</p>
+                      </div>
+                      <button 
+                        onClick={() => downloadFile('/installers/haujee-setup.exe', 'haujee-setup.exe')}
+                        className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold text-sm shadow-lg hover:bg-slate-800 transition-all flex items-center justify-center gap-2"
+                      >
+                        <Download size={16} /> Télécharger l'Installeur
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="bg-amber-50 p-6 rounded-3xl border border-amber-100">
+                    <div className="flex gap-4">
+                      <div className="h-10 w-10 bg-white rounded-xl flex items-center justify-center text-amber-500 shadow-sm shrink-0">
+                        <Download size={20} />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-amber-900 mb-1">Installation Directe (PWA)</h4>
+                        <p className="text-sm text-amber-800 leading-relaxed">
+                          Si vous préférez ne pas télécharger d'installeur, vous pouvez installer l'application directement via votre navigateur (Chrome ou Safari) en utilisant l'option "Ajouter à l'écran d'accueil".
+                        </p>
                       </div>
                     </div>
-                  )}
+                  </div>
                 </div>
               </div>
 

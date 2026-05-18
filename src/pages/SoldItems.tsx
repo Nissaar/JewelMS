@@ -108,7 +108,11 @@ const SoldItems = () => {
                             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                               {`${item.barcode || ''} - ${item.category || ''} ${item.subCategory || ''} ${item.metalType ? `(${item.metalType})` : ''}`.trim().replace(/\s+/g, ' ')}
                             </span>
-                            {item.weightGrams && <span className="text-[10px] font-black text-amber-600 flex items-center gap-1 mt-1"><Scale size={10}/> {item.weightGrams}g</span>}
+                            {item.category === 'Jewellery' && item.weightGrams && (
+                              <span className="text-[10px] font-black text-amber-600 flex items-center gap-1 mt-1">
+                                <Scale size={10}/> {item.weightGrams}g
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>

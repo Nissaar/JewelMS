@@ -11,6 +11,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import BarcodeScanner from '../components/BarcodeScanner';
 import { formatCurrency } from '../lib/utils';
+import CustomerModal from '../components/CustomerModal';
 
 const Sales = () => {
   const navigate = useNavigate();
@@ -31,8 +32,7 @@ const Sales = () => {
   const [customerSearch, setCustomerSearch] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
-  const [isAddingCustomer, setIsAddingCustomer] = useState(false);
-  const [newCustomer, setNewCustomer] = useState({ name: '', idNumber: '', phoneNumber: '', email: '', address: '' });
+  const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
   
   // Sale Details
   const [paymentMode, setPaymentMode] = useState('Cash');
@@ -132,21 +132,6 @@ const Sales = () => {
     }
   };
 
-  const handleCreateCustomer = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    try {
-      const res = await axios.post('/api/customers', newCustomer, { headers: { Authorization: `Bearer ${token}` } });
-      setSelectedCustomer(res.data);
-      setIsAddingCustomer(false);
-      setSaleStep('payment');
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Erreur lors de la création du client.' });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const handleFinalizeSale = async () => {
     if (!finalPrice || !selectedCustomer || !scannedItem) return;
     
@@ -205,12 +190,22 @@ const Sales = () => {
       // 1. Upload if not already (backend logic handles it better if we just call the upload endpoint)
       await axios.post(`/api/receipts/${completedSale.id}/upload`, {}, { headers: { Authorization: `Bearer ${token}` } });
       
-      // 2. Send
-      await axios.post(`/api/receipts/${completedSale.id}/send`, { method }, { headers: { Authorization: `Bearer ${token}` } });
+      // 2. Send (using the unified notification endpoint or the specific one, both have the guard now)
+      await axios.post(`/api/notifications/send-receipt`, { 
+        saleId: completedSale.id, 
+        method 
+      }, { headers: { Authorization: `Bearer ${token}` } });
       
       setMessage({ type: 'success', text: 'Reçu envoyé avec succès!' });
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Erreur lors de l\'envoi du reçu.' });
+    } catch (err: any) {
+      if (err.response?.status === 412) {
+        setMessage({ 
+          type: 'error', 
+          text: 'Configuration manquante — Veuillez configurer vos paramètres Email/WhatsApp dans les réglages.' 
+        });
+      } else {
+        setMessage({ type: 'error', text: 'Erreur lors de l\'envoi du reçu.' });
+      }
     } finally {
       setIsSending(false);
     }
@@ -331,7 +326,9 @@ const Sales = () => {
                               </div>
                             </div>
                             <div className="text-right">
-                              <p className="font-black text-amber-600 italic">{item.weightGrams ? `${item.weightGrams}g` : 'N/A'}</p>
+                              <p className="font-black text-amber-600 italic">
+                                {item.category === 'Jewellery' && item.weightGrams ? `${item.weightGrams}g` : '-'}
+                              </p>
                               <p className="text-[10px] uppercase font-bold text-slate-400">{item.metalType} {item.fineness}</p>
                             </div>
                           </div>
@@ -366,7 +363,9 @@ const Sales = () => {
                       </div>
                       <div>
                         <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Poids</p>
-                        <p className="text-2xl font-black text-amber-600 italic tracking-tighter">{scannedItem.weightGrams}g</p>
+                        <p className="text-2xl font-black text-amber-600 italic tracking-tighter">
+                          {scannedItem.category === 'Jewellery' ? `${scannedItem.weightGrams}g` : '-'}
+                        </p>
                       </div>
                       <div className="flex items-end justify-end">
                         <button 
@@ -408,136 +407,70 @@ const Sales = () => {
             <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100 overflow-hidden">
                <div className="flex items-center justify-between mb-8">
                   <h2 className="text-2xl font-black text-slate-900">Identification Client (KYC)</h2>
-                  {!isAddingCustomer && (
-                    <button 
-                      onClick={() => setIsAddingCustomer(true)}
-                      className="text-amber-600 font-bold flex items-center gap-2 hover:bg-amber-50 px-4 py-2 rounded-xl transition-all"
-                    >
-                      <UserPlus size={18} /> Nouveau Client
-                    </button>
-                  )}
+                  <button 
+                    onClick={() => setIsCustomerModalOpen(true)}
+                    className="text-amber-600 font-bold flex items-center gap-2 hover:bg-amber-50 px-4 py-2 rounded-xl transition-all"
+                  >
+                    <Plus size={18} /> Nouveau Client
+                  </button>
                </div>
 
-               {isAddingCustomer ? (
-                 <motion.form 
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  onSubmit={handleCreateCustomer} 
-                  className="space-y-6 p-6 bg-slate-50 rounded-3xl border-2 border-amber-100"
-                 >
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div>
-                        <label className="block text-sm font-bold text-slate-700 mb-2">Nom Complet</label>
-                        <input 
-                          type="text" required
-                          className="w-full bg-white border-2 border-slate-100 rounded-xl py-3 px-4 outline-none focus:border-amber-400 font-bold"
-                          value={newCustomer.name}
-                          onChange={(e) => setNewCustomer({ ...newCustomer, name: e.target.value })}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-bold text-slate-700 mb-2">N° National ID / Passeport</label>
-                        <input 
-                          type="text" required
-                          className="w-full bg-white border-2 border-slate-100 rounded-xl py-3 px-4 outline-none focus:border-amber-400 font-bold"
-                          value={newCustomer.idNumber}
-                          onChange={(e) => setNewCustomer({ ...newCustomer, idNumber: e.target.value })}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-bold text-slate-700 mb-2">Téléphone</label>
-                        <input 
-                          type="text" required
-                          className="w-full bg-white border-2 border-slate-100 rounded-xl py-3 px-4 outline-none focus:border-amber-400 font-bold"
-                          value={newCustomer.phoneNumber}
-                          onChange={(e) => setNewCustomer({ ...newCustomer, phoneNumber: e.target.value })}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-bold text-slate-700 mb-2">Email (Optionnel)</label>
-                        <input 
-                          type="email"
-                          className="w-full bg-white border-2 border-slate-100 rounded-xl py-3 px-4 outline-none focus:border-amber-400 font-bold"
-                          value={newCustomer.email}
-                          onChange={(e) => setNewCustomer({ ...newCustomer, email: e.target.value })}
-                        />
-                      </div>
-                    </div>
-                    <div className="flex gap-4">
-                      <button 
-                        type="submit" 
-                        disabled={isLoading}
-                        className="flex-1 bg-slate-900 text-white py-4 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2"
-                      >
-                        {isLoading ? <Loader2 className="animate-spin" /> : <>Enregistrer & Continuer <Check size={20}/></>}
-                      </button>
-                      <button 
-                        type="button"
-                        onClick={() => setIsAddingCustomer(false)}
-                        className="px-8 bg-slate-200 text-slate-600 rounded-xl font-bold"
-                      >
-                        Annuler
-                      </button>
-                    </div>
-                 </motion.form>
-               ) : (
-                 <div className="space-y-6">
-                    <div className="relative">
-                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={24} />
-                      <input 
-                        type="text"
-                        placeholder="Rechercher par Nom ou N° ID..."
-                        className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-4 pl-14 pr-4 text-lg font-bold outline-none focus:border-amber-400 transition-all"
-                        value={customerSearch}
-                        onChange={(e) => {
-                          setCustomerSearch(e.target.value);
-                          handleCustomerSearch();
-                        }}
-                      />
-                    </div>
+               <div className="space-y-6">
+                  <div className="relative">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={24} />
+                    <input 
+                      type="text"
+                      placeholder="Rechercher par Nom ou N° ID..."
+                      className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-4 pl-14 pr-4 text-lg font-bold outline-none focus:border-amber-400 transition-all font-mono"
+                      value={customerSearch}
+                      onChange={(e) => {
+                        setCustomerSearch(e.target.value);
+                        handleCustomerSearch();
+                      }}
+                    />
+                  </div>
 
-                    <div className="max-h-[300px] overflow-y-auto space-y-3 pr-2">
-                       {searchResults.map((c) => (
-                         <div 
-                           key={c.id} 
-                           onClick={() => setSelectedCustomer(c)}
-                           className={`p-4 rounded-2xl border-2 cursor-pointer transition-all flex items-center justify-between ${
-                             selectedCustomer?.id === c.id ? 'border-amber-400 bg-amber-50 shadow-sm' : 'border-slate-50 hover:border-slate-200'
-                           }`}
-                         >
-                            <div className="flex items-center gap-4">
-                              <div className="h-12 w-12 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-600">
-                                {c.name.charAt(0).toUpperCase()}
-                              </div>
-                              <div>
-                                <p className="font-bold text-slate-900">{c.name}</p>
-                                <p className="text-xs text-slate-500">{c.idNumber}</p>
-                              </div>
+                  <div className="max-h-[300px] overflow-y-auto space-y-3 pr-2">
+                     {searchResults.map((c) => (
+                       <div 
+                         key={c.id} 
+                         onClick={() => setSelectedCustomer(c)}
+                         className={`p-4 rounded-2xl border-2 cursor-pointer transition-all flex items-center justify-between ${
+                           selectedCustomer?.id === c.id ? 'border-amber-400 bg-amber-50 shadow-sm' : 'border-slate-50 hover:border-slate-200'
+                         }`}
+                       >
+                          <div className="flex items-center gap-4">
+                            <div className="h-12 w-12 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-600">
+                              {c.name.charAt(0).toUpperCase()}
                             </div>
-                            {selectedCustomer?.id === c.id && <Check className="text-amber-500" size={24} />}
-                         </div>
-                       ))}
-                       {customerSearch.length >= 2 && searchResults.length === 0 && (
-                         <div className="text-center py-10 text-slate-400 italic">Aucun client trouvé</div>
-                       )}
-                    </div>
+                            <div>
+                              <p className="font-bold text-slate-900">{c.name}</p>
+                              <p className="text-xs text-slate-500">{c.idNumber}</p>
+                            </div>
+                          </div>
+                          {selectedCustomer?.id === c.id && <Check className="text-amber-500" size={24} />}
+                       </div>
+                     ))}
+                     {customerSearch.length >= 2 && searchResults.length === 0 && (
+                       <div className="text-center py-10 text-slate-400 italic">Aucun client trouvé</div>
+                     )}
+                  </div>
 
-                    {selectedCustomer && (
-                      <motion.div 
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="flex justify-end pt-4"
+                  {selectedCustomer && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="flex justify-end pt-4"
+                    >
+                      <button 
+                        onClick={() => setSaleStep('payment')}
+                        className="bg-amber-500 text-slate-900 px-8 py-4 rounded-xl font-black text-lg hover:bg-amber-400 transition-all flex items-center gap-2 shadow-xl shadow-amber-500/20"
                       >
-                        <button 
-                          onClick={() => setSaleStep('payment')}
-                          className="bg-amber-500 text-slate-900 px-8 py-4 rounded-xl font-black text-lg hover:bg-amber-400 transition-all flex items-center gap-2 shadow-xl shadow-amber-500/20"
-                        >
-                          Valider Client <Check size={24} />
-                        </button>
-                      </motion.div>
-                    )}
-                 </div>
-               )}
+                        Valider Client <Check size={24} />
+                      </button>
+                    </motion.div>
+                  )}
+               </div>
             </div>
           </motion.div>
         )}
@@ -566,10 +499,12 @@ const Sales = () => {
                       <span className="text-slate-500 font-medium">Client</span>
                       <span className="font-black text-slate-900">{selectedCustomer.name}</span>
                     </div>
-                    <div className="flex justify-between items-center py-3">
-                      <span className="text-slate-500 font-medium">Poids</span>
-                      <span className="font-black text-amber-600">{scannedItem.weightGrams}g</span>
-                    </div>
+                    {scannedItem.category === 'Jewellery' && (
+                      <div className="flex justify-between items-center py-3">
+                        <span className="text-slate-500 font-medium">Poids</span>
+                        <span className="font-black text-amber-600">{scannedItem.weightGrams}g</span>
+                      </div>
+                    )}
                  </div>
                </div>
 
@@ -737,6 +672,16 @@ const Sales = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <CustomerModal 
+        isOpen={isCustomerModalOpen}
+        onClose={() => setIsCustomerModalOpen(false)}
+        onSuccess={(customer) => {
+          setSelectedCustomer(customer);
+          setSaleStep('payment');
+        }}
+        initialName={customerSearch}
+      />
     </div>
   );
 };

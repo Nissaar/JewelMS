@@ -543,29 +543,59 @@ async function startServer() {
   });
 
   app.get("/api/reports/stock-weight", authenticateToken, checkPermission('reports', 'view'), async (req, res) => {
-    const { category, subCategory } = req.query;
+    const { category, subCategory, groupBy } = req.query;
     try {
       const conditions = [eq(stock.status, 'Disponible')];
       if (category) conditions.push(eq(stock.category, category as string));
       if (subCategory) conditions.push(eq(stock.subCategory, subCategory as string));
 
+      // Primary report: Weight by Metal and Location
       const results = await db.select({
         metalType: stock.metalType,
         stockType: stock.stockType,
-        totalWeight: sql<number>`SUM(${stock.weightGrams})`.mapWith(Number)
+        category: stock.category,
+        totalWeight: sql<number>`SUM(COALESCE(${stock.weightGrams}, 0))`.mapWith(Number),
+        itemCount: sql<number>`COUNT(${stock.id})`.mapWith(Number)
       })
       .from(stock)
       .where(and(...conditions))
-      .groupBy(stock.metalType, stock.stockType);
+      .groupBy(stock.metalType, stock.stockType, stock.category);
 
-      // Format results for easier consumption
-      const report: any = { Gold: {}, Silver: {} };
+      // Format results for the frontend
+      const report: any = { 
+        Gold: {}, 
+        Silver: {}, 
+        Other: {},
+        byCategory: {} // New breakdown by category
+      };
+      
       results.forEach(row => {
-        if (!row.metalType) return;
-        const metal = row.metalType.charAt(0).toUpperCase() + row.metalType.slice(1).toLowerCase();
-        if (report[metal]) {
-          report[metal][row.stockType] = row.totalWeight;
+        let metal = 'Other';
+        if (row.metalType) {
+          const m = row.metalType.toLowerCase();
+          if (m.includes('gold') || m.includes('or')) metal = 'Gold';
+          else if (m.includes('silver') || m.includes('argent')) metal = 'Silver';
+          else metal = row.metalType.charAt(0).toUpperCase() + row.metalType.slice(1).toLowerCase();
         }
+
+        if (!report[metal]) report[metal] = {};
+        
+        // Frontend expects: report[Metal][Location] = totalGrams
+        const location = row.stockType || 'unknown';
+        report[metal][location] = (report[metal][location] || 0) + row.totalWeight;
+        
+        // Category breakdown
+        const cat = row.category || 'Non classé';
+        if (!report.byCategory[cat]) {
+          report.byCategory[cat] = { totalWeight: 0, itemCount: 0, byMetal: {} };
+        }
+        report.byCategory[cat].totalWeight += row.totalWeight;
+        report.byCategory[cat].itemCount += row.itemCount;
+        
+        if (!report.byCategory[cat].byMetal[metal]) {
+          report.byCategory[cat].byMetal[metal] = 0;
+        }
+        report.byCategory[cat].byMetal[metal] += row.totalWeight;
       });
 
       res.json(report);
@@ -695,9 +725,78 @@ async function startServer() {
     }
   });
 
+  // --- Notification Router / Sending Utility ---
+  const checkNotificationConfig = (method: 'whatsapp' | 'email' | 'both') => {
+    const hasWhatsApp = process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID;
+    const hasEmail = process.env.BREVO_API_KEY && process.env.BREVO_SENDER_EMAIL;
+
+    if (method === 'whatsapp' && !hasWhatsApp) return false;
+    if (method === 'email' && !hasEmail) return false;
+    if (method === 'both' && (!hasWhatsApp || !hasEmail)) return false;
+    
+    return true;
+  };
+
+  app.post("/api/notifications/send-receipt", authenticateToken, async (req, res) => {
+    const { saleId, method } = req.body;
+    
+    if (!checkNotificationConfig(method)) {
+      return res.status(412).json({ 
+        success: false, 
+        error: 'CONFIGURATION_MISSING',
+        message: 'WhatsApp or Email service is not configured on the server.'
+      });
+    }
+
+    // Reuse existing logic
+    try {
+      const saleArr = await db.select().from(sales).where(eq(sales.id, parseInt(saleId))).limit(1);
+      if (saleArr.length === 0) return res.status(404).json({ error: "Sale not found" });
+      const sale = saleArr[0];
+
+      const receiptArr = await db.select().from(receipts).where(eq(receipts.saleId, sale.id)).limit(1);
+      if (receiptArr.length === 0) return res.status(404).json({ error: "Receipt not found. Generate it first." });
+      const receipt = receiptArr[0];
+
+      if (!receipt.fileUrl) return res.status(400).json({ error: "Receipt has not been uploaded to storage yet." });
+
+      const customerArr = sale.customerId 
+        ? await db.select().from(customers).where(eq(customers.id, sale.customerId)).limit(1)
+        : [];
+      const customer = customerArr[0];
+
+      if (!customer) return res.status(404).json({ error: "Customer info required for sending receipt." });
+
+      const results: any = {};
+
+      if (method === 'whatsapp' || method === 'both') {
+        const { sendWhatsAppReceipt } = await import("./src/services/whatsappService");
+        results.whatsapp = await sendWhatsAppReceipt(customer.phoneNumber || '', receipt.fileUrl, receipt.receiptSerialNumber.toString());
+      }
+
+      if (method === 'email' || method === 'both') {
+        const { sendEmailReceipt } = await import("./src/services/emailService");
+        results.email = await sendEmailReceipt(customer.email || '', customer.name, receipt.fileUrl, receipt.receiptSerialNumber.toString());
+      }
+
+      res.json({ message: "Send operations completed", results });
+    } catch (error: any) {
+      console.error("Send Notification Error:", error);
+      res.status(500).json({ error: error.message || "Failed to send notification" });
+    }
+  });
+
   app.post("/api/receipts/:saleId/send", authenticateToken, async (req, res) => {
     const { saleId } = req.params;
     const { method } = req.body; // 'whatsapp', 'email', or 'both'
+
+    if (!checkNotificationConfig(method)) {
+      return res.status(412).json({ 
+        success: false, 
+        error: 'CONFIGURATION_MISSING',
+        message: 'WhatsApp or Email service is not configured on the server.'
+      });
+    }
 
     try {
       const saleArr = await db.select().from(sales).where(eq(sales.id, parseInt(saleId))).limit(1);
@@ -822,6 +921,14 @@ async function startServer() {
   app.post("/api/odf/:id/send", authenticateToken, async (req, res) => {
     const odfId = parseInt(req.params.id);
     const { method } = req.body; // 'whatsapp', 'email', or 'both'
+
+    if (!checkNotificationConfig(method)) {
+      return res.status(412).json({ 
+        success: false, 
+        error: 'CONFIGURATION_MISSING',
+        message: 'WhatsApp or Email service is not configured on the server.'
+      });
+    }
 
     try {
       const odfArr = await db.select().from(odf).where(eq(odf.id, odfId)).limit(1);
@@ -951,12 +1058,16 @@ async function startServer() {
         chequeNumber: sales.chequeNumber,
         metalType: sales.metalType,
         fineness: sales.fineness,
-        fileUrl: receipts.fileUrl
+        fileUrl: receipts.fileUrl,
+        orderId: sales.orderId,
+        orderDeposit: orders.deposit,
+        orderNumber: orders.orderNumber
       })
       .from(sales)
       .leftJoin(customers, eq(sales.customerId, customers.id))
       .leftJoin(receipts, eq(sales.id, receipts.saleId))
       .leftJoin(stock, eq(sales.stockId, stock.id))
+      .leftJoin(orders, eq(sales.orderId, orders.id))
       .orderBy(sql`${sales.datetime} DESC`);
 
       res.json(history);
@@ -1000,6 +1111,8 @@ async function startServer() {
         weight: odf.weight,
         amount: odf.amount,
         itemReservedRepair: odf.itemReservedRepair,
+        description: odf.description,
+        parameters: odf.parameters,
         comments: odf.comments,
         imageUrl: odf.imageUrl,
         createdAt: odf.createdAt
@@ -1014,7 +1127,7 @@ async function startServer() {
   });
 
   app.post("/api/odf", authenticateToken, checkPermission('odf', 'create'), upload.single('image'), async (req: any, res) => {
-    const { customerId, metalType, fineness, weight, amount, itemReservedRepair, comments, createdAt, fileUrl } = req.body;
+    const { customerId, metalType, fineness, weight, amount, itemReservedRepair, description, parameters, comments, createdAt, fileUrl } = req.body;
     let imageUrl = null;
 
     if (req.file) {
@@ -1029,6 +1142,8 @@ async function startServer() {
         weight: (weight && weight !== "") ? weight : null,
         amount: (amount && amount !== "") ? amount : null,
         itemReservedRepair,
+        description,
+        parameters,
         comments,
         imageUrl,
         fileUrl,
@@ -1051,17 +1166,22 @@ async function startServer() {
     try {
       const allOrders = await db.select({
         id: orders.id,
+        orderNumber: orders.orderNumber,
         customerId: orders.customerId,
         customerName: customers.name,
         itemDescription: orders.itemDescription,
         status: orders.status,
         finalWeight: orders.finalWeight,
         finalPrice: orders.finalPrice,
+        deposit: orders.deposit,
+        estimatedWeight: orders.estimatedWeight,
+        estimatedPrice: orders.estimatedPrice,
+        goldRate: orders.goldRate,
         createdAt: orders.createdAt
       })
       .from(orders)
       .innerJoin(customers, eq(orders.customerId, customers.id))
-      .orderBy(orders.createdAt);
+      .orderBy(sql`${orders.createdAt} DESC`);
       res.json(allOrders);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch orders" });
@@ -1069,11 +1189,15 @@ async function startServer() {
   });
 
   app.post("/api/orders", authenticateToken, checkPermission('orders', 'create'), async (req, res) => {
-    const { customerId, itemDescription, createdAt } = req.body;
+    const { customerId, itemDescription, createdAt, estimatedWeight, estimatedPrice, deposit, goldRate } = req.body;
     try {
       const newOrder = await db.insert(orders).values({
         customerId: parseInt(customerId),
         itemDescription,
+        estimatedWeight,
+        estimatedPrice,
+        deposit,
+        goldRate,
         status: 'Pending',
         createdAt: createdAt ? new Date(createdAt) : new Date()
       }).returning();
@@ -1082,12 +1206,32 @@ async function startServer() {
         ...newOrder[0]
       });
     } catch (error) {
+      console.error("Order Creation Error:", error);
       res.status(500).json({ error: "Failed to create order" });
     }
   });
 
+  app.get("/api/orders/:id/pdf", authenticateToken, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const oId = parseInt(id);
+
+      const { generateBookingReceiptPDF } = await import("./src/services/pdfService");
+      const { doc } = await generateBookingReceiptPDF(oId);
+      
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename=booking-${id}.pdf`);
+      
+      doc.pipe(res);
+      doc.end();
+    } catch (error: any) {
+      console.error("Booking PDF Generation Error:", error);
+      res.status(500).json({ error: error.message || "Failed to generate PDF" });
+    }
+  });
+
   app.post("/api/orders/:id/finalize", authenticateToken, async (req: any, res) => {
-    const { finalWeight, finalPrice, paymentMode } = req.body;
+    const { finalWeight, finalPrice, paymentMode, goldRate } = req.body;
     const orderId = parseInt(req.params.id);
 
     try {
@@ -1096,18 +1240,25 @@ async function startServer() {
         if (!order) throw new Error("Order not found");
 
         await tx.update(orders)
-          .set({ status: 'Finalized', finalWeight, finalPrice })
+          .set({ status: 'Finalized', finalWeight, finalPrice, goldRate, updatedAt: new Date() })
           .where(eq(orders.id, orderId));
+
+        const totalAmount = Number(finalPrice) || 0;
+        const vat = totalAmount * 0.15;
 
         await tx.insert(sales).values({
           customerId: order.customerId,
-          stockId: null, // Defaulting to null since it's a generic order sale
-          amount: (finalPrice && finalPrice !== "") ? finalPrice.toString() : "0",
+          stockId: null,
+          orderId: order.id,
+          amount: totalAmount.toString(),
+          vat15: vat.toFixed(2),
           weight: (finalWeight && finalWeight !== "") ? finalWeight.toString() : null,
+          goldRate: (goldRate && goldRate !== "") ? goldRate.toString() : null,
           paymentMode,
-          itemDetails: `Finalized Order: ${order.itemDescription}`,
+          itemDetails: `Finalized Order #${order.orderNumber}: ${order.itemDescription}`,
           qty: 1,
-          unitSalesPrice: (finalPrice && finalPrice !== "") ? finalPrice.toString() : "0"
+          unitSalesPrice: totalAmount.toString(),
+          datetime: new Date()
         });
       });
 

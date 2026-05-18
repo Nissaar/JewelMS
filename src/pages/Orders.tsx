@@ -4,10 +4,11 @@ import axios from 'axios';
 import { 
   Package, User, Plus, Check, AlertCircle, 
   Loader2, Search, Scale, X,
-  ShoppingCart, Info, Clock, CheckCircle2, Banknote
+  ShoppingCart, Info, Clock, CheckCircle2, Banknote, UserPlus
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatCurrency } from '../lib/utils';
+import CustomerModal from '../components/CustomerModal';
 
 const Orders = () => {
   const { token } = useAuth();
@@ -24,12 +25,19 @@ const Orders = () => {
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [itemDescription, setItemDescription] = useState('');
+  const [estimatedWeight, setEstimatedWeight] = useState('');
+  const [estimatedPrice, setEstimatedPrice] = useState('');
+  const [deposit, setDeposit] = useState('');
+  const [goldRate, setGoldRate] = useState('');
   const [orderDate, setOrderDate] = useState(new Date().toISOString().split('T')[0]);
+  const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
+  const [lastCreatedOrderId, setLastCreatedOrderId] = useState<number | null>(null);
 
   // Finalize Modal State
   const [finalizingOrder, setFinalizingOrder] = useState<any>(null);
   const [finalWeight, setFinalWeight] = useState('');
   const [finalPrice, setFinalPrice] = useState('');
+  const [finalGoldRate, setFinalGoldRate] = useState('');
   const [paymentMode, setPaymentMode] = useState('Cash');
 
   useEffect(() => {
@@ -67,14 +75,18 @@ const Orders = () => {
 
     setIsLoading(true);
     try {
-      await axios.post('/api/orders', {
+      const res = await axios.post('/api/orders', {
         customerId: selectedCustomer.id,
         itemDescription,
+        estimatedWeight,
+        estimatedPrice,
+        deposit,
+        goldRate,
         createdAt: orderDate
       }, { headers: { Authorization: `Bearer ${token}` } });
       
-      setMessage({ type: 'success', text: 'Commande manuelle enregistrée!' });
-      setTimeout(() => setView('list'), 2000);
+      setLastCreatedOrderId(res.data.id);
+      setMessage({ type: 'success', text: 'Commande enregistrée avec succès!' });
     } catch (err) {
       setMessage({ type: 'error', text: 'Erreur lors de la création de la commande' });
     } finally {
@@ -90,6 +102,7 @@ const Orders = () => {
       await axios.post(`/api/orders/${finalizingOrder.id}/finalize`, {
         finalWeight,
         finalPrice,
+        goldRate: finalGoldRate,
         paymentMode
       }, { headers: { Authorization: `Bearer ${token}` } });
       
@@ -144,18 +157,28 @@ const Orders = () => {
                 <h3 className="text-lg font-black text-slate-900 mb-6 flex items-center gap-2">
                   <User className="text-amber-500" size={20} /> Client (KYC)
                 </h3>
-                <div className="relative mb-6">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                  <input 
-                    type="text"
-                    placeholder="Chercher Client..."
-                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-12 pr-4 font-bold outline-none focus:border-amber-400"
-                    value={customerSearch}
-                    onChange={(e) => {
-                      setCustomerSearch(e.target.value);
-                      handleCustomerSearch();
-                    }}
-                  />
+                <div className="flex gap-2 mb-6">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                    <input 
+                      type="text"
+                      placeholder="Chercher Client..."
+                      className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-12 pr-4 font-bold outline-none focus:border-amber-400"
+                      value={customerSearch}
+                      onChange={(e) => {
+                        setCustomerSearch(e.target.value);
+                        handleCustomerSearch();
+                      }}
+                    />
+                  </div>
+                  <button 
+                    type="button"
+                    onClick={() => setIsCustomerModalOpen(true)}
+                    className="p-3 bg-amber-500 text-white rounded-xl hover:bg-amber-600 transition-colors shadow-lg shadow-amber-500/20"
+                    title="Nouveau Client"
+                  >
+                    <Plus size={24} />
+                  </button>
                 </div>
                 <div className="space-y-3 max-h-[300px] overflow-y-auto">
                   {searchResults.map((c) => (
@@ -202,18 +225,92 @@ const Orders = () => {
                     onChange={(e) => setItemDescription(e.target.value)}
                   />
                 </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Poids Estimé (g)</label>
+                    <input 
+                      type="number" step="0.01"
+                      className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 font-bold outline-none focus:border-amber-400"
+                      value={estimatedWeight}
+                      onChange={(e) => setEstimatedWeight(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Cours Or Estimé (Rs/g)</label>
+                    <input 
+                      type="number" step="0.01"
+                      className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 font-bold outline-none focus:border-amber-400"
+                      value={goldRate}
+                      onChange={(e) => setGoldRate(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Prix Estimé Total (Rs)</label>
+                    <input 
+                      type="number"
+                      className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 font-bold outline-none focus:border-amber-400"
+                      value={estimatedPrice}
+                      onChange={(e) => setEstimatedPrice(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Acompte Payé (Rs)</label>
+                    <input 
+                      type="number" required
+                      className="w-full bg-slate-50 border-2 border-amber-200 rounded-xl py-3 px-4 font-bold outline-none focus:border-amber-400 text-amber-600 shadow-sm"
+                      value={deposit}
+                      onChange={(e) => setDeposit(e.target.value)}
+                    />
+                  </div>
+                </div>
+
                 <div className="p-4 bg-amber-50 rounded-2xl flex gap-3 text-sm text-amber-700">
                   <Info size={18} className="shrink-0" />
-                  <p><b>Note:</b> Le poids et le prix final seront saisis lors de la livraison et de la facturation finale.</p>
+                  <p><b>Note:</b> Le poids et le prix final seront saisis lors de la livraison et de la facturation finale. L'acompte sera déduit du total.</p>
                 </div>
               </div>
 
               {message.text && (
-                <div className={`p-4 rounded-xl text-center font-bold flex items-center justify-center gap-2 ${
-                  message.type === 'success' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'
+                <div className={`p-6 rounded-[2rem] text-center font-bold flex flex-col items-center justify-center gap-4 ${
+                  message.type === 'success' ? 'bg-emerald-50 text-emerald-600 border-2 border-emerald-100' : 'bg-red-50 text-red-600'
                 }`}>
-                  {message.type === 'success' ? <Check size={20}/> : <AlertCircle size={20}/>}
-                  {message.text}
+                  <div className="flex items-center gap-2">
+                    {message.type === 'success' ? <CheckCircle2 size={28}/> : <AlertCircle size={28}/>}
+                    <span className="text-xl">{message.text}</span>
+                  </div>
+                  
+                  {message.type === 'success' && lastCreatedOrderId && (
+                    <div className="flex gap-4 w-full max-w-md">
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          window.open(`/api/orders/${lastCreatedOrderId}/pdf`, '_blank');
+                        }}
+                        className="flex-1 bg-emerald-600 text-white py-4 rounded-2xl font-black flex items-center justify-center gap-2 hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-600/20"
+                      >
+                        <Package size={20} /> Imprimer Reçu d'Acompte
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={() => {
+                           setView('list');
+                           setMessage({ type: '', text: '' });
+                           setLastCreatedOrderId(null);
+                           // Reset form
+                           setItemDescription('');
+                           setEstimatedWeight('');
+                           setEstimatedPrice('');
+                           setDeposit('');
+                           setGoldRate('');
+                           setSelectedCustomer(null);
+                        }}
+                        className="flex-1 bg-white text-slate-600 py-4 rounded-2xl font-black border-2 border-slate-100 hover:bg-slate-50 transition-all"
+                      >
+                        Retour à la Liste
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -283,6 +380,13 @@ const Orders = () => {
         )}
       </AnimatePresence>
 
+      <CustomerModal 
+        isOpen={isCustomerModalOpen}
+        onClose={() => setIsCustomerModalOpen(false)}
+        onSuccess={(customer) => setSelectedCustomer(customer)}
+        initialName={customerSearch}
+      />
+
       {/* Finalize Modal */}
       <AnimatePresence>
         {finalizingOrder && (
@@ -318,18 +422,49 @@ const Orders = () => {
                     </div>
                   </div>
                   <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase mb-2">Prix TTC</label>
+                    <label className="block text-xs font-black text-slate-400 uppercase mb-2">Cours de l'Or Final (Rs/g)</label>
+                    <div className="relative">
+                      <Scale className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                      <input 
+                        type="number" step="0.01" 
+                        className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-12 pr-4 font-bold outline-none focus:border-amber-400"
+                        value={finalGoldRate}
+                        onChange={(e) => setFinalGoldRate(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs font-black text-slate-400 uppercase mb-2">Prix TTC Total</label>
                     <div className="relative">
                       <Banknote className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
                       <input 
                         type="number" 
-                        className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-12 pr-4 font-bold outline-none focus:border-amber-400"
+                        className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-12 pr-4 font-bold outline-none focus:border-amber-400 text-lg"
                         value={finalPrice}
                         onChange={(e) => setFinalPrice(e.target.value)}
                       />
                     </div>
                   </div>
                 </div>
+
+                {finalizingOrder.deposit && (
+                  <div className="space-y-3 p-4 bg-amber-50 rounded-2xl border border-amber-100">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-500 font-bold">Total Final:</span>
+                      <span className="text-slate-900 font-black">{formatCurrency(Number(finalPrice) || 0)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-amber-600 font-bold">Acompte Payé:</span>
+                      <span className="text-amber-600 font-black">- {formatCurrency(Number(finalizingOrder.deposit))}</span>
+                    </div>
+                    <div className="pt-2 border-t border-amber-200 flex justify-between items-center">
+                      <span className="text-slate-900 font-black">Reste à Payer:</span>
+                      <span className="text-2xl font-black text-slate-900">
+                        {formatCurrency(Math.max(0, (Number(finalPrice) || 0) - Number(finalizingOrder.deposit)))}
+                      </span>
+                    </div>
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-xs font-black text-slate-400 uppercase mb-2">Mode de Paiement</label>

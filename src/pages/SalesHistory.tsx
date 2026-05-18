@@ -173,7 +173,9 @@ const SalesHistory = () => {
                       <p className="text-sm font-medium text-slate-700 truncate max-w-[200px]">
                         {sale.itemDetails || `${sale.barcode || ''} - ${sale.category || ''} ${sale.subCategory || ''} ${sale.metalType ? `(${sale.metalType})` : ''}`.trim().replace(/\s+/g, ' ')}
                       </p>
-                      <p className="text-[10px] font-bold text-emerald-600 tracking-widest uppercase">{sale.metalType} {sale.fineness}</p>
+                      {sale.category === 'Jewellery' && (
+                        <p className="text-[10px] font-bold text-emerald-600 tracking-widest uppercase">{sale.metalType} {sale.fineness}</p>
+                      )}
                     </td>
                     <td className="px-8 py-6">
                       <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
@@ -252,11 +254,22 @@ const SalesHistory = () => {
                         <p className="font-black text-slate-900 text-lg">
                           {selectedSale.itemDetails || `${selectedSale.barcode || ''} - ${selectedSale.category || ''} ${selectedSale.subCategory || ''} ${selectedSale.metalType ? `(${selectedSale.metalType})` : ''}`.trim().replace(/\s+/g, ' ')}
                         </p>
-                        <p className="text-xs font-bold text-emerald-600 uppercase tracking-widest">{selectedSale.metalType} {selectedSale.fineness}</p>
+                        {selectedSale.category === 'Jewellery' && (
+                          <p className="text-xs font-bold text-emerald-600 uppercase tracking-widest">{selectedSale.metalType} {selectedSale.fineness}</p>
+                        )}
                       </div>
                       <div className="text-right">
-                        <p className="font-black text-slate-900">{selectedSale.weight} g</p>
-                        <p className="text-[10px] font-bold text-slate-400 italic">Poids net</p>
+                        {selectedSale.category === 'Jewellery' ? (
+                          <>
+                            <p className="font-black text-slate-900">{selectedSale.weight} g</p>
+                            <p className="text-[10px] font-bold text-slate-400 italic">Poids net</p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="font-black text-slate-900">-</p>
+                            <p className="text-[10px] font-bold text-slate-400 italic">Accessoire</p>
+                          </>
+                        )}
                       </div>
                     </div>
                     
@@ -282,9 +295,23 @@ const SalesHistory = () => {
                      <span>TVA (15%)</span>
                      <span>{formatCurrency(selectedSale.vat15 || "0")}</span>
                    </div>
+                   
+                   {selectedSale.orderId && (
+                     <div className="flex justify-between items-center text-sm font-bold text-blue-400">
+                       <span>ACOMPTE DÉDUIT (COMMANDE #{selectedSale.orderNumber})</span>
+                       <span>- {formatCurrency(selectedSale.orderDeposit || "0")}</span>
+                     </div>
+                   )}
+
                    <div className="pt-4 border-t border-slate-800 flex justify-between items-center">
-                     <span className="text-lg font-black tracking-tight">TOTAL TTC</span>
-                     <span className="text-2xl font-black text-emerald-400">{ formatCurrency(parseFloat(selectedSale.totalAmount || "0") + parseFloat(selectedSale.vat15 || "0")) }</span>
+                     <span className="text-lg font-black tracking-tight">{selectedSale.orderId ? 'RESTE À PAYER' : 'TOTAL TTC'}</span>
+                     <span className="text-2xl font-black text-emerald-400">
+                       { formatCurrency(
+                         parseFloat(selectedSale.totalAmount || "0") + 
+                         parseFloat(selectedSale.vat15 || "0") - 
+                         (selectedSale.orderId ? parseFloat(selectedSale.orderDeposit || "0") : 0)
+                       ) }
+                     </span>
                    </div>
                 </div>
 
