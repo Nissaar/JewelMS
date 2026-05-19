@@ -25,17 +25,21 @@ CREATE TABLE IF NOT EXISTS roles_permissions (
     UNIQUE(user_id, functionality)
 );
 
--- Audit Logging
--- Track every user action (login, sales, stock edits)
-CREATE TABLE IF NOT EXISTS audit_logs (
+-- KYC (Customers)
+CREATE TABLE IF NOT EXISTS customers (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-    action_type VARCHAR(50) NOT NULL, -- e.g., 'LOGIN', 'SALES_CREATE', 'STOCK_UPDATE'
-    details JSONB, -- Details of the change/action
-    ip_address VARCHAR(45),
-    user_agent TEXT,
-    timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(100),
+    address TEXT,
+    phone_number VARCHAR(20),
+    id_number VARCHAR(100) UNIQUE NOT NULL, -- National ID, Passport, etc.
+    risk_rating VARCHAR(20) DEFAULT 'Low' CHECK (risk_rating IN ('Low', 'Medium', 'High')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Ensure id_number is indexed for cross-querying
+CREATE INDEX IF NOT EXISTS idx_customers_id_number ON customers(id_number);
 
 -- Stock Management
 CREATE TABLE IF NOT EXISTS stock (
@@ -60,54 +64,6 @@ CREATE TABLE IF NOT EXISTS stock (
 
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- KYC (Customers)
-CREATE TABLE IF NOT EXISTS customers (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    email VARCHAR(100),
-    address TEXT,
-    phone_number VARCHAR(20),
-    id_number VARCHAR(100) UNIQUE NOT NULL, -- National ID, Passport, etc.
-    risk_rating VARCHAR(20) DEFAULT 'Low' CHECK (risk_rating IN ('Low', 'Medium', 'High')),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- Ensure id_number is indexed for cross-querying
-CREATE INDEX IF NOT EXISTS idx_customers_id_number ON customers(id_number);
-
--- Sales Management
-CREATE TABLE IF NOT EXISTS sales (
-    id SERIAL PRIMARY KEY,
-    customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
-    stock_id INTEGER REFERENCES stock(id) ON DELETE SET NULL,
-    datetime TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    payment_mode VARCHAR(20) NOT NULL CHECK (payment_mode IN ('Cash', 'Juice', 'Card', 'Bank Transfer', 'Cheque')),
-    cheque_number VARCHAR(50), -- Only for 'Cheque' payment mode
-    qty INTEGER DEFAULT 1,
-    item_details TEXT,
-    weight NUMERIC(10, 3),
-    fineness VARCHAR(20),
-    unit_sales_price NUMERIC(15, 2),
-    amount NUMERIC(15, 2),
-    vat_15 NUMERIC(15, 2), -- Calculated field (15% of amount/taxable base)
-    metal_type VARCHAR(50),
-    gold_rate NUMERIC(15, 2),
-    order_id INTEGER REFERENCES orders(id) ON DELETE SET NULL,
-    status VARCHAR(20) DEFAULT 'Completed' NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- Receipts
-CREATE TABLE IF NOT EXISTS receipts (
-    id SERIAL PRIMARY KEY,
-    receipt_serial_number SERIAL, -- Auto-incrementing serial number
-    sale_id INTEGER REFERENCES sales(id) ON DELETE CASCADE,
-    print_count INTEGER DEFAULT 0,
-    file_url TEXT, -- Relative path to local storage (/uploads/...)
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Orders (Manual entries)
@@ -144,6 +100,50 @@ CREATE TABLE IF NOT EXISTS odf (
     image_url TEXT, -- Field for uploaded serial number/form photo
     file_url TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Sales Management
+CREATE TABLE IF NOT EXISTS sales (
+    id SERIAL PRIMARY KEY,
+    customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+    stock_id INTEGER REFERENCES stock(id) ON DELETE SET NULL,
+    datetime TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    payment_mode VARCHAR(20) NOT NULL CHECK (payment_mode IN ('Cash', 'Juice', 'Card', 'Bank Transfer', 'Cheque')),
+    cheque_number VARCHAR(50), -- Only for 'Cheque' payment mode
+    qty INTEGER DEFAULT 1,
+    item_details TEXT,
+    weight NUMERIC(10, 3),
+    fineness VARCHAR(20),
+    unit_sales_price NUMERIC(15, 2),
+    amount NUMERIC(15, 2),
+    vat_15 NUMERIC(15, 2), -- Calculated field (15% of amount/taxable base)
+    metal_type VARCHAR(50),
+    gold_rate NUMERIC(15, 2),
+    order_id INTEGER REFERENCES orders(id) ON DELETE SET NULL,
+    status VARCHAR(20) DEFAULT 'Completed' NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Receipts
+CREATE TABLE IF NOT EXISTS receipts (
+    id SERIAL PRIMARY KEY,
+    receipt_serial_number SERIAL, -- Auto-incrementing serial number
+    sale_id INTEGER REFERENCES sales(id) ON DELETE CASCADE,
+    print_count INTEGER DEFAULT 0,
+    file_url TEXT, -- Relative path to local storage (/uploads/...)
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Audit Logging
+-- Track every user action (login, sales, stock edits)
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    action_type VARCHAR(50) NOT NULL, -- e.g., 'LOGIN', 'SALES_CREATE', 'STOCK_UPDATE'
+    details JSONB, -- Details of the change/action
+    ip_address VARCHAR(45),
+    user_agent TEXT,
+    timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- App Settings (Global texts)
