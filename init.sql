@@ -94,6 +94,9 @@ CREATE TABLE IF NOT EXISTS sales (
     amount NUMERIC(15, 2),
     vat_15 NUMERIC(15, 2), -- Calculated field (15% of amount/taxable base)
     metal_type VARCHAR(50),
+    gold_rate NUMERIC(15, 2),
+    order_id INTEGER REFERENCES orders(id) ON DELETE SET NULL,
+    status VARCHAR(20) DEFAULT 'Completed' NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -114,6 +117,9 @@ CREATE TABLE IF NOT EXISTS orders (
     customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
     item_description TEXT,
     estimated_weight NUMERIC(10, 3),
+    estimated_price NUMERIC(15, 2),
+    deposit NUMERIC(15, 2),
+    gold_rate NUMERIC(15, 2),
     final_weight NUMERIC(10, 3),
     final_price NUMERIC(15, 2),
     status VARCHAR(20) DEFAULT 'Pending' CHECK (status IN ('Pending', 'Finalized')),
@@ -128,6 +134,8 @@ CREATE TABLE IF NOT EXISTS odf (
     date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
     item_reserved_repair TEXT,
+    description TEXT,
+    parameters TEXT,
     comments TEXT,
     weight NUMERIC(10, 3),
     metal_type VARCHAR(50), -- Silver, Gold

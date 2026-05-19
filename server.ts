@@ -197,7 +197,7 @@ async function startServer() {
 
   // --- Sales Recording Endpoint ---
   app.post("/api/sales", authenticateToken, checkPermission('sales', 'create'), async (req, res) => {
-    const { customerId, barcode, paymentMode, chequeNumber, qty, amount, unitSalesPrice, itemDetails } = req.body;
+    const { customerId, barcode, paymentMode, chequeNumber, qty, amount, unitSalesPrice, itemDetails, goldRate, orderId } = req.body;
 
     try {
       const result = await db.transaction(async (tx) => {
@@ -225,6 +225,8 @@ async function startServer() {
           amount: (amount && amount !== "") ? amount.toString() : null,
           vat15: vat.toFixed(2),
           metalType: item.metalType,
+          goldRate: (goldRate && goldRate !== "") ? goldRate.toString() : null,
+          orderId: orderId || null,
         }).returning();
 
         // 4. Mark as sold in stock
@@ -240,6 +242,54 @@ async function startServer() {
       console.error("Sales Recording Error:", error);
       const status = error.message === "Item not found in stock or already sold" ? 404 : 500;
       res.status(status).json({ error: error.message || "Failed to record sale" });
+    }
+  });
+
+  app.post("/api/sales/:id/cancel", authenticateToken, async (req: any, res) => {
+    // Visible only to Admin accounts
+    if (req.user?.role !== 'Admin') return res.status(403).json({ error: "Admin access required" });
+    
+    const saleId = parseInt(req.params.id);
+
+    try {
+      await db.transaction(async (tx) => {
+        // 1. Get sale record
+        const saleRecords = await tx.select().from(sales).where(eq(sales.id, saleId)).limit(1);
+        if (saleRecords.length === 0) throw new Error("Vente non trouvée");
+        const sale = saleRecords[0];
+
+        if (sale.status === 'Cancelled') throw new Error("La vente est déjà annulée");
+
+        // 2. Update item in stock to 'Disponible'
+        if (sale.stockId) {
+          await tx.update(stock)
+            .set({ 
+              status: 'Disponible', 
+              soldAt: null, 
+              updatedAt: new Date() 
+            })
+            .where(eq(stock.id, sale.stockId));
+        }
+
+        // 3. Update sale status to 'Cancelled'
+        await tx.update(sales)
+          .set({ status: 'Cancelled' })
+          .where(eq(sales.id, saleId));
+
+        // 4. Log to audit trail
+        await tx.insert(auditLogs).values({
+          userId: req.user.id,
+          actionType: 'CANCEL_SALE',
+          details: { saleId, stockId: sale.stockId },
+          ipAddress: req.ip,
+          userAgent: req.get('user-agent')
+        });
+      });
+
+      res.json({ message: "Vente annulée avec succès. L'article est de nouveau en stock." });
+    } catch (error: any) {
+      console.error("Sale Cancellation Error:", error);
+      res.status(500).json({ error: error.message || "Erreur lors de l'annulation de la vente" });
     }
   });
 
@@ -1061,7 +1111,8 @@ async function startServer() {
         fileUrl: receipts.fileUrl,
         orderId: sales.orderId,
         orderDeposit: orders.deposit,
-        orderNumber: orders.orderNumber
+        orderNumber: orders.orderNumber,
+        status: sales.status
       })
       .from(sales)
       .leftJoin(customers, eq(sales.customerId, customers.id))

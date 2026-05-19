@@ -4,13 +4,14 @@ import axios from 'axios';
 import { 
   History, Search, Filter, Calendar, FileText, 
   Download, Eye, X, Loader2, Banknote,
-  Smartphone, Mail, Check, AlertCircle, ExternalLink
+  Smartphone, Mail, Check, AlertCircle, ExternalLink,
+  Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatCurrency } from '../lib/utils';
 
 const SalesHistory = () => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [sales, setSales] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -18,6 +19,7 @@ const SalesHistory = () => {
   const [selectedSale, setSelectedSale] = useState<any>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
 
   useEffect(() => {
@@ -80,6 +82,25 @@ const SalesHistory = () => {
   const openDetails = (sale: any) => {
     setSelectedSale(sale);
     setIsModalOpen(true);
+  };
+
+  const handleCancelSale = async (saleId: number) => {
+    if (!window.confirm("Êtes-vous sûr de vouloir annuler cette vente ? L'article sera remis en stock et la transaction sera marquée comme annulée.")) return;
+
+    setIsCancelling(true);
+    try {
+      await axios.post(`/api/sales/${saleId}/cancel`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setMessage({ type: 'success', text: "Vente annulée avec succès" });
+      setIsModalOpen(false);
+      fetchSalesHistory();
+    } catch (err: any) {
+      console.error(err);
+      setMessage({ type: 'error', text: err.response?.data?.error || "Erreur lors de l'annulation" });
+    } finally {
+      setIsCancelling(false);
+    }
   };
 
   return (
@@ -164,6 +185,9 @@ const SalesHistory = () => {
                     <td className="px-8 py-6">
                       <p className="font-black text-slate-900">{new Date(sale.date).toLocaleDateString('fr-FR')}</p>
                       <p className="text-[10px] font-bold text-slate-400 tracking-wider">SALE #{sale.id} {sale.receiptNo ? `| RECO N°${sale.receiptNo}` : ''}</p>
+                      {sale.status === 'Cancelled' && (
+                        <span className="mt-1 inline-block px-2 py-0.5 bg-red-100 text-red-600 text-[8px] font-black uppercase rounded-md">Annulée</span>
+                      )}
                     </td>
                     <td className="px-8 py-6">
                       <p className="font-bold text-slate-800">{sale.customerName || 'Client de Passage'}</p>
@@ -235,6 +259,16 @@ const SalesHistory = () => {
               </div>
 
               <div className="p-8 space-y-8 overflow-y-auto max-h-[70vh]">
+                {selectedSale.status === 'Cancelled' && (
+                  <div className="bg-red-50 border-2 border-red-100 p-6 rounded-3xl flex items-center gap-4 text-red-600">
+                    <Trash2 size={32} />
+                    <div>
+                      <p className="font-black uppercase text-sm tracking-widest">Transaction Annulée</p>
+                      <p className="text-xs font-bold opacity-80">Cette vente a été annulée et l'article a été remis en stock.</p>
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-8">
                   <div className="space-y-4 text-center p-6 bg-slate-50 rounded-3xl">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Client</p>
@@ -316,9 +350,19 @@ const SalesHistory = () => {
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 pt-4">
+                  {user?.role === 'Admin' && selectedSale.status !== 'Cancelled' && (
+                    <button 
+                      onClick={() => handleCancelSale(selectedSale.id)}
+                      disabled={isCancelling}
+                      className="col-span-2 flex items-center justify-center gap-3 py-4 bg-red-50 text-red-600 border-2 border-red-100 rounded-2xl font-black hover:bg-red-100 transition-all shadow-sm mb-2 disabled:opacity-50"
+                    >
+                      {isCancelling ? <Loader2 className="animate-spin" size={20} /> : <Trash2 size={20} />}
+                      {isCancelling ? 'Annulation en cours...' : 'Annuler la vente'}
+                    </button>
+                  )}
                   <button 
                     onClick={() => handleDownloadPDF(selectedSale.id)}
-                    disabled={isGeneratingPDF}
+                    disabled={isGeneratingPDF || selectedSale.status === 'Cancelled'}
                     className="flex items-center justify-center gap-3 py-4 bg-emerald-500 text-white rounded-2xl font-black hover:bg-emerald-600 transition-all shadow-lg disabled:opacity-50"
                   >
                     {isGeneratingPDF ? (

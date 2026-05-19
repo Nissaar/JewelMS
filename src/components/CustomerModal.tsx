@@ -13,35 +13,71 @@ interface CustomerModalProps {
   onClose: () => void;
   onSuccess: (customer: any) => void;
   initialName?: string;
+  customerToEdit?: any;
 }
 
-const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSuccess, initialName = '' }) => {
+const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSuccess, initialName = '', customerToEdit = null }) => {
   const { token } = useAuth();
   const [newCustomer, setNewCustomer] = useState({
-    name: initialName,
+    name: '',
     email: '',
     address: '',
     phoneNumber: '',
     idNumber: '',
     riskRating: 'Low'
   });
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
 
-  const handleCreateCustomer = async (e: React.FormEvent) => {
+  // Use useEffect to reset state when modal opens or editing customer changes
+  // This prevents the "overwrite" bug if props change while modal is open
+  React.useEffect(() => {
+    if (isOpen) {
+      if (customerToEdit) {
+        setNewCustomer({
+          name: customerToEdit.name || '',
+          email: customerToEdit.email || '',
+          address: customerToEdit.address || '',
+          phoneNumber: customerToEdit.phoneNumber || '',
+          idNumber: customerToEdit.idNumber || '',
+          riskRating: customerToEdit.riskRating || 'Low'
+        });
+      } else {
+        setNewCustomer({
+          name: initialName,
+          email: '',
+          address: '',
+          phoneNumber: '',
+          idNumber: '',
+          riskRating: 'Low'
+        });
+      }
+      setMessage({ type: '', text: '' });
+    }
+  }, [isOpen, customerToEdit, initialName]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     setMessage({ type: '', text: '' });
     try {
-      const res = await axios.post('/api/customers', newCustomer, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      let res;
+      if (customerToEdit) {
+        res = await axios.put(`/api/customers/${customerToEdit.id}`, newCustomer, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      } else {
+        res = await axios.post('/api/customers', newCustomer, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      }
       onSuccess(res.data);
       onClose();
     } catch (err: any) {
       setMessage({ 
         type: 'error', 
-        text: err.response?.data?.message || err.response?.data?.error || 'Erreur lors de la création du client.' 
+        text: err.response?.data?.message || err.response?.data?.error || 'Une erreur est survenue.' 
       });
     } finally {
       setIsSubmitting(false);
@@ -83,7 +119,7 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSucces
           </button>
         </div>
 
-        <form onSubmit={handleCreateCustomer} className="p-8 space-y-6">
+        <form onSubmit={handleSubmit} className="p-8 space-y-6">
           {message.text && (
             <div className={`p-4 rounded-2xl flex items-center gap-3 font-bold ${message.type === 'success' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
               {message.type === 'success' ? <Check className="shrink-0" /> : <AlertCircle className="shrink-0" />}

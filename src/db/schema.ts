@@ -88,6 +88,7 @@ export const sales = pgTable('sales', {
   metalType: varchar('metal_type', { length: 50 }),
   goldRate: numeric('gold_rate', { precision: 15, scale: 2 }),
   orderId: integer('order_id').references(() => orders.id, { onDelete: 'set null' }),
+  status: varchar('status', { length: 20 }).default('Completed').notNull(), // 'Completed' | 'Cancelled'
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 

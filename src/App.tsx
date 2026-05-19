@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import { PWAProvider } from './context/PWAContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Layout } from './components/Layout';
 
@@ -24,8 +25,9 @@ import Customers from './pages/Customers';
 const App: React.FC = () => {
   return (
     <AuthProvider>
-      <Router>
-        <Routes>
+      <PWAProvider>
+        <Router>
+          <Routes>
           <Route path="/login" element={<Login />} />
           
           <Route path="/" element={
@@ -127,6 +129,7 @@ const App: React.FC = () => {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Router>
+      </PWAProvider>
     </AuthProvider>
   );
 };

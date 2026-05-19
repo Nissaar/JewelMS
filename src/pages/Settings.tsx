@@ -1,38 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { usePWA } from '../context/PWAContext';
 import axios from 'axios';
 import { Save, UserPlus, Shield, Check, X, AlertCircle, Loader2, Download, Smartphone, Monitor } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { downloadFile } from '../utils/helpers';
 
 const Settings = () => {
   const { token, user: currentUser } = useAuth();
+  const { isInstallable, installApp } = usePWA();
   const [activeTab, setActiveTab] = useState<'general' | 'users' | 'pwa'>('general');
   const [settings, setSettings] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
-  const [isInstallable, setIsInstallable] = useState(false);
-
-  useEffect(() => {
-    window.addEventListener('beforeinstallprompt', (e) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-      setIsInstallable(true);
-    });
-  }, []);
-
-  const handleInstallClick = async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') {
-      setDeferredPrompt(null);
-      setIsInstallable(false);
-    }
-  };
 
   // User creation/edit state
   const [showAddUser, setShowAddUser] = useState(false);
@@ -299,79 +280,80 @@ const Settings = () => {
               <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
                 <div className="flex items-center space-x-4 mb-6">
                   <div className="h-14 w-14 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center">
-                    <Download size={32} />
+                    <Smartphone size={32} />
                   </div>
                   <div>
                     <h3 className="text-2xl font-black text-slate-900">Installation Standalone</h3>
-                    <p className="text-slate-500 font-medium">Transformez ce site en une application pour votre appareil.</p>
+                    <p className="text-slate-500 font-medium">Installez Haujee Jewellery comme une application native pour une expérience optimale.</p>
                   </div>
                 </div>
 
                 <div className="space-y-8">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 flex flex-col items-center text-center space-y-4">
-                      <div className="h-16 w-16 bg-white rounded-2xl flex items-center justify-center text-amber-500 shadow-sm">
-                        <Smartphone size={32} />
-                      </div>
-                      <div>
-                        <h4 className="font-black text-slate-900">App Mobile</h4>
-                        <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Version Android</p>
-                      </div>
-                      <button 
-                        onClick={() => downloadFile('/installers/haujee-mobile.apk', 'haujee-mobile.apk')}
-                        className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold text-sm shadow-lg hover:bg-slate-800 transition-all flex items-center justify-center gap-2"
-                      >
-                        <Download size={16} /> Télécharger l'APK
-                      </button>
+                  <div className="bg-slate-50 p-10 rounded-[2rem] border border-slate-100 flex flex-col items-center text-center space-y-6">
+                    <div className="h-24 w-24 bg-white rounded-3xl flex items-center justify-center text-amber-500 shadow-xl shadow-amber-500/10 border border-slate-100">
+                      <Smartphone size={48} />
+                    </div>
+                    
+                    <div className="max-w-md">
+                      <h4 className="text-xl font-black text-slate-900">Application Officielle</h4>
+                      <p className="text-slate-500 font-medium mt-2">
+                        L'installation permet d'accéder à l'application sans barres de recherche, avec des performances accrues et un accès direct depuis votre écran d'accueil.
+                      </p>
                     </div>
 
-                    <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 flex flex-col items-center text-center space-y-4">
-                      <div className="h-16 w-16 bg-white rounded-2xl flex items-center justify-center text-blue-500 shadow-sm">
-                        <Monitor size={32} />
-                      </div>
-                      <div>
-                        <h4 className="font-black text-slate-900">Logiciel Bureau</h4>
-                        <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Windows & macOS</p>
-                      </div>
+                    {isInstallable ? (
                       <button 
-                        onClick={() => downloadFile('/installers/haujee-setup.exe', 'haujee-setup.exe')}
-                        className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold text-sm shadow-lg hover:bg-slate-800 transition-all flex items-center justify-center gap-2"
+                        onClick={installApp}
+                        className="w-full max-w-sm bg-slate-900 text-white py-5 rounded-2xl font-black text-lg shadow-2xl shadow-slate-900/20 hover:bg-slate-800 transition-all flex items-center justify-center gap-3 animate-bounce-subtle"
                       >
-                        <Download size={16} /> Télécharger l'Installeur
+                        <Download size={24} /> Installer sur cet appareil
                       </button>
-                    </div>
+                    ) : (
+                      <div className="bg-emerald-50 text-emerald-700 px-8 py-4 rounded-2xl font-bold border border-emerald-100 flex items-center gap-3">
+                        <Check size={20} /> Application déjà installée ou non supportée
+                      </div>
+                    )}
                   </div>
 
-                  <div className="bg-amber-50 p-6 rounded-3xl border border-amber-100">
-                    <div className="flex gap-4">
-                      <div className="h-10 w-10 bg-white rounded-xl flex items-center justify-center text-amber-500 shadow-sm shrink-0">
-                        <Download size={20} />
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-amber-900 mb-1">Installation Directe (PWA)</h4>
-                        <p className="text-sm text-amber-800 leading-relaxed">
-                          Si vous préférez ne pas télécharger d'installeur, vous pouvez installer l'application directement via votre navigateur (Chrome ou Safari) en utilisant l'option "Ajouter à l'écran d'accueil".
-                        </p>
-                      </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-white p-6 rounded-3xl border border-slate-100">
+                      <h5 className="font-black text-slate-900 mb-2 flex items-center gap-2">
+                        <Smartphone size={16} className="text-slate-400" /> Mobile / Tablette
+                      </h5>
+                      <p className="text-xs text-slate-500 leading-relaxed">
+                        Sur iOS: Utilisez "Ajouter à l'écran d'accueil" dans le menu de partage de Safari.<br/>
+                        Sur Android: Appuyez sur le bouton "Installer" ci-dessus ou via le menu Chrome.
+                      </p>
+                    </div>
+                    <div className="bg-white p-6 rounded-3xl border border-slate-100">
+                      <h5 className="font-black text-slate-900 mb-2 flex items-center gap-2">
+                        <Monitor size={16} className="text-slate-400" /> Bureau / PC
+                      </h5>
+                      <p className="text-xs text-slate-500 leading-relaxed">
+                        Utilisez Chrome ou Edge et cliquez sur l'icône d'installation dans la barre d'adresse pour transformer l'onglet en fenêtre indépendante.
+                      </p>
                     </div>
                   </div>
                 </div>
               </div>
 
               <div className="bg-slate-900 p-8 rounded-[2.5rem] text-white">
-                <h4 className="font-bold mb-2">Avantages pour Haujee Jewellery</h4>
+                <h4 className="font-bold mb-4 flex items-center gap-2">
+                  <Shield size={20} className="text-amber-500" /> 
+                  Avantages du mode Standalone
+                </h4>
                 <div className="grid grid-cols-1 gap-4 text-slate-400 text-sm">
                   <div className="flex items-start space-x-3">
-                    <div className="h-5 w-5 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center flex-shrink-0 mt-0.5 mt-0.5">✓</div>
-                    <p>Accès immédiat dès le démarrage de la tablette en boutique.</p>
+                    <div className="h-5 w-5 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center flex-shrink-0 mt-0.5">✓</div>
+                    <p>Accès immédiat dès le démarrage de l'appareil.</p>
                   </div>
                   <div className="flex items-start space-x-3">
                     <div className="h-5 w-5 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center flex-shrink-0 mt-0.5">✓</div>
-                    <p>Utilisation optimisée en mode portrait ou paysage sans perte d'espace.</p>
+                    <p>Interface plein écran sans distractions de navigation.</p>
                   </div>
                   <div className="flex items-start space-x-3">
                     <div className="h-5 w-5 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center flex-shrink-0 mt-0.5">✓</div>
-                    <p>Fiabilité accrue des capteurs (comme l'appareil photo pour le scan de codes-barres).</p>
+                    <p>Rapidité de chargement optimisée via le cache local.</p>
                   </div>
                 </div>
               </div>

@@ -37,3 +37,20 @@
 #reader__scan_region {
   @apply bg-black rounded-2xl overflow-hidden;
 }
+
+@layer utilities {
+  @keyframes bounce-subtle {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-4px); }
+  }
+  .animate-bounce-subtle {
+    animation: bounce-subtle 2s ease-in-out infinite;
+  }
+}
+
+/* PWA Standalone specific fixes */
+@media (display-mode: standalone) {
+  .pwa-hide {
+    display: none;
+  }
+}
