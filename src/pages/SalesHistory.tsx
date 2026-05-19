@@ -63,17 +63,11 @@ const SalesHistory = () => {
         responseType: 'blob'
       });
       
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `facture_${saleId}.pdf`);
-      document.body.appendChild(link);
-      link.click();
-      link.parentNode?.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      const blobUrl = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+      window.open(blobUrl, '_blank');
     } catch (err) {
       console.error(err);
-      setMessage({ type: 'error', text: 'Échec du téléchargement du PDF' });
+      setMessage({ type: 'error', text: 'Échec de l\'ouverture du PDF' });
     } finally {
       setIsGeneratingPDF(false);
     }

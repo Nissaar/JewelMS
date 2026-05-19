@@ -49,12 +49,8 @@ export async function generateReceiptPDF(saleId: number): Promise<{ doc: PDFKit.
   const doc = new PDFDocument({
     size: 'A5',
     margin: 30,
+    bufferPages: true,
   });
-
-  // Watermark for copies
-  if (receipt.printCount > 0) {
-    addWatermark(doc, 'COPIE');
-  }
 
   // Header
   doc.fontSize(14).text(heading, { align: 'center', underline: true });
@@ -169,6 +165,11 @@ export async function generateReceiptPDF(saleId: number): Promise<{ doc: PDFKit.
   await db.update(receipts)
     .set({ printCount: receipt.printCount + 1 })
     .where(eq(receipts.id, receipt.id));
+
+  // Post-processing watermark loop for copies
+  if (receipt.printCount > 0) {
+    addWatermark(doc, 'COPIE');
+  }
 
   return { doc, receipt };
 }
@@ -364,23 +365,30 @@ export async function getPDFBuffer(doc: PDFKit.PDFDocument): Promise<Buffer> {
 }
 
 function addWatermark(doc: PDFKit.PDFDocument, text: string) {
-  doc.save();
-  doc.opacity(0.1);
-  doc.fontSize(80);
-  doc.fillColor('gray');
-  
-  // Use absolute positioning and rotation that doesn't move the cursor
-  const x = doc.page.width / 2;
-  const y = doc.page.height / 2;
-  
-  doc.rotate(-45, { origin: [x, y] });
-  
-  // Draw text at a fixed position relative to the center
-  doc.text(text, 0, y - 40, {
-    align: 'center',
-    width: doc.page.width,
-    lineBreak: false
-  });
-  
-  doc.restore();
+  const range = doc.bufferedPageRange();
+  for (let i = range.start; i < range.start + range.count; i++) {
+    doc.switchToPage(i);
+    
+    doc.save();
+    doc.opacity(0.12);
+    doc.fontSize(75);
+    doc.fillColor('#969696');
+    
+    const x = doc.page.width / 2;
+    const y = doc.page.height / 2;
+    
+    // Rotate 45 degrees around the center
+    doc.rotate(-45, { origin: [x, y] });
+    
+    // Draw text centered at the origin
+    doc.text(text, 0, y - 35, {
+      align: 'center',
+      width: doc.page.width,
+      lineBreak: false
+    });
+    
+    doc.restore();
+  }
+  // Move back to the last page to ensure doc.end() works as expected
+  doc.switchToPage(range.start + range.count - 1);
 }

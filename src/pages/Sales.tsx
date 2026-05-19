@@ -6,7 +6,7 @@ import {
   ShoppingCart, Barcode, User, CreditCard, Search, 
   Plus, Check, AlertCircle, Loader2, Banknote,
   Smartphone, Mail, Download, History, X, UserPlus,
-  Scale, Tag, Info, Camera
+  Scale, Tag, Info, Camera, ArrowLeft
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import BarcodeScanner from '../components/BarcodeScanner';
@@ -167,17 +167,11 @@ const Sales = () => {
         responseType: 'blob'
       });
       
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `facture_${completedSale.id}.pdf`);
-      document.body.appendChild(link);
-      link.click();
-      link.parentNode?.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      const blobUrl = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+      window.open(blobUrl, '_blank');
     } catch (err) {
       console.error(err);
-      setMessage({ type: 'error', text: 'Échec du téléchargement du PDF' });
+      setMessage({ type: 'error', text: 'Échec de la génération du PDF' });
     } finally {
       setIsGeneratingPDF(false);
     }
@@ -456,20 +450,27 @@ const Sales = () => {
                      )}
                   </div>
 
-                  {selectedCustomer && (
-                    <motion.div 
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="flex justify-end pt-4"
+                  <div className="flex justify-between items-center pt-8 gap-4">
+                    <button 
+                      onClick={() => setSaleStep('item')}
+                      className="px-6 py-4 rounded-xl font-bold text-slate-500 hover:bg-slate-50 transition-all flex items-center gap-2 border-2 border-slate-100"
                     >
-                      <button 
-                        onClick={() => setSaleStep('payment')}
-                        className="bg-amber-500 text-slate-900 px-8 py-4 rounded-xl font-black text-lg hover:bg-amber-400 transition-all flex items-center gap-2 shadow-xl shadow-amber-500/20"
+                      <ArrowLeft size={20} /> Retour
+                    </button>
+                    {selectedCustomer && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
                       >
-                        Valider Client <Check size={24} />
-                      </button>
-                    </motion.div>
-                  )}
+                        <button 
+                          onClick={() => setSaleStep('payment')}
+                          className="bg-amber-500 text-slate-900 px-8 py-4 rounded-xl font-black text-lg hover:bg-amber-400 transition-all flex items-center gap-2 shadow-xl shadow-amber-500/20"
+                        >
+                          Valider Client <Check size={24} />
+                        </button>
+                      </motion.div>
+                    )}
+                  </div>
                </div>
             </div>
           </motion.div>
@@ -576,13 +577,19 @@ const Sales = () => {
                     </motion.div>
                   )}
 
-                  <div className="pt-8">
+                  <div className="pt-8 flex flex-col gap-3">
                     <button 
                       onClick={handleFinalizeSale}
                       disabled={isLoading || !finalPrice}
                       className="w-full bg-emerald-600 text-white py-5 rounded-2xl font-black text-xl shadow-2xl flex items-center justify-center gap-3 hover:bg-emerald-700 transition-all disabled:opacity-50"
                     >
                       {isLoading ? <Loader2 className="animate-spin" /> : <>Finaliser & Facturer <PlusCircle size={24}/></>}
+                    </button>
+                    <button 
+                      onClick={() => setSaleStep('item')}
+                      className="w-full bg-slate-100 text-slate-600 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-slate-200 transition-all"
+                    >
+                      <ArrowLeft size={18} /> Retour / Modifier le panier
                     </button>
                   </div>
                </div>

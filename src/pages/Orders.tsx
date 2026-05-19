@@ -4,13 +4,16 @@ import axios from 'axios';
 import { 
   Package, User, Plus, Check, AlertCircle, 
   Loader2, Search, Scale, X,
-  ShoppingCart, Info, Clock, CheckCircle2, Banknote, UserPlus
+  ShoppingCart, Info, Clock, CheckCircle2, Banknote, UserPlus,
+  Smartphone, Mail, Download, History
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useNavigate } from 'react-router-dom';
 import { formatCurrency } from '../lib/utils';
 import CustomerModal from '../components/CustomerModal';
 
 const Orders = () => {
+  const navigate = useNavigate();
   const { token } = useAuth();
   const [view, setView] = useState<'list' | 'create'>('list');
   const [isLoading, setIsLoading] = useState(false);
@@ -39,6 +42,11 @@ const Orders = () => {
   const [finalPrice, setFinalPrice] = useState('');
   const [finalGoldRate, setFinalGoldRate] = useState('');
   const [paymentMode, setPaymentMode] = useState('Cash');
+
+  // Post-Finalize State
+  const [completedOrderSaleId, setCompletedOrderSaleId] = useState<number | null>(null);
+  const [isSending, setIsSending] = useState(false);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
 
   useEffect(() => {
     if (view === 'list') fetchOrders();
@@ -99,21 +107,59 @@ const Orders = () => {
 
     setIsLoading(true);
     try {
-      await axios.post(`/api/orders/${finalizingOrder.id}/finalize`, {
+      const res = await axios.post(`/api/orders/${finalizingOrder.id}/finalize`, {
         finalWeight,
         finalPrice,
         goldRate: finalGoldRate,
         paymentMode
       }, { headers: { Authorization: `Bearer ${token}` } });
       
-      setMessage({ type: 'success', text: 'Commande finalisée et convertie en vente!' });
-      setFinalizingOrder(null);
+      setCompletedOrderSaleId(res.data.saleId);
+      setMessage({ type: 'success', text: 'Commande finalisée avec succès!' });
       fetchOrders();
     } catch (err) {
       setMessage({ type: 'error', text: 'Erreur lors de la finalisation' });
     } finally {
       setIsLoading(false);
-      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+    }
+  };
+
+  const handleDownloadFinalPDF = async () => {
+    if (!completedOrderSaleId) return;
+    setIsGeneratingPDF(true);
+    try {
+      const response = await axios.get(`/api/receipts/${completedOrderSaleId}/pdf`, {
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: 'blob'
+      });
+      const blobUrl = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+      window.open(blobUrl, '_blank');
+    } catch (err) {
+      console.error(err);
+      setMessage({ type: 'error', text: 'Échec de la génération du PDF' });
+    } finally {
+      setIsGeneratingPDF(false);
+    }
+  };
+
+  const handleUploadAndSend = async (method: 'whatsapp' | 'email' | 'both') => {
+    if (!completedOrderSaleId) return;
+    setIsSending(true);
+    try {
+      await axios.post(`/api/receipts/${completedOrderSaleId}/upload`, {}, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.post(`/api/notifications/send-receipt`, { 
+        saleId: completedOrderSaleId, 
+        method 
+      }, { headers: { Authorization: `Bearer ${token}` } });
+      setMessage({ type: 'success', text: 'Reçu envoyé avec succès!' });
+    } catch (err: any) {
+      if (err.response?.status === 412) {
+        setMessage({ type: 'error', text: 'Configuration manquante — Veuillez configurer vos paramètres Email/WhatsApp.' });
+      } else {
+        setMessage({ type: 'error', text: 'Erreur lors de l\'envoi du reçu.' });
+      }
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -123,6 +169,20 @@ const Orders = () => {
     const desc = String(o?.itemDescription || '').toLowerCase();
     return cName.includes(search) || desc.includes(search);
   });
+
+  const handlePrintOrder = async (orderId: number) => {
+    try {
+      const response = await axios.get(`/api/orders/${orderId}/pdf`, {
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: 'blob'
+      });
+      const blobUrl = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+      window.open(blobUrl, '_blank');
+    } catch (err) {
+      console.error(err);
+      setMessage({ type: 'error', text: 'Échec de la génération du PDF' });
+    }
+  };
 
   return (
     <div className="max-w-6xl mx-auto space-y-8">
@@ -285,7 +345,7 @@ const Orders = () => {
                       <button 
                         type="button"
                         onClick={() => {
-                          window.open(`/api/orders/${lastCreatedOrderId}/pdf`, '_blank');
+                          handlePrintOrder(lastCreatedOrderId);
                         }}
                         className="flex-1 bg-emerald-600 text-white py-4 rounded-2xl font-black flex items-center justify-center gap-2 hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-600/20"
                       >
@@ -395,100 +455,189 @@ const Orders = () => {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl p-8 space-y-8"
+              className="bg-white w-full max-w-4xl rounded-[2.5rem] shadow-2xl overflow-hidden mx-auto"
             >
-              <div className="flex justify-between items-center">
-                <h3 className="text-2xl font-black text-slate-900">Finalisation Vente</h3>
-                <button onClick={() => setFinalizingOrder(null)} className="p-2 hover:bg-slate-100 rounded-full"><X size={24}/></button>
-              </div>
-
-              <div className="p-4 bg-slate-50 rounded-2xl">
-                 <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Commande N° {finalizingOrder.id}</p>
-                 <p className="font-bold text-slate-900">{finalizingOrder.itemDescription}</p>
-              </div>
-
-              <div className="space-y-6">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase mb-2">Poids Final (g)</label>
-                    <div className="relative">
-                      <Scale className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                      <input 
-                        type="number" step="0.01" 
-                        className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-12 pr-4 font-bold outline-none focus:border-amber-400"
-                        value={finalWeight}
-                        onChange={(e) => setFinalWeight(e.target.value)}
-                      />
+              {completedOrderSaleId ? (
+                <div className="flex flex-col">
+                  <div className="bg-emerald-600 p-10 text-center text-white relative">
+                    <div className="absolute top-6 left-1/2 -translate-x-1/2 h-16 w-16 bg-white rounded-full flex items-center justify-center text-emerald-600 shadow-xl">
+                      <Check size={36} strokeWidth={4} />
+                    </div>
+                    <div className="mt-14">
+                      <h2 className="text-3xl font-black mb-1">Livraison Confirmée</h2>
+                      <p className="text-emerald-100 font-bold opacity-80 uppercase tracking-widest text-xs">Vente N° {completedOrderSaleId}</p>
                     </div>
                   </div>
-                  <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase mb-2">Cours de l'Or Final (Rs/g)</label>
-                    <div className="relative">
-                      <Scale className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                      <input 
-                        type="number" step="0.01" 
-                        className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-12 pr-4 font-bold outline-none focus:border-amber-400"
-                        value={finalGoldRate}
-                        onChange={(e) => setFinalGoldRate(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                  <div className="col-span-2">
-                    <label className="block text-xs font-black text-slate-400 uppercase mb-2">Prix TTC Total</label>
-                    <div className="relative">
-                      <Banknote className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                      <input 
-                        type="number" 
-                        className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-12 pr-4 font-bold outline-none focus:border-amber-400 text-lg"
-                        value={finalPrice}
-                        onChange={(e) => setFinalPrice(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                </div>
 
-                {finalizingOrder.deposit && (
-                  <div className="space-y-3 p-4 bg-amber-50 rounded-2xl border border-amber-100">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-500 font-bold">Total Final:</span>
-                      <span className="text-slate-900 font-black">{formatCurrency(Number(finalPrice) || 0)}</span>
+                  <div className="p-10 space-y-8">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
+                      <div className="p-6 bg-slate-50 rounded-3xl hover:bg-emerald-50 transition-colors cursor-pointer group" onClick={handleDownloadFinalPDF}>
+                        {isGeneratingPDF ? (
+                          <Loader2 className="mx-auto text-emerald-600 mb-4 animate-spin" size={32} />
+                        ) : (
+                          <Download className="mx-auto text-slate-400 mb-4 group-hover:text-emerald-600" size={32} />
+                        )}
+                        <p className="font-black text-slate-900">Facture Finale</p>
+                        <p className="text-xs text-slate-500">Imprimer/Télécharger</p>
+                      </div>
+                      <div className="p-6 bg-slate-50 rounded-3xl hover:bg-emerald-50 transition-colors cursor-pointer group" onClick={() => handleUploadAndSend('whatsapp')}>
+                        <Smartphone className="mx-auto text-slate-400 mb-4 group-hover:text-emerald-600" size={32} />
+                        <p className="font-black text-slate-900">WhatsApp</p>
+                        <p className="text-xs text-slate-500">Notifier le client</p>
+                      </div>
+                      <div className="p-6 bg-slate-50 rounded-3xl hover:bg-emerald-50 transition-colors cursor-pointer group" onClick={() => handleUploadAndSend('email')}>
+                        <Mail className="mx-auto text-slate-400 mb-4 group-hover:text-emerald-600" size={32} />
+                        <p className="font-black text-slate-900">Email</p>
+                        <p className="text-xs text-slate-500">Envoi sécurisé</p>
+                      </div>
                     </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-amber-600 font-bold">Acompte Payé:</span>
-                      <span className="text-amber-600 font-black">- {formatCurrency(Number(finalizingOrder.deposit))}</span>
-                    </div>
-                    <div className="pt-2 border-t border-amber-200 flex justify-between items-center">
-                      <span className="text-slate-900 font-black">Reste à Payer:</span>
-                      <span className="text-2xl font-black text-slate-900">
-                        {formatCurrency(Math.max(0, (Number(finalPrice) || 0) - Number(finalizingOrder.deposit)))}
-                      </span>
-                    </div>
-                  </div>
-                )}
 
-                <div>
-                  <label className="block text-xs font-black text-slate-400 uppercase mb-2">Mode de Paiement</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {['Cash', 'Juice', 'Card'].map(m => (
+                    {isSending && (
+                      <div className="flex items-center justify-center p-4 bg-emerald-50 rounded-2xl">
+                        <Loader2 className="animate-spin text-emerald-600 mr-3" />
+                        <span className="font-bold text-emerald-600">Envoi en cours...</span>
+                      </div>
+                    )}
+
+                    {message.text && (
+                      <div className={`p-4 rounded-2xl text-center font-bold flex items-center justify-center gap-2 ${
+                        message.type === 'success' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
+                      }`}>
+                        {message.type === 'success' ? <Check size={20}/> : <AlertCircle size={20}/>}
+                        {message.text}
+                      </div>
+                    )}
+
+                    <div className="pt-8 border-t border-slate-100 flex gap-4">
                       <button 
-                        key={m}
-                        onClick={() => setPaymentMode(m)}
-                        className={`py-2 rounded-lg font-bold text-xs border-2 transition-all ${paymentMode === m ? 'bg-slate-900 border-slate-900 text-white' : 'bg-white border-slate-100 text-slate-600'}`}
+                        onClick={() => {
+                          setFinalizingOrder(null);
+                          setCompletedOrderSaleId(null);
+                          setMessage({ type: '', text: '' });
+                          setView('list');
+                        }}
+                        className="flex-1 bg-slate-900 text-white py-4 rounded-2xl font-black text-lg hover:shadow-xl transition-all"
                       >
-                        {m}
+                        Terminer la Session
                       </button>
-                    ))}
+                      <button 
+                        onClick={() => navigate('/sales-history')}
+                        className="px-8 bg-slate-100 text-slate-600 py-4 rounded-2xl font-bold flex items-center gap-2 hover:bg-slate-200 transition-all"
+                      >
+                        <History size={20}/> Ventes
+                      </button>
+                    </div>
                   </div>
                 </div>
+              ) : (
+                <div className="p-6 md:p-10 space-y-8 overflow-y-auto max-h-[92vh]">
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-2xl md:text-3xl font-black text-slate-900">Finalisation Vente</h3>
+                    <button onClick={() => setFinalizingOrder(null)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><X size={28}/></button>
+                  </div>
 
-                <button 
-                  onClick={handleFinalize}
-                  disabled={isLoading || !finalWeight || !finalPrice}
-                  className="w-full bg-emerald-600 text-white py-4 rounded-2xl font-black text-lg shadow-xl shadow-emerald-600/20 hover:bg-emerald-700 transition-all disabled:opacity-50"
-                >
-                  {isLoading ? <Loader2 className="animate-spin mx-auto" /> : 'Confirmer & Facturer'}
-                </button>
-              </div>
+                  <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                    <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Commande N° {finalizingOrder.id}</p>
+                    <p className="font-bold text-slate-900 text-lg">{finalizingOrder.itemDescription}</p>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div className="space-y-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-black text-slate-400 uppercase mb-2">Poids Final (g)</label>
+                          <div className="relative">
+                            <Scale className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                            <input 
+                              type="number" step="0.01" 
+                              className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-4 pl-12 pr-4 font-bold outline-none focus:border-amber-400 transition-all"
+                              value={finalWeight}
+                              onChange={(e) => setFinalWeight(e.target.value)}
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-black text-slate-400 uppercase mb-2">Cours de l'Or Final (Rs/g)</label>
+                          <div className="relative">
+                            <Scale className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                            <input 
+                              type="number" step="0.01" 
+                              className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-4 pl-12 pr-4 font-bold outline-none focus:border-amber-400 transition-all"
+                              value={finalGoldRate}
+                              onChange={(e) => setFinalGoldRate(e.target.value)}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-black text-slate-400 uppercase mb-2">Prix TTC Total (Réel)</label>
+                        <div className="relative">
+                          <Banknote className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400" size={24} />
+                          <input 
+                            type="number" 
+                            className="w-full bg-slate-50 border-2 border-amber-200 rounded-2xl py-6 pl-16 pr-6 font-black text-3xl outline-none focus:border-amber-400 text-slate-900 shadow-inner"
+                            value={finalPrice}
+                            onChange={(e) => setFinalPrice(e.target.value)}
+                            placeholder="0.00"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-black text-slate-400 uppercase mb-4">Mode de Paiement</label>
+                        <div className="grid grid-cols-3 gap-3">
+                          {['Cash', 'Juice', 'Card'].map(m => (
+                            <button 
+                              key={m}
+                              onClick={() => setPaymentMode(m)}
+                              className={`py-4 rounded-xl font-black text-sm border-2 transition-all ${paymentMode === m ? 'bg-slate-900 border-slate-900 text-white shadow-lg' : 'bg-white border-slate-100 text-slate-500 hover:border-slate-200'}`}
+                            >
+                              {m}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-6">
+                      {finalizingOrder.deposit && (
+                        <div className="p-8 bg-amber-50 rounded-3xl border-2 border-amber-100 space-y-6">
+                          <h4 className="font-black text-amber-900 uppercase tracking-wider text-xs">Récapitulatif financier</h4>
+                          <div className="space-y-4">
+                            <div className="flex justify-between items-center text-lg">
+                              <span className="text-slate-500 font-bold">Total Final:</span>
+                              <span className="text-slate-900 font-black">{formatCurrency(Number(finalPrice) || 0)}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-lg">
+                              <span className="text-amber-600 font-bold">Acompte Déjà Réglé:</span>
+                              <span className="text-amber-600 font-black">- {formatCurrency(Number(finalizingOrder.deposit))}</span>
+                            </div>
+                            <div className="pt-6 border-t-2 border-amber-200 flex justify-between items-center">
+                              <span className="text-slate-900 font-black text-xl">NET À PAYER:</span>
+                              <span className="text-4xl font-black text-slate-900">
+                                {formatCurrency(Math.max(0, (Number(finalPrice) || 0) - Number(finalizingOrder.deposit)))}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      <button 
+                        onClick={handleFinalize}
+                        disabled={isLoading || !finalWeight || !finalPrice}
+                        className="w-full bg-emerald-600 text-white py-6 rounded-2xl font-black text-xl shadow-2xl shadow-emerald-600/30 hover:bg-emerald-700 transition-all disabled:opacity-50 flex items-center justify-center gap-3"
+                      >
+                        {isLoading ? <Loader2 className="animate-spin" size={28} /> : <>Finaliser la Vente <CheckCircle2 size={24} /></>}
+                      </button>
+                      
+                      <p className="text-center text-slate-400 text-xs font-bold uppercase tracking-widest">
+                        Une facture sera générée automatiquement
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </motion.div>
           </div>
         )}

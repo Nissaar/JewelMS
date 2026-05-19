@@ -1297,7 +1297,7 @@ async function startServer() {
         const totalAmount = Number(finalPrice) || 0;
         const vat = totalAmount * 0.15;
 
-        await tx.insert(sales).values({
+        const newSale = await tx.insert(sales).values({
           customerId: order.customerId,
           stockId: null,
           orderId: order.id,
@@ -1310,10 +1310,10 @@ async function startServer() {
           qty: 1,
           unitSalesPrice: totalAmount.toString(),
           datetime: new Date()
-        });
-      });
+        }).returning({ id: sales.id });
 
-      res.json({ message: "Order finalized and sale created" });
+        res.json({ message: "Order finalized and sale created", saleId: newSale[0].id });
+      });
     } catch (error) {
       console.error("Order Finalization Error:", error);
       res.status(500).json({ error: "Failed to finalize order" });

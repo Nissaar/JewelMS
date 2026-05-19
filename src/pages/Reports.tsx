@@ -80,6 +80,20 @@ const Reports = () => {
     setTimeout(() => setMessage({ type: '', text: '' }), 3000);
   };
 
+  const handleViewPDF = async (saleId: number) => {
+    try {
+      const response = await axios.get(`/api/receipts/${saleId}/pdf`, {
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: 'blob'
+      });
+      const blobUrl = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+      window.open(blobUrl, '_blank');
+    } catch (err) {
+      console.error(err);
+      setMessage({ type: 'error', text: 'Échec de l\'ouverture du PDF' });
+    }
+  };
+
   const filteredReceipts = (receipts || []).filter(r => {
     const rNo = String(r?.receiptNo || '').toLowerCase();
     const cName = String(r?.customerName || '').toLowerCase();
@@ -294,13 +308,12 @@ const Reports = () => {
                        >
                          <Mail size={14} /> Email
                        </button>
-                       <a 
-                        href={`/api/receipts/${r.saleId}/pdf?token=${token}`}
-                        target="_blank" rel="noopener noreferrer"
+                       <button 
+                        onClick={() => handleViewPDF(r.saleId)}
                         className="col-span-2 flex items-center justify-center gap-2 py-3 rounded-xl bg-slate-100 text-slate-700 text-sm font-black hover:bg-slate-900 hover:text-white transition-all"
                        >
                          <ExternalLink size={16} /> Voir PDF
-                       </a>
+                       </button>
                     </div>
                   </div>
                 ))

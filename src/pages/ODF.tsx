@@ -66,12 +66,8 @@ const ODF = () => {
         headers: { Authorization: `Bearer ${token}` },
         responseType: 'blob'
       });
-      const url = window.URL.createObjectURL(new Blob([res.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `odf-${id}.pdf`);
-      document.body.appendChild(link);
-      link.click();
+      const blobUrl = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      window.open(blobUrl, '_blank');
     } catch (err) {
       console.error("PDF Export Error:", err);
       alert("Erreur lors de l'export PDF");
