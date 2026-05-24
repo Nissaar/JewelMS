@@ -9,10 +9,11 @@ import {
   ArrowUpRight, 
   Loader2,
   DollarSign,
-  ShoppingCart
+  ShoppingCart,
+  Scale
 } from 'lucide-react';
 import { motion } from 'motion/react';
-import { formatCurrency } from '../lib/utils';
+import { formatCurrency, formatItemDetails, formatWeight } from '../lib/utils';
 
 const Dashboard = () => {
   const { token } = useAuth();
@@ -68,6 +69,13 @@ const Dashboard = () => {
       icon: Package, 
       color: 'text-amber-600', 
       bgColor: 'bg-amber-50' 
+    },
+    { 
+      label: 'Poids Total Stock', 
+      value: formatWeight(data?.totalWeight || 0), 
+      icon: Scale, 
+      color: 'text-indigo-600', 
+      bgColor: 'bg-indigo-50' 
     },
     { 
       label: 'Commandes en cours', 
@@ -128,7 +136,7 @@ const Dashboard = () => {
                       <ShoppingCart size={20} />
                     </div>
                     <div>
-                      <p className="font-black text-slate-900 truncate max-w-[150px]">{sale.itemDetails || 'Article'}</p>
+                      <p className="font-black text-slate-900 truncate max-w-[150px]">{formatItemDetails(sale.itemDetails) || 'Article'}</p>
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{sale.customerName || 'Client anonyme'}</p>
                     </div>
                   </div>

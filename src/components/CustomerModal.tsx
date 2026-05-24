@@ -44,18 +44,30 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSucces
           riskRating: customerToEdit.riskRating || 'Low'
         });
       } else {
-        setNewCustomer({
-          name: initialName,
-          email: '',
-          address: '',
-          phoneNumber: '',
-          idNumber: '',
-          riskRating: 'Low'
-        });
+        setNewCustomer(prev => ({
+          ...prev,
+          name: initialName || prev.name || '',
+          // Reset other fields only if it's the first time opening
+          email: prev.email || '',
+          address: prev.address || '',
+          phoneNumber: prev.phoneNumber || '',
+          idNumber: prev.idNumber || '',
+          riskRating: prev.riskRating || 'Low'
+        }));
       }
       setMessage({ type: '', text: '' });
+    } else {
+      // Clear state when modal closes to ensure fresh start next time
+      setNewCustomer({
+        name: '',
+        email: '',
+        address: '',
+        phoneNumber: '',
+        idNumber: '',
+        riskRating: 'Low'
+      });
     }
-  }, [isOpen, customerToEdit, initialName]);
+  }, [isOpen, customerToEdit]); // Removed initialName to prevent reset while typing
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -129,10 +141,11 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSucces
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
-              <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Nom Complet</label>
+              <label htmlFor="customer-name" className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Nom Complet</label>
               <div className="relative">
                 <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
                 <input 
+                  id="customer-name"
                   required
                   type="text" 
                   placeholder="Ex: Jean Dupont"
@@ -144,10 +157,11 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSucces
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">ID / Carte d'Identité</label>
+              <label htmlFor="customer-id" className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">ID / Carte d'Identité</label>
               <div className="relative">
                 <FileText className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
                 <input 
+                  id="customer-id"
                   required
                   type="text" 
                   placeholder="N° de Passeport / CNI"
@@ -159,10 +173,11 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSucces
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Email</label>
+              <label htmlFor="customer-email" className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Email</label>
               <div className="relative">
                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
                 <input 
+                  id="customer-email"
                   type="email" 
                   placeholder="client@email.com"
                   className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-3 pl-12 pr-4 font-bold outline-none focus:border-amber-400"
@@ -173,10 +188,11 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSucces
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Numéro de Téléphone</label>
+              <label htmlFor="customer-phone" className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Numéro de Téléphone</label>
               <div className="relative">
                 <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
                 <input 
+                  id="customer-phone"
                   type="text" 
                   placeholder="+230 5555 5555"
                   className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-3 pl-12 pr-4 font-bold outline-none focus:border-amber-400"
@@ -187,10 +203,11 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSucces
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Évaluation des Risques</label>
+              <label htmlFor="customer-risk" className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Évaluation des Risques</label>
               <div className="relative">
                 <ShieldAlert className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
                 <select 
+                  id="customer-risk"
                   className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-3 pl-12 pr-4 font-bold outline-none focus:border-amber-400 appearance-none"
                   value={newCustomer.riskRating}
                   onChange={(e) => setNewCustomer({...newCustomer, riskRating: e.target.value})}
@@ -203,10 +220,11 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSucces
             </div>
 
             <div className="space-y-2 md:col-span-2">
-              <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Adresse Domiciliaire</label>
+              <label htmlFor="customer-address" className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Adresse Domiciliaire</label>
               <div className="relative">
                 <MapPin className="absolute left-4 top-4 text-slate-300" size={20} />
                 <textarea 
+                  id="customer-address"
                   rows={2}
                   placeholder="Adresse complète du client..."
                   className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-3 pl-12 pr-4 font-bold outline-none focus:border-amber-400 resize-none"

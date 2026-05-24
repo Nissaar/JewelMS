@@ -36,7 +36,7 @@ export const auditLogs = pgTable('audit_logs', {
 export const stock = pgTable('stock', {
   id: serial('id').primaryKey(),
   barcode: varchar('barcode', { length: 100 }).unique().notNull(),
-  category: varchar('category', { length: 20 }).notNull(), // 'Jewellery' | 'Pen' | 'Sewing Machine' | 'Parts'
+  category: varchar('category', { length: 100 }).notNull(),
   subCategory: varchar('sub_category', { length: 100 }),
   stockType: varchar('stock_type', { length: 20 }).notNull(), // 'on-display' | 'in-store'
   
@@ -86,7 +86,6 @@ export const sales = pgTable('sales', {
   amount: numeric('amount', { precision: 15, scale: 2 }),
   vat15: numeric('vat_15', { precision: 15, scale: 2 }),
   metalType: varchar('metal_type', { length: 50 }),
-  goldRate: numeric('gold_rate', { precision: 15, scale: 2 }),
   orderId: integer('order_id').references(() => orders.id, { onDelete: 'set null' }),
   status: varchar('status', { length: 20 }).default('Completed').notNull(), // 'Completed' | 'Cancelled'
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
@@ -109,7 +108,6 @@ export const orders = pgTable('orders', {
   estimatedWeight: numeric('estimated_weight', { precision: 10, scale: 3 }),
   estimatedPrice: numeric('estimated_price', { precision: 15, scale: 2 }),
   deposit: numeric('deposit', { precision: 15, scale: 2 }),
-  goldRate: numeric('gold_rate', { precision: 15, scale: 2 }),
   finalWeight: numeric('final_weight', { precision: 10, scale: 3 }),
   finalPrice: numeric('final_price', { precision: 15, scale: 2 }),
   status: varchar('status', { length: 20 }).default('Pending').notNull(), // 'Pending' | 'Finalized'

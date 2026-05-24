@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
-import { formatCurrency } from '../lib/utils';
+import { formatCurrency, formatItemDetails } from '../lib/utils';
 import CustomerModal from '../components/CustomerModal';
 
 const Orders = () => {
@@ -31,7 +31,6 @@ const Orders = () => {
   const [estimatedWeight, setEstimatedWeight] = useState('');
   const [estimatedPrice, setEstimatedPrice] = useState('');
   const [deposit, setDeposit] = useState('');
-  const [goldRate, setGoldRate] = useState('');
   const [orderDate, setOrderDate] = useState(new Date().toISOString().split('T')[0]);
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
   const [lastCreatedOrderId, setLastCreatedOrderId] = useState<number | null>(null);
@@ -40,7 +39,6 @@ const Orders = () => {
   const [finalizingOrder, setFinalizingOrder] = useState<any>(null);
   const [finalWeight, setFinalWeight] = useState('');
   const [finalPrice, setFinalPrice] = useState('');
-  const [finalGoldRate, setFinalGoldRate] = useState('');
   const [paymentMode, setPaymentMode] = useState('Cash');
 
   // Post-Finalize State
@@ -64,10 +62,10 @@ const Orders = () => {
     }
   };
 
-  const handleCustomerSearch = async () => {
-    if (customerSearch.length < 2) return;
+  const handleCustomerSearch = async (query?: string) => {
+    const q = query !== undefined ? query : customerSearch;
     try {
-      const res = await axios.get(`/api/customers?search=${customerSearch}`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await axios.get(`/api/customers?search=${q}`, { headers: { Authorization: `Bearer ${token}` } });
       setSearchResults(res.data);
     } catch (err) {
       console.error(err);
@@ -89,7 +87,6 @@ const Orders = () => {
         estimatedWeight,
         estimatedPrice,
         deposit,
-        goldRate,
         createdAt: orderDate
       }, { headers: { Authorization: `Bearer ${token}` } });
       
@@ -110,7 +107,6 @@ const Orders = () => {
       const res = await axios.post(`/api/orders/${finalizingOrder.id}/finalize`, {
         finalWeight,
         finalPrice,
-        goldRate: finalGoldRate,
         paymentMode
       }, { headers: { Authorization: `Bearer ${token}` } });
       
@@ -227,8 +223,9 @@ const Orders = () => {
                       value={customerSearch}
                       onChange={(e) => {
                         setCustomerSearch(e.target.value);
-                        handleCustomerSearch();
+                        handleCustomerSearch(e.target.value);
                       }}
+                      onFocus={() => handleCustomerSearch()}
                     />
                   </div>
                   <button 
@@ -297,15 +294,6 @@ const Orders = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Cours Or Estimé (Rs/g)</label>
-                    <input 
-                      type="number" step="0.01"
-                      className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 font-bold outline-none focus:border-amber-400"
-                      value={goldRate}
-                      onChange={(e) => setGoldRate(e.target.value)}
-                    />
-                  </div>
-                  <div>
                     <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Prix Estimé Total (Rs)</label>
                     <input 
                       type="number"
@@ -362,7 +350,6 @@ const Orders = () => {
                            setEstimatedWeight('');
                            setEstimatedPrice('');
                            setDeposit('');
-                           setGoldRate('');
                            setSelectedCustomer(null);
                         }}
                         className="flex-1 bg-white text-slate-600 py-4 rounded-2xl font-black border-2 border-slate-100 hover:bg-slate-50 transition-all"
@@ -414,7 +401,7 @@ const Orders = () => {
                     </div>
 
                     <h4 className="text-lg font-black text-slate-900 mb-1">{order.customerName}</h4>
-                    <p className="text-sm font-medium text-slate-500 mb-4 line-clamp-2">{order.itemDescription}</p>
+                    <p className="text-sm font-medium text-slate-500 mb-4 line-clamp-2">{formatItemDetails(order.itemDescription)}</p>
 
                     {order.status === 'Finalized' ? (
                       <div className="p-4 bg-emerald-50 rounded-2xl space-y-1">
@@ -530,7 +517,7 @@ const Orders = () => {
                   </div>
                 </div>
               ) : (
-                <div className="p-6 md:p-10 space-y-8 overflow-y-auto max-h-[92vh]">
+                <div className="p-4 md:p-6 space-y-8 overflow-y-auto max-h-[92vh]">
                   <div className="flex justify-between items-center">
                     <h3 className="text-2xl md:text-3xl font-black text-slate-900">Finalisation Vente</h3>
                     <button onClick={() => setFinalizingOrder(null)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><X size={28}/></button>
@@ -538,12 +525,12 @@ const Orders = () => {
 
                   <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
                     <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Commande N° {finalizingOrder.id}</p>
-                    <p className="font-bold text-slate-900 text-lg">{finalizingOrder.itemDescription}</p>
+                    <p className="font-bold text-slate-900 text-lg">{formatItemDetails(finalizingOrder.itemDescription)}</p>
                   </div>
 
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     <div className="space-y-6">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 gap-4">
                         <div>
                           <label className="block text-xs font-black text-slate-400 uppercase mb-2">Poids Final (g)</label>
                           <div className="relative">
@@ -553,18 +540,6 @@ const Orders = () => {
                               className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-4 pl-12 pr-4 font-bold outline-none focus:border-amber-400 transition-all"
                               value={finalWeight}
                               onChange={(e) => setFinalWeight(e.target.value)}
-                            />
-                          </div>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-black text-slate-400 uppercase mb-2">Cours de l'Or Final (Rs/g)</label>
-                          <div className="relative">
-                            <Scale className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                            <input 
-                              type="number" step="0.01" 
-                              className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-4 pl-12 pr-4 font-bold outline-none focus:border-amber-400 transition-all"
-                              value={finalGoldRate}
-                              onChange={(e) => setFinalGoldRate(e.target.value)}
                             />
                           </div>
                         </div>

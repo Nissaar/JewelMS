@@ -8,7 +8,7 @@ import {
   Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { formatCurrency } from '../lib/utils';
+import { formatCurrency, formatWeight, formatItemDetails } from '../lib/utils';
 
 const SalesHistory = () => {
   const { token, user } = useAuth();
@@ -189,10 +189,10 @@ const SalesHistory = () => {
                     </td>
                     <td className="px-8 py-6">
                       <p className="text-sm font-medium text-slate-700 truncate max-w-[200px]">
-                        {sale.itemDetails || `${sale.barcode || ''} - ${sale.category || ''} ${sale.subCategory || ''} ${sale.metalType ? `(${sale.metalType})` : ''}`.trim().replace(/\s+/g, ' ')}
+                        {formatItemDetails(sale.itemDetails) || `${formatItemDetails(sale.barcode)} - ${formatItemDetails(sale.category)} ${formatItemDetails(sale.subCategory)} ${sale.metalType ? `(${formatItemDetails(sale.metalType)})` : ''}`.trim().replace(/\s+/g, ' ')}
                       </p>
                       {sale.category === 'Jewellery' && (
-                        <p className="text-[10px] font-bold text-emerald-600 tracking-widest uppercase">{sale.metalType} {sale.fineness}</p>
+                        <p className="text-[10px] font-bold text-emerald-600 tracking-widest uppercase">{formatItemDetails(sale.metalType)} {formatItemDetails(sale.fineness)}</p>
                       )}
                     </td>
                     <td className="px-8 py-6">
@@ -280,16 +280,16 @@ const SalesHistory = () => {
                     <div className="flex justify-between items-start">
                       <div>
                         <p className="font-black text-slate-900 text-lg">
-                          {selectedSale.itemDetails || `${selectedSale.barcode || ''} - ${selectedSale.category || ''} ${selectedSale.subCategory || ''} ${selectedSale.metalType ? `(${selectedSale.metalType})` : ''}`.trim().replace(/\s+/g, ' ')}
+                          {formatItemDetails(selectedSale.itemDetails) || `${formatItemDetails(selectedSale.barcode)} - ${formatItemDetails(selectedSale.category)} ${formatItemDetails(selectedSale.subCategory)} ${selectedSale.metalType ? `(${formatItemDetails(selectedSale.metalType)})` : ''}`.trim().replace(/\s+/g, ' ')}
                         </p>
                         {selectedSale.category === 'Jewellery' && (
-                          <p className="text-xs font-bold text-emerald-600 uppercase tracking-widest">{selectedSale.metalType} {selectedSale.fineness}</p>
+                          <p className="text-xs font-bold text-emerald-600 uppercase tracking-widest">{formatItemDetails(selectedSale.metalType)} {formatItemDetails(selectedSale.fineness)}</p>
                         )}
                       </div>
                       <div className="text-right">
                         {selectedSale.category === 'Jewellery' ? (
                           <>
-                            <p className="font-black text-slate-900">{selectedSale.weight} g</p>
+                            <p className="font-black text-slate-900">{formatWeight(selectedSale.weight)}</p>
                             <p className="text-[10px] font-bold text-slate-400 italic">Poids net</p>
                           </>
                         ) : (

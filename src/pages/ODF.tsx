@@ -7,7 +7,7 @@ import {
   X, UserPlus, Info, Tag, Calendar, FileText, Printer, Send, Banknote
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { formatCurrency } from '../lib/utils';
+import { formatCurrency, formatWeight, formatItemDetails } from '../lib/utils';
 import CustomerModal from '../components/CustomerModal';
 
 const ODF = () => {
@@ -104,10 +104,10 @@ const ODF = () => {
     }
   };
 
-  const handleCustomerSearch = async () => {
-    if (customerSearch.length < 2) return;
+  const handleCustomerSearch = async (query?: string) => {
+    const q = query !== undefined ? query : customerSearch;
     try {
-      const res = await axios.get(`/api/customers?search=${customerSearch}`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await axios.get(`/api/customers?search=${q}`, { headers: { Authorization: `Bearer ${token}` } });
       setSearchResults(res.data);
     } catch (err) {
       console.error(err);
@@ -204,8 +204,9 @@ const ODF = () => {
                       value={customerSearch}
                       onChange={(e) => {
                         setCustomerSearch(e.target.value);
-                        handleCustomerSearch();
+                        handleCustomerSearch(e.target.value);
                       }}
+                      onFocus={() => handleCustomerSearch()}
                     />
                   </div>
                   <button 
@@ -432,11 +433,11 @@ const ODF = () => {
                           <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase ${
                             record.metalType === 'Gold' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'
                           }`}>
-                            {record.metalType} {record.fineness}
+                            {formatItemDetails(record.metalType)} {formatItemDetails(record.fineness)}
                           </span>
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <p className="font-black text-slate-900">{record.weight}g</p>
+                          <p className="font-black text-slate-900">{formatWeight(record.weight)}</p>
                           <p className="font-bold text-emerald-600">-{formatCurrency(record.amount)}</p>
                         </td>
                         <td className="px-6 py-4">

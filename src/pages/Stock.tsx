@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+import { formatWeight, formatItemDetails } from '../lib/utils';
 import BarcodeScanner from '../components/BarcodeScanner';
 import { 
   Package, Plus, Search, Filter, Edit2, Trash2, Save, X, 
@@ -310,10 +311,10 @@ const Stock = () => {
                                 <Barcode size={20} />
                               </div>
                               <div>
-                                <p className="font-bold text-slate-900">{item.barcode}</p>
-                                <p className="text-xs text-slate-500">
-                                  {`${item.category || ''} ${item.subCategory || ''} ${item.metalType ? `(${item.metalType})` : ''}`.trim().replace(/\s+/g, ' ')}
-                                </p>
+                                  <p className="font-bold text-slate-900">{formatItemDetails(item.barcode)}</p>
+                                  <p className="text-xs text-slate-500">
+                                    {`${formatItemDetails(item.category)} ${formatItemDetails(item.subCategory)} ${item.metalType ? `(${formatItemDetails(item.metalType)})` : ''}`.trim().replace(/\s+/g, ' ')}
+                                  </p>
                               </div>
                             </div>
                           </td>
@@ -326,14 +327,14 @@ const Stock = () => {
                             <div className="text-sm space-y-1">
                               {item.category === 'Jewellery' ? (
                                 <>
-                                  <p className="text-slate-700 font-medium">{item.metalType} {item.fineness}</p>
-                                  <p className="text-amber-600 font-bold">{item.weightGrams}g</p>
+                                  <p className="text-slate-700 font-medium">{formatItemDetails(item.metalType)} {formatItemDetails(item.fineness)}</p>
+                                  <p className="text-amber-600 font-bold">{formatWeight(item.weightGrams)}</p>
                                 </>
                               ) : (
                                 <p className="text-slate-400 font-medium">-</p>
                               )}
                               {item.category === 'Pen' && (
-                                <p className="text-slate-700 font-medium">{item.subCategory}</p>
+                                <p className="text-slate-700 font-medium">{formatItemDetails(item.subCategory)}</p>
                               )}
                               {item.category === 'Sewing Machine' && (
                                 <p className="text-slate-700 font-medium">Garantie: {item.yearsOfGuarantee} ans</p>

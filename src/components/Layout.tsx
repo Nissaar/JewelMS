@@ -48,22 +48,17 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
 
   useEffect(() => {
     const delayDebounceFn = setTimeout(async () => {
-      if (searchQuery.length >= 2) {
-        setIsSearching(true);
-        setIsSearchOpen(true);
-        try {
-          const response = await axios.get(`/api/search?q=${searchQuery}`, {
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          setSearchResults(response.data);
-        } catch (error) {
-          console.error("Search failed:", error);
-        } finally {
-          setIsSearching(false);
-        }
-      } else {
-        setSearchResults(null);
-        setIsSearchOpen(false);
+      setIsSearching(true);
+      setIsSearchOpen(true);
+      try {
+        const response = await axios.get(`/api/search?q=${searchQuery}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setSearchResults(response.data);
+      } catch (error) {
+        console.error("Search failed:", error);
+      } finally {
+        setIsSearching(false);
       }
     }, 300);
 
@@ -146,7 +141,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             </div>
             <button
               onClick={logout}
-              className="flex items-center space-x-2 text-slate-400 hover:text-red-400 transition-colors w-full"
+              className="flex items-center space-x-2 text-slate-400 hover:text-red-400 transition-colors w-full cursor-pointer"
             >
               <LogOut size={18} />
               <span className="text-sm font-medium">Déconnexion</span>
@@ -172,7 +167,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
                 className="w-full bg-slate-100 border-none rounded-full py-2 pl-10 pr-4 text-sm focus:ring-2 focus:ring-amber-500/20 transition-all outline-none"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                onFocus={() => searchQuery.length >= 2 && setIsSearchOpen(true)}
+                onFocus={() => setIsSearchOpen(true)}
               />
             </div>
 

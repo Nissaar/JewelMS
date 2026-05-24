@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import BarcodeScanner from '../components/BarcodeScanner';
-import { formatCurrency } from '../lib/utils';
+import { formatCurrency, formatItemDetails } from '../lib/utils';
 import CustomerModal from '../components/CustomerModal';
 
 const Sales = () => {
@@ -69,10 +69,8 @@ const Sales = () => {
   // Debounce Stock Search
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (barcode.length >= 2 && !scannedItem && saleStep === 'item') {
+      if (!scannedItem && saleStep === 'item') {
         handleStockSearch();
-      } else if (barcode.length < 2) {
-        setStockSearchResults([]);
       }
     }, 300);
 
@@ -122,10 +120,10 @@ const Sales = () => {
     fetchItemByBarcode(barcode);
   };
 
-  const handleCustomerSearch = async () => {
-    if (customerSearch.length < 2) return;
+  const handleCustomerSearch = async (query?: string) => {
+    const q = query !== undefined ? query : customerSearch;
     try {
-      const res = await axios.get(`/api/customers?search=${customerSearch}`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await axios.get(`/api/customers?search=${q}`, { headers: { Authorization: `Bearer ${token}` } });
       setSearchResults(res.data);
     } catch (err) {
       console.error(err);
@@ -291,7 +289,7 @@ const Sales = () => {
                       if (scannedItem) setScannedItem(null); // Clear item if user starts re-typing
                     }}
                     onFocus={() => {
-                      if (barcode.length >= 2 && !scannedItem) handleStockSearch();
+                      if (!scannedItem) handleStockSearch();
                     }}
                    />
                    
@@ -315,7 +313,7 @@ const Sales = () => {
                                 <Tag size={18} />
                               </div>
                               <div>
-                                <p className="font-bold text-slate-900">{item.subCategory || item.category}</p>
+                                <p className="font-bold text-slate-900">{formatItemDetails(item.subCategory || item.category)}</p>
                                 <p className="text-xs text-slate-500 font-mono">{item.barcode}</p>
                               </div>
                             </div>
@@ -348,8 +346,8 @@ const Sales = () => {
                     <div className="flex-1 grid grid-cols-2 gap-4">
                       <div>
                         <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Détails</p>
-                        <p className="text-lg font-black text-slate-900">{scannedItem.subCategory}</p>
-                        <p className="text-sm font-medium text-slate-500">{scannedItem.metalType} {scannedItem.fineness}</p>
+                        <p className="text-lg font-black text-slate-900">{formatItemDetails(scannedItem.subCategory)}</p>
+                        <p className="text-sm font-medium text-slate-500">{formatItemDetails(scannedItem.metalType)} {formatItemDetails(scannedItem.fineness)}</p>
                       </div>
                       <div>
                         <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Code-Barres</p>
@@ -419,8 +417,9 @@ const Sales = () => {
                       value={customerSearch}
                       onChange={(e) => {
                         setCustomerSearch(e.target.value);
-                        handleCustomerSearch();
+                        handleCustomerSearch(e.target.value);
                       }}
+                      onFocus={() => handleCustomerSearch()}
                     />
                   </div>
 
@@ -494,7 +493,7 @@ const Sales = () => {
                  <div className="space-y-4">
                     <div className="flex justify-between items-center py-3 border-b border-slate-50">
                       <span className="text-slate-500 font-medium">Article</span>
-                      <span className="font-black text-slate-900 text-right">{scannedItem.subCategory} ({scannedItem.metalType})</span>
+                      <span className="font-black text-slate-900 text-right">{formatItemDetails(scannedItem.subCategory)} ({formatItemDetails(scannedItem.metalType)})</span>
                     </div>
                     <div className="flex justify-between items-center py-3 border-b border-slate-50">
                       <span className="text-slate-500 font-medium">Client</span>

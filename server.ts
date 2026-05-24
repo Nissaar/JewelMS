@@ -11,6 +11,17 @@ import { authenticateToken, checkPermission } from "./src/middleware/auth";
 import { auditLogger } from "./src/middleware/audit";
 
 async function startServer() {
+  // Run one-time database migrations/fixes
+  try {
+    await db.execute(sql`ALTER TABLE stock DROP CONSTRAINT IF EXISTS stock_category_check;`);
+    await db.execute(sql`ALTER TABLE stock ALTER COLUMN category TYPE VARCHAR(100);`);
+    await db.execute(sql`ALTER TABLE sales DROP COLUMN IF EXISTS gold_rate;`);
+    await db.execute(sql`ALTER TABLE orders DROP COLUMN IF EXISTS gold_rate;`);
+    console.log("Database migrations: stock_category_check dropped, category length increased, and gold_rate columns dropped.");
+  } catch (err) {
+    console.error("Migration error (non-fatal):", err);
+  }
+
   const app = express();
   const PORT = 3000;
 
@@ -197,7 +208,7 @@ async function startServer() {
 
   // --- Sales Recording Endpoint ---
   app.post("/api/sales", authenticateToken, checkPermission('sales', 'create'), async (req, res) => {
-    const { customerId, barcode, paymentMode, chequeNumber, qty, amount, unitSalesPrice, itemDetails, goldRate, orderId } = req.body;
+    const { customerId, barcode, paymentMode, chequeNumber, qty, amount, unitSalesPrice, itemDetails, orderId } = req.body;
 
     try {
       const result = await db.transaction(async (tx) => {
@@ -225,7 +236,6 @@ async function startServer() {
           amount: (amount && amount !== "") ? amount.toString() : null,
           vat15: vat.toFixed(2),
           metalType: item.metalType,
-          goldRate: (goldRate && goldRate !== "") ? goldRate.toString() : null,
           orderId: orderId || null,
         }).returning();
 
@@ -341,13 +351,13 @@ async function startServer() {
 
   app.get("/api/stock/autocomplete", authenticateToken, async (req, res) => {
     const { q } = req.query;
-    if (!q || typeof q !== 'string' || q.length < 2) return res.json([]);
-
-    const searchStr = `%${q}%`;
+    
     try {
-      const results = await db.select()
-        .from(stock)
-        .where(
+      let queryBuilder = db.select().from(stock).where(eq(stock.status, 'Disponible'));
+      
+      if (q && typeof q === 'string' && q.length >= 2) {
+        const searchStr = `%${q}%`;
+        queryBuilder = db.select().from(stock).where(
           and(
             eq(stock.status, 'Disponible'),
             or(
@@ -356,8 +366,13 @@ async function startServer() {
               ilike(stock.subCategory, searchStr)
             )
           )
-        )
+        );
+      }
+      
+      const results = await queryBuilder
+        .orderBy(sql`${stock.createdAt} DESC`)
         .limit(10);
+        
       res.json(results);
     } catch (error) {
       console.error("Autocomplete Error:", error);
@@ -527,7 +542,10 @@ async function startServer() {
           .from(customers)
           .where(sql`DATE(${customers.createdAt} AT TIME ZONE 'UTC') = CURRENT_DATE`),
         
-        db.select({ count: sql<number>`COUNT(${stock.id})`.mapWith(Number) })
+        db.select({ 
+          count: sql<number>`COUNT(${stock.id})`.mapWith(Number),
+          totalWeight: sql<string>`SUM(COALESCE(${stock.weightGrams}, 0))`
+        })
           .from(stock)
           .where(eq(stock.status, 'Disponible')),
         
@@ -552,6 +570,7 @@ async function startServer() {
         todaySales: parseFloat(todaySalesRes[0].total || "0"),
         newClients: newClientsRes[0].count,
         stockCount: stockCountRes[0].count,
+        totalWeight: parseFloat(stockCountRes[0].totalWeight || "0"),
         pendingOrders: pendingOrdersRes[0].count,
         recentSales: recentSalesRes
       });
@@ -563,21 +582,33 @@ async function startServer() {
 
   app.get("/api/search", authenticateToken, async (req, res) => {
     const { q } = req.query;
-    if (!q || typeof q !== 'string') return res.status(400).json({ error: "Query string required" });
+    const isDefault = !q || typeof q !== 'string' || q.trim() === '';
+    const searchStr = isDefault ? '' : `%${q}%`;
 
-    const searchStr = `%${q}%`;
     try {
+      if (isDefault) {
+        const [stockRecent, customersRecent] = await Promise.all([
+          db.select().from(stock).where(eq(stock.status, 'Disponible')).orderBy(sql`${stock.createdAt} DESC`).limit(5),
+          db.select().from(customers).orderBy(sql`${customers.createdAt} DESC`).limit(5)
+        ]);
+        return res.json({
+          stock: stockRecent,
+          customers: customersRecent,
+          receipts: [],
+          orders: []
+        });
+      }
+
       const [stockResults, customerResults, receiptResults, orderResults] = await Promise.all([
         db.select().from(stock).where(
           and(
             eq(stock.status, 'Disponible'),
             or(ilike(stock.barcode, searchStr), ilike(stock.serialNumber, searchStr))
           )
-        ),
-        db.select().from(customers).where(or(ilike(customers.name, searchStr), ilike(customers.idNumber, searchStr))),
-        // For serial numbers, we try exact match if q is numeric
-        db.select().from(receipts).where(sql`CAST(${receipts.receiptSerialNumber} AS TEXT) ILIKE ${searchStr}`),
-        db.select().from(orders).where(sql`CAST(${orders.orderNumber} AS TEXT) ILIKE ${searchStr}`)
+        ).limit(10),
+        db.select().from(customers).where(or(ilike(customers.name, searchStr), ilike(customers.idNumber, searchStr))).limit(10),
+        db.select().from(receipts).where(sql`CAST(${receipts.receiptSerialNumber} AS TEXT) ILIKE ${searchStr}`).limit(10),
+        db.select().from(orders).where(sql`CAST(${orders.orderNumber} AS TEXT) ILIKE ${searchStr}`).limit(10)
       ]);
 
       res.json({
@@ -604,7 +635,7 @@ async function startServer() {
         metalType: stock.metalType,
         stockType: stock.stockType,
         category: stock.category,
-        totalWeight: sql<number>`SUM(COALESCE(${stock.weightGrams}, 0))`.mapWith(Number),
+        totalWeight: sql<string>`CAST(SUM(COALESCE(${stock.weightGrams}, 0)) AS NUMERIC(15, 3))`,
         itemCount: sql<number>`COUNT(${stock.id})`.mapWith(Number)
       })
       .from(stock)
@@ -632,20 +663,21 @@ async function startServer() {
         
         // Frontend expects: report[Metal][Location] = totalGrams
         const location = row.stockType || 'unknown';
-        report[metal][location] = (report[metal][location] || 0) + row.totalWeight;
+        const weightValue = parseFloat(row.totalWeight);
+        report[metal][location] = Number(((report[metal][location] || 0) + weightValue).toFixed(3));
         
         // Category breakdown
         const cat = row.category || 'Non classé';
         if (!report.byCategory[cat]) {
           report.byCategory[cat] = { totalWeight: 0, itemCount: 0, byMetal: {} };
         }
-        report.byCategory[cat].totalWeight += row.totalWeight;
+        report.byCategory[cat].totalWeight = Number((report.byCategory[cat].totalWeight + weightValue).toFixed(3));
         report.byCategory[cat].itemCount += row.itemCount;
         
         if (!report.byCategory[cat].byMetal[metal]) {
           report.byCategory[cat].byMetal[metal] = 0;
         }
-        report.byCategory[cat].byMetal[metal] += row.totalWeight;
+        report.byCategory[cat].byMetal[metal] = Number((report.byCategory[cat].byMetal[metal] + weightValue).toFixed(3));
       });
 
       res.json(report);
@@ -1227,7 +1259,6 @@ async function startServer() {
         deposit: orders.deposit,
         estimatedWeight: orders.estimatedWeight,
         estimatedPrice: orders.estimatedPrice,
-        goldRate: orders.goldRate,
         createdAt: orders.createdAt
       })
       .from(orders)
@@ -1240,7 +1271,7 @@ async function startServer() {
   });
 
   app.post("/api/orders", authenticateToken, checkPermission('orders', 'create'), async (req, res) => {
-    const { customerId, itemDescription, createdAt, estimatedWeight, estimatedPrice, deposit, goldRate } = req.body;
+    const { customerId, itemDescription, createdAt, estimatedWeight, estimatedPrice, deposit } = req.body;
     try {
       const newOrder = await db.insert(orders).values({
         customerId: parseInt(customerId),
@@ -1248,7 +1279,6 @@ async function startServer() {
         estimatedWeight,
         estimatedPrice,
         deposit,
-        goldRate,
         status: 'Pending',
         createdAt: createdAt ? new Date(createdAt) : new Date()
       }).returning();
@@ -1282,7 +1312,7 @@ async function startServer() {
   });
 
   app.post("/api/orders/:id/finalize", authenticateToken, async (req: any, res) => {
-    const { finalWeight, finalPrice, paymentMode, goldRate } = req.body;
+    const { finalWeight, finalPrice, paymentMode } = req.body;
     const orderId = parseInt(req.params.id);
 
     try {
@@ -1291,7 +1321,7 @@ async function startServer() {
         if (!order) throw new Error("Order not found");
 
         await tx.update(orders)
-          .set({ status: 'Finalized', finalWeight, finalPrice, goldRate, updatedAt: new Date() })
+          .set({ status: 'Finalized', finalWeight, finalPrice, updatedAt: new Date() })
           .where(eq(orders.id, orderId));
 
         const totalAmount = Number(finalPrice) || 0;
@@ -1304,7 +1334,6 @@ async function startServer() {
           amount: totalAmount.toString(),
           vat15: vat.toFixed(2),
           weight: (finalWeight && finalWeight !== "") ? finalWeight.toString() : null,
-          goldRate: (goldRate && goldRate !== "") ? goldRate.toString() : null,
           paymentMode,
           itemDetails: `Finalized Order #${order.orderNumber}: ${order.itemDescription}`,
           qty: 1,

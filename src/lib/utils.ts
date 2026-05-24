@@ -12,6 +12,35 @@ export const formatCurrency = (amount: number | string | null | undefined): stri
   return `${formatted} Rs`;
 };
 
+export const formatWeight = (weight: number | string | null | undefined): string => {
+  if (weight === null || weight === undefined || weight === '') return '0.000 g';
+  const num = typeof weight === 'string' ? parseFloat(weight) : weight;
+  if (isNaN(num)) return '0.000 g';
+  return `${num.toFixed(3)} g`;
+};
+
+export const formatWeightValue = (weight: number | string | null | undefined): string => {
+  if (weight === null || weight === undefined || weight === '') return '0.000';
+  const num = typeof weight === 'string' ? parseFloat(weight) : weight;
+  if (isNaN(num)) return '0.000';
+  return num.toFixed(3);
+};
+
+export const formatItemDetails = (details: any): string => {
+  if (!details) return '';
+  if (typeof details !== 'string') return String(details);
+  
+  try {
+    const parsed = JSON.parse(details);
+    if (typeof parsed === 'object' && parsed !== null) {
+      return parsed.description || parsed.name || Object.values(parsed).filter(v => typeof v === 'string' || typeof v === 'number').join(' ');
+    }
+    return details;
+  } catch (e) {
+    return details; // Return as-is if it's already a clean plain string
+  }
+};
+
 export const sanitize = (str: string | null | undefined): string => {
   if (!str) return 'unknown';
   // Remove accents, replace non-alphanumeric with _, trim, and lowercase

@@ -8,7 +8,7 @@ import {
   Loader2, AlertCircle, Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { formatCurrency } from '../lib/utils';
+import { formatCurrency, formatWeight } from '../lib/utils';
 
 const Reports = () => {
   const { token, user } = useAuth();
@@ -241,7 +241,7 @@ const Reports = () => {
                            <td className="px-6 py-4">
                              <div className="flex items-center gap-1 text-slate-500">
                                <Scale size={14} />
-                               <span className="font-bold">{row.weight || '0'}g</span>
+                               <span className="font-bold">{formatWeight(row.weight)}</span>
                              </div>
                            </td>
                            <td className="px-6 py-4 font-bold text-slate-900">{formatCurrency(row.amountExclVat)}</td>

@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
-import { formatCurrency } from '../lib/utils';
+import { formatCurrency, formatWeight, formatItemDetails } from '../lib/utils';
 
 const SoldItems = () => {
   const { token } = useAuth();
@@ -103,14 +103,14 @@ const SoldItems = () => {
                           <Barcode size={24} />
                         </div>
                         <div>
-                          <p className="font-black text-slate-900">{item.barcode}</p>
+                          <p className="font-black text-slate-900">{formatItemDetails(item.barcode)}</p>
                           <div className="flex flex-col mt-1">
                             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                              {`${item.barcode || ''} - ${item.category || ''} ${item.subCategory || ''} ${item.metalType ? `(${item.metalType})` : ''}`.trim().replace(/\s+/g, ' ')}
+                              {`${formatItemDetails(item.barcode)} - ${formatItemDetails(item.category)} ${formatItemDetails(item.subCategory)} ${item.metalType ? `(${formatItemDetails(item.metalType)})` : ''}`.trim().replace(/\s+/g, ' ')}
                             </span>
                             {item.category === 'Jewellery' && item.weightGrams && (
                               <span className="text-[10px] font-black text-amber-600 flex items-center gap-1 mt-1">
-                                <Scale size={10}/> {item.weightGrams}g
+                                <Scale size={10}/> {formatWeight(item.weightGrams)}
                               </span>
                             )}
                           </div>

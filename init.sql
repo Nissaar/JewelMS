@@ -45,7 +45,7 @@ CREATE INDEX IF NOT EXISTS idx_customers_id_number ON customers(id_number);
 CREATE TABLE IF NOT EXISTS stock (
     id SERIAL PRIMARY KEY,
     barcode VARCHAR(100) UNIQUE NOT NULL,
-    category VARCHAR(20) NOT NULL CHECK (category IN ('Jewellery', 'Pen', 'Sewing Machine', 'Parts')),
+    category VARCHAR(100) NOT NULL,
     sub_category VARCHAR(100), -- necklace, rings, Brand, etc.
     stock_type VARCHAR(20) NOT NULL CHECK (stock_type IN ('on-display', 'in-store')),
     

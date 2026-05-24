@@ -2,7 +2,7 @@ import PDFDocument from 'pdfkit';
 import { db } from '../db';
 import { sales, customers, receipts, settings, odf, stock, orders } from '../db/schema';
 import { eq } from 'drizzle-orm';
-import { formatCurrency } from '../lib/utils';
+import { formatCurrency, formatItemDetails } from '../lib/utils';
 
 export interface ReceiptData {
   saleId: number;
@@ -97,10 +97,10 @@ export async function generateReceiptPDF(saleId: number): Promise<{ doc: PDFKit.
   const itemY = tableTop + 20;
   
   // Construct a better description: Barcode - Category SubCategory (MetalType)
-  let description = sale.itemDetails || 'Article Bijouterie';
+  let description = formatItemDetails(sale.itemDetails) || 'Article Bijouterie';
   if (record.stock) {
     const s = record.stock;
-    description = `${s.barcode || ''} - ${s.category || ''} ${s.subCategory || ''} ${s.metalType ? `(${s.metalType})` : ''}`.trim().replace(/\s+/g, ' ');
+    description = `${formatItemDetails(s.barcode)} - ${formatItemDetails(s.category)} ${formatItemDetails(s.subCategory)} ${s.metalType ? `(${formatItemDetails(s.metalType)})` : ''}`.trim().replace(/\s+/g, ' ');
   }
 
   if (isJewellery) {
@@ -108,11 +108,6 @@ export async function generateReceiptPDF(saleId: number): Promise<{ doc: PDFKit.
     doc.text(sale.weight ? sale.weight.toString() : '-', 180, itemY);
     doc.text(formatCurrency(sale.unitSalesPrice), 240, itemY);
     doc.text(formatCurrency(sale.amount), 320, itemY);
-    
-    if (sale.goldRate) {
-      doc.fontSize(8).font('Helvetica-Oblique').text(`Cours de l'Or: ${formatCurrency(sale.goldRate)}/g`, 35, itemY + 12);
-      doc.font('Helvetica').fontSize(10);
-    }
   } else {
     doc.text(description, 35, itemY, { width: 170 });
     doc.text(formatCurrency(sale.unitSalesPrice), 220, itemY);
@@ -123,30 +118,35 @@ export async function generateReceiptPDF(saleId: number): Promise<{ doc: PDFKit.
 
   // Summary
   doc.moveDown(2);
-  const summaryX = 240;
-  doc.text('Sous-Total:', summaryX);
-  doc.text(formatCurrency(sale.amount), 320, doc.y - 12);
-  
-  doc.text('TVA (15%):', summaryX);
-  doc.text(formatCurrency(sale.vat15), 320, doc.y - 12);
+  const labelX = 220;
+  const valueX = 300;
+  const colWidth = 85;
+
+  let currentY = doc.y;
+
+  // Helper to draw summary rows safely
+  const drawSummaryRow = (label: string, value: string, isBold = false) => {
+    if (isBold) doc.font('Helvetica-Bold');
+    doc.text(label, labelX, currentY);
+    doc.text(value, valueX, currentY, { width: colWidth, align: 'right' });
+    doc.font('Helvetica');
+    currentY += 15; // Set explicit line height
+  };
+
+  drawSummaryRow('Sous-Total:', formatCurrency(sale.amount));
+  drawSummaryRow('TVA (15%):', formatCurrency(sale.vat15));
   
   const total = Number(sale.amount) + Number(sale.vat15);
 
   if (order && order.deposit) {
-    doc.text('ACOMPTE DÉDUIT:', summaryX);
-    doc.text(`- ${formatCurrency(order.deposit)}`, 320, doc.y - 12);
-    
-    doc.font('Helvetica-Bold');
-    doc.text('RESTE À PAYER:', summaryX);
+    drawSummaryRow('Acompte Déduit:', `-${formatCurrency(order.deposit)}`);
     const balance = total - Number(order.deposit);
-    doc.text(formatCurrency(balance), 320, doc.y - 12);
+    drawSummaryRow('Reste à Payer:', formatCurrency(balance), true);
   } else {
-    doc.font('Helvetica-Bold');
-    doc.text('GRAND TOTAL:', summaryX);
-    doc.text(formatCurrency(total), 320, doc.y - 12);
+    drawSummaryRow('Grand Total:', formatCurrency(total), true);
   }
-  doc.font('Helvetica');
 
+  doc.y = currentY; // Update doc.y to prevent overlap with signature section
   doc.moveDown(2);
   doc.text(`Mode de Paiement: ${sale.paymentMode}`);
   if (sale.chequeNumber) doc.text(`Chèque N°: ${sale.chequeNumber}`);
@@ -218,33 +218,33 @@ export async function generateODFPDF(odfId: number): Promise<{ doc: PDFKit.PDFDo
   // ODF Details
   doc.font('Helvetica-Bold').text('Détails du Rachat:');
   doc.font('Helvetica');
-  doc.text(`Métal: ${odfRecord.metalType}`);
-  doc.text(`Finesse: ${odfRecord.fineness}`);
+  doc.text(`Métal: ${formatItemDetails(odfRecord.metalType)}`);
+  doc.text(`Finesse: ${formatItemDetails(odfRecord.fineness)}`);
   doc.text(`Poids: ${odfRecord.weight} g`);
   doc.text(`Montant Estimé: ${formatCurrency(odfRecord.amount || 0)}`);
   doc.moveDown();
 
   if (odfRecord.itemReservedRepair) {
     doc.font('Helvetica-Bold').text('Article Réservé / Réparation:');
-    doc.font('Helvetica').text(odfRecord.itemReservedRepair);
+    doc.font('Helvetica').text(formatItemDetails(odfRecord.itemReservedRepair));
     doc.moveDown();
   }
 
   if (odfRecord.description) {
     doc.font('Helvetica-Bold').text('Description:');
-    doc.font('Helvetica').text(odfRecord.description);
+    doc.font('Helvetica').text(formatItemDetails(odfRecord.description));
     doc.moveDown();
   }
 
   if (odfRecord.parameters) {
     doc.font('Helvetica-Bold').text('Paramètres:');
-    doc.font('Helvetica').text(odfRecord.parameters);
+    doc.font('Helvetica').text(formatItemDetails(odfRecord.parameters));
     doc.moveDown();
   }
 
   if (odfRecord.comments) {
     doc.font('Helvetica-Bold').text('Commentaires:');
-    doc.font('Helvetica').text(odfRecord.comments);
+    doc.font('Helvetica').text(formatItemDetails(odfRecord.comments));
     doc.moveDown();
   }
 
@@ -319,7 +319,7 @@ export async function generateBookingReceiptPDF(orderId: number): Promise<{ doc:
 
   // Items Table Row
   const itemY = tableTop + 20;
-  doc.text(order.itemDescription || 'Article sur commande', 35, itemY, { width: 140 });
+  doc.text(formatItemDetails(order.itemDescription) || 'Article sur commande', 35, itemY, { width: 140 });
   doc.text(order.estimatedWeight ? order.estimatedWeight.toString() : '-', 180, itemY);
   doc.text(formatCurrency(order.estimatedPrice || 0), 280, itemY);
 
@@ -327,16 +327,26 @@ export async function generateBookingReceiptPDF(orderId: number): Promise<{ doc:
 
   // Summary
   doc.moveDown(2);
-  const summaryX = 220;
-  doc.font('Helvetica-Bold');
-  doc.text('PRIX ESTIMÉ:', summaryX);
-  doc.text(formatCurrency(order.estimatedPrice || 0), 320, doc.y - 12);
-  
-  doc.fillColor('blue');
-  doc.text('ACOMPTE PAYÉ:', summaryX);
-  doc.text(formatCurrency(order.deposit || 0), 320, doc.y - 12);
-  doc.fillColor('black');
+  const labelX = 220;
+  const valueX = 300;
+  const colWidth = 85;
 
+  let currentY = doc.y;
+
+  const drawSummaryRow = (label: string, value: string, isBold = false, color = 'black') => {
+    doc.fillColor(color);
+    if (isBold) doc.font('Helvetica-Bold');
+    doc.text(label, labelX, currentY);
+    doc.text(value, valueX, currentY, { width: colWidth, align: 'right' });
+    doc.font('Helvetica');
+    doc.fillColor('black');
+    currentY += 15;
+  };
+
+  drawSummaryRow('PRIX ESTIMÉ:', formatCurrency(order.estimatedPrice || 0), true);
+  drawSummaryRow('ACOMPTE PAYÉ:', formatCurrency(order.deposit || 0), true, 'blue');
+
+  doc.y = currentY;
   doc.moveDown(1);
   doc.fontSize(8).font('Helvetica-Oblique').text('* Note: Le poids et le prix final seront ajustés lors de la livraison.');
   doc.font('Helvetica');

@@ -10,6 +10,9 @@
   body {
     @apply antialiased text-slate-900 bg-slate-50;
   }
+  button, [role="button"], .btn {
+    cursor: pointer !important;
+  }
 }
 
 /* html5-qrcode scanner overrides */

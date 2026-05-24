@@ -147,7 +147,7 @@ const StockReports = () => {
               </div>
               <div className="text-right">
                 <span className="text-4xl font-black text-slate-900">
-                  {((reportData?.Gold?.['on-display'] || 0) + (reportData?.Gold?.['in-store'] || 0)).toFixed(2)}
+                  {((reportData?.Gold?.['on-display'] || 0) + (reportData?.Gold?.['in-store'] || 0)).toFixed(3)}
                 </span>
                 <span className="text-xl font-black text-amber-500 ml-1">g</span>
               </div>
@@ -159,14 +159,14 @@ const StockReports = () => {
                   <Eye size={18} />
                   <span className="text-[10px] font-black uppercase tracking-widest">En Vitrine</span>
                 </div>
-                <p className="text-2xl font-black text-amber-900">{(reportData?.Gold?.['on-display'] || 0).toFixed(2)} g</p>
+                <p className="text-2xl font-black text-amber-900">{(reportData?.Gold?.['on-display'] || 0).toFixed(3)} g</p>
               </div>
               <div className="bg-slate-50 p-6 rounded-3xl space-y-1">
                 <div className="flex items-center gap-2 text-slate-400 mb-2">
                   <Store size={18} />
                   <span className="text-[10px] font-black uppercase tracking-widest">En Réserve</span>
                 </div>
-                <p className="text-2xl font-black text-slate-900">{(reportData?.Gold?.['in-store'] || 0).toFixed(2)} g</p>
+                <p className="text-2xl font-black text-slate-900">{(reportData?.Gold?.['in-store'] || 0).toFixed(3)} g</p>
               </div>
             </div>
 
@@ -212,7 +212,7 @@ const StockReports = () => {
               </div>
               <div className="text-right">
                 <span className="text-4xl font-black text-slate-900">
-                  {((reportData?.Silver?.['on-display'] || 0) + (reportData?.Silver?.['in-store'] || 0)).toFixed(2)}
+                  {((reportData?.Silver?.['on-display'] || 0) + (reportData?.Silver?.['in-store'] || 0)).toFixed(3)}
                 </span>
                 <span className="text-xl font-black text-slate-400 ml-1">g</span>
               </div>
@@ -224,14 +224,14 @@ const StockReports = () => {
                   <Eye size={18} />
                   <span className="text-[10px] font-black uppercase tracking-widest">En Vitrine</span>
                 </div>
-                <p className="text-2xl font-black text-slate-900">{(reportData?.Silver?.['on-display'] || 0).toFixed(2)} g</p>
+                <p className="text-2xl font-black text-slate-900">{(reportData?.Silver?.['on-display'] || 0).toFixed(3)} g</p>
               </div>
               <div className="bg-slate-100/50 p-6 rounded-3xl space-y-1">
                 <div className="flex items-center gap-2 text-slate-300 mb-2">
                   <Store size={18} />
                   <span className="text-[10px] font-black uppercase tracking-widest">En Réserve</span>
                 </div>
-                <p className="text-2xl font-black text-slate-600">{(reportData?.Silver?.['in-store'] || 0).toFixed(2)} g</p>
+                <p className="text-2xl font-black text-slate-600">{(reportData?.Silver?.['in-store'] || 0).toFixed(3)} g</p>
               </div>
             </div>
 
@@ -297,13 +297,13 @@ const StockReports = () => {
                           </span>
                         </td>
                         <td className="px-4 py-4 text-right font-bold text-amber-600">
-                          {stats.byMetal.Gold?.toFixed(2) || '0.00'} g
+                          {stats.byMetal.Gold?.toFixed(3) || '0.000'} g
                         </td>
                         <td className="px-4 py-4 text-right font-bold text-slate-400">
-                          {stats.byMetal.Silver?.toFixed(2) || '0.00'} g
+                          {stats.byMetal.Silver?.toFixed(3) || '0.000'} g
                         </td>
                         <td className="px-4 py-4 text-right font-black text-indigo-600">
-                          {stats.totalWeight.toFixed(2)} g
+                          {stats.totalWeight.toFixed(3)} g
                         </td>
                       </tr>
                     ))}
