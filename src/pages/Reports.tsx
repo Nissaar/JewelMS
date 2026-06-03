@@ -94,6 +94,35 @@ const Reports = () => {
     }
   };
 
+  const handleExportVatPDF = async () => {
+    try {
+      const params = new URLSearchParams();
+      if (filters.year) params.append('year', filters.year);
+      if (filters.month) params.append('month', filters.month);
+      if (filters.day) params.append('day', filters.day);
+
+      const response = await axios.get(`/api/reports/vat/pdf?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: 'blob'
+      });
+      
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `rapport_tva_${filters.year || 'all'}_${filters.month || 'all'}_${filters.day || 'all'}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode?.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      setMessage({ type: 'success', text: 'Rapport TVA PDF téléchargé avec succès' });
+    } catch (err) {
+      console.error(err);
+      setMessage({ type: 'error', text: 'Échec de l\'exportation du PDF' });
+    }
+    setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+  };
+
   const filteredReceipts = (receipts || []).filter(r => {
     const rNo = String(r?.receiptNo || '').toLowerCase();
     const cName = String(r?.customerName || '').toLowerCase();
@@ -127,23 +156,36 @@ const Reports = () => {
       </div>
 
       {/* Tabs */}
-      <div className="flex space-x-1 bg-slate-200 p-1 rounded-2xl w-fit">
-        <button
-          onClick={() => setActiveTab('vat')}
-          className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${
-            activeTab === 'vat' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          Rapport TVA
-        </button>
-        <button
-          onClick={() => setActiveTab('receipts')}
-          className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${
-            activeTab === 'receipts' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          Archives Factures
-        </button>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex space-x-1 bg-slate-200 p-1 rounded-2xl w-fit">
+          <button
+            onClick={() => setActiveTab('vat')}
+            className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${
+              activeTab === 'vat' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Rapport TVA
+          </button>
+          <button
+            onClick={() => setActiveTab('receipts')}
+            className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${
+              activeTab === 'receipts' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Archives Factures
+          </button>
+        </div>
+
+        {activeTab === 'vat' && (
+          <button
+            id="export-vat-pdf-btn"
+            onClick={handleExportVatPDF}
+            className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-black px-6 py-3 rounded-2xl shadow-lg transition-all flex items-center gap-2 text-sm select-none"
+          >
+            <Download size={18} />
+            Exporter en PDF
+          </button>
+        )}
       </div>
 
       <AnimatePresence mode="wait">
@@ -215,43 +257,53 @@ const Reports = () => {
             <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
                <div className="overflow-x-auto">
                  <table className="w-full text-left">
-                   <thead className="bg-slate-50 border-b border-slate-100">
-                     <tr>
-                       <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">N° Vente / Facture</th>
-                       <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Article</th>
-                       <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Poids</th>
-                       <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Montant HT</th>
-                       <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">TVA (15%)</th>
-                       <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Total TTC</th>
-                     </tr>
-                   </thead>
-                   <tbody className="divide-y divide-slate-50">
-                     {isLoading ? (
-                       <tr><td colSpan={6} className="py-20 text-center"><Loader2 className="animate-spin mx-auto text-amber-500" /></td></tr>
-                     ) : vatData.length === 0 ? (
-                       <tr><td colSpan={6} className="py-20 text-center text-slate-400">Aucune donnée pour cette période</td></tr>
-                     ) : (
-                       vatData.map((row) => (
-                         <tr key={row.saleId} className="hover:bg-slate-50 transition-colors">
-                           <td className="px-6 py-4">
-                             <p className="font-bold text-slate-900">#{row.saleId}</p>
-                             <p className="text-xs text-slate-400 font-mono">{row.receiptNo || 'N/A'}</p>
-                           </td>
-                           <td className="px-6 py-4 font-medium text-slate-700">{row.itemDetails}</td>
-                           <td className="px-6 py-4">
-                             <div className="flex items-center gap-1 text-slate-500">
-                               <Scale size={14} />
-                               <span className="font-bold">{formatWeight(row.weight)}</span>
-                             </div>
-                           </td>
-                           <td className="px-6 py-4 font-bold text-slate-900">{formatCurrency(row.amountExclVat)}</td>
-                           <td className="px-6 py-4 font-bold text-amber-600">{formatCurrency(row.vatAmount)}</td>
-                           <td className="px-6 py-4 text-right font-black text-slate-900">{formatCurrency(row.total)}</td>
-                         </tr>
-                       ))
-                     )}
-                   </tbody>
-                 </table>
+                    <thead className="bg-slate-50 border-b border-slate-100">
+                      <tr>
+                        <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Date</th>
+                        <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Réf. Facture / Invoice Ref</th>
+                        <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Détails Article</th>
+                        <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Taxable Value (Rs HT)</th>
+                        <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">VAT Amount (TVA 15%)</th>
+                        <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Total TTC (Rs)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {isLoading ? (
+                        <tr><td colSpan={6} className="py-20 text-center"><Loader2 className="animate-spin mx-auto text-amber-500" /></td></tr>
+                      ) : vatData.length === 0 ? (
+                        <tr><td colSpan={6} className="py-20 text-center text-slate-400">Aucune donnée pour cette période</td></tr>
+                      ) : (
+                        vatData.map((row) => (
+                          <tr key={row.saleId} className="hover:bg-slate-50 transition-colors">
+                            <td className="px-6 py-4 text-sm font-semibold text-slate-700">
+                              {row.createdAt ? new Date(row.createdAt).toLocaleDateString() : 'N/A'}
+                            </td>
+                            <td className="px-6 py-4 text-sm">
+                              <p className="font-bold text-slate-900">{row.receiptNo ? `#FS-${row.receiptNo}` : 'N/A'}</p>
+                              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Réf Vente #{row.saleId}</p>
+                            </td>
+                            <td className="px-6 py-4">
+                              <p className="font-medium text-slate-800 text-sm">{row.itemDetails || 'N/A'}</p>
+                              {row.weight && Number(row.weight) > 0 && (
+                                <p className="text-xs text-slate-400 font-semibold flex items-center gap-1 mt-1">
+                                  <Scale size={12} className="text-slate-400" /> Poids: {formatWeight(row.weight)}
+                                </p>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 text-right font-bold text-slate-900">
+                              {formatCurrency(row.amountExclVat || "0")}
+                            </td>
+                            <td className="px-6 py-4 text-right font-bold text-amber-600">
+                              {row.vatAmount ? formatCurrency(row.vatAmount) : '0'}
+                            </td>
+                            <td className="px-6 py-4 text-right font-black text-slate-900">
+                              {row.total ? formatCurrency(row.total) : '0'}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
                </div>
             </div>
           </motion.div>

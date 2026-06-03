@@ -38,6 +38,7 @@ const Sales = () => {
   const [paymentMode, setPaymentMode] = useState('Cash');
   const [chequeNumber, setChequeNumber] = useState('');
   const [finalPrice, setFinalPrice] = useState('');
+  const [editedInclusivePrice, setEditedInclusivePrice] = useState('');
   const [vatAmount, setVatAmount] = useState(0);
   const [totalWithVat, setTotalWithVat] = useState(0);
   
@@ -63,6 +64,9 @@ const Sales = () => {
         setVatAmount(vat);
         setTotalWithVat(price + vat);
       }
+    } else {
+      setVatAmount(0);
+      setTotalWithVat(0);
     }
   }, [finalPrice]);
 
@@ -92,7 +96,14 @@ const Sales = () => {
     setScannedItem(item);
     setBarcode(item.barcode);
     setStockSearchResults([]);
-    setFinalPrice(''); 
+    if (item.price && Number(item.price) > 0) {
+      setEditedInclusivePrice(Number(item.price).toString());
+      const net = Number(item.price) / 1.15;
+      setFinalPrice(net.toFixed(2));
+    } else {
+      setEditedInclusivePrice('');
+      setFinalPrice(''); 
+    }
     setMessage({ type: '', text: '' });
   };
 
@@ -104,7 +115,14 @@ const Sales = () => {
     try {
       const res = await axios.get(`/api/stock/${codeToFetch}`, { headers: { Authorization: `Bearer ${token}` } });
       setScannedItem(res.data);
-      setFinalPrice(''); // Reset price for new item
+      if (res.data.price && Number(res.data.price) > 0) {
+        setEditedInclusivePrice(Number(res.data.price).toString());
+        const net = Number(res.data.price) / 1.15;
+        setFinalPrice(net.toFixed(2));
+      } else {
+        setEditedInclusivePrice('');
+        setFinalPrice(''); // Reset price for new item
+      }
       setMessage({ type: '', text: '' });
       setIsScannerOpen(false);
     } catch (err: any) {
@@ -112,6 +130,17 @@ const Sales = () => {
       setScannedItem(null);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handlePriceOverride = (val: string) => {
+    setEditedInclusivePrice(val);
+    const newPrice = parseFloat(val);
+    if (!isNaN(newPrice) && newPrice > 0) {
+      const net = newPrice / 1.15;
+      setFinalPrice(net.toFixed(2));
+    } else {
+      setFinalPrice('');
     }
   };
 
@@ -130,6 +159,16 @@ const Sales = () => {
     }
   };
 
+  const originalPrice = scannedItem ? parseFloat(scannedItem.price || '0') : 0;
+  const currentPrice = parseFloat(editedInclusivePrice || '0');
+  
+  let computedDiscountAmount = 0;
+  let computedDiscountPercentage = 0;
+  if (originalPrice > 0 && currentPrice < originalPrice && currentPrice > 0) {
+    computedDiscountAmount = originalPrice - currentPrice;
+    computedDiscountPercentage = (computedDiscountAmount / originalPrice) * 100;
+  }
+
   const handleFinalizeSale = async () => {
     if (!finalPrice || !selectedCustomer || !scannedItem) return;
     
@@ -143,6 +182,8 @@ const Sales = () => {
         qty: 1,
         amount: finalPrice,
         unitSalesPrice: finalPrice,
+        discountAmount: computedDiscountAmount > 0 ? computedDiscountAmount.toFixed(2) : '0.00',
+        discountPercentage: computedDiscountPercentage > 0 ? computedDiscountPercentage.toFixed(2) : '0.00',
         itemDetails: `${scannedItem.subCategory} (${scannedItem.metalType} ${scannedItem.fineness})`
       };
       
@@ -488,23 +529,62 @@ const Sales = () => {
             <div className="space-y-6">
                <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100">
                  <h3 className="text-xl font-bold text-slate-900 mb-6 flex items-center gap-2">
-                   <Info className="text-amber-500" size={20} /> Récapitulatif
+                   <ShoppingCart className="text-amber-500" size={20} /> Panier d'Achat (POS Cart Table)
                  </h3>
-                 <div className="space-y-4">
-                    <div className="flex justify-between items-center py-3 border-b border-slate-50">
-                      <span className="text-slate-500 font-medium">Article</span>
-                      <span className="font-black text-slate-900 text-right">{formatItemDetails(scannedItem.subCategory)} ({formatItemDetails(scannedItem.metalType)})</span>
-                    </div>
-                    <div className="flex justify-between items-center py-3 border-b border-slate-50">
-                      <span className="text-slate-500 font-medium">Client</span>
-                      <span className="font-black text-slate-900">{selectedCustomer.name}</span>
-                    </div>
-                    {scannedItem.category === 'Jewellery' && (
-                      <div className="flex justify-between items-center py-3">
-                        <span className="text-slate-500 font-medium">Poids</span>
-                        <span className="font-black text-amber-600">{scannedItem.weightGrams}g</span>
-                      </div>
-                    )}
+                 <div className="overflow-x-auto">
+                   <table className="w-full text-left border-collapse">
+                     <thead>
+                       <tr className="border-b border-slate-100 text-slate-400 text-xs uppercase font-extrabold pb-3 font-bold">
+                         <th className="pb-3 pr-2">Article</th>
+                         <th className="pb-3 px-2 text-center text-xs">Qté</th>
+                         <th className="pb-3 px-2 text-center text-xs">Poids</th>
+                         <th className="pb-3 pl-2 text-right text-xs">Prix Unit. (Rs TTC)</th>
+                       </tr>
+                     </thead>
+                     <tbody className="divide-y divide-slate-50">
+                       <tr className="text-sm">
+                         <td className="py-4 pr-2 font-black text-slate-900">
+                           <div>{formatItemDetails(scannedItem.subCategory)}</div>
+                           <div className="text-xs text-slate-400 font-semibold">{formatItemDetails(scannedItem.metalType)} {formatItemDetails(scannedItem.fineness)}</div>
+                         </td>
+                         <td className="py-4 px-2 text-center font-bold text-slate-700">1</td>
+                         <td className="py-4 px-2 text-center font-bold text-amber-600 italic">
+                           {scannedItem.category === 'Jewellery' && scannedItem.weightGrams ? `${scannedItem.weightGrams}g` : '-'}
+                         </td>
+                         <td className="py-4 pl-2 text-right">
+                           <div className="flex flex-col items-end gap-1">
+                             <div className="flex items-center gap-2 justify-end">
+                               {computedDiscountPercentage > 0 && (
+                                 <span className="bg-red-50 text-red-600 text-xs font-black px-2 py-1 rounded-full animate-pulse whitespace-nowrap">
+                                   -{computedDiscountPercentage.toFixed(0)}%
+                                 </span>
+                               )}
+                               <div className="relative w-32">
+                                 <input 
+                                   type="number"
+                                   step="0.01"
+                                   className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-1 px-2 font-extrabold text-right focus:border-amber-400 outline-none text-slate-900 transition-all font-mono"
+                                   value={editedInclusivePrice}
+                                   onChange={(e) => handlePriceOverride(e.target.value)}
+                                 />
+                               </div>
+                             </div>
+                             {computedDiscountAmount > 0 && (
+                               <span className="text-[10px] text-red-500 font-bold whitespace-nowrap">
+                                 Économie: {formatCurrency(computedDiscountAmount)}
+                                </span>
+                             )}
+                           </div>
+                         </td>
+                       </tr>
+                     </tbody>
+                   </table>
+                 </div>
+                 
+                 {/* Client display */}
+                 <div className="mt-6 pt-4 border-t border-slate-100 flex justify-between items-center text-sm font-medium">
+                   <span className="text-slate-500">Client Facturé:</span>
+                   <span className="font-extrabold text-slate-900">{selectedCustomer.name}</span>
                  </div>
                </div>
 

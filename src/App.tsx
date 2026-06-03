@@ -12,6 +12,7 @@ import Settings from './pages/Settings';
 import Stock from './pages/Stock';
 import Sales from './pages/Sales';
 import Reports from './pages/Reports';
+import DiscountReport from './pages/DiscountReport';
 import SalesHistory from './pages/SalesHistory';
 import SoldItems from './pages/SoldItems';
 import AuditLogs from './pages/AuditLogs';
@@ -98,6 +99,14 @@ const App: React.FC = () => {
             <ProtectedRoute requiredPermission={{ functionality: 'reports', action: 'canView' }}>
               <Layout>
                 <Reports />
+              </Layout>
+            </ProtectedRoute>
+          } />
+
+          <Route path="/reports/discounts" element={
+            <ProtectedRoute requiredPermission={{ functionality: 'reports', action: 'canView' }}>
+              <Layout>
+                <DiscountReport />
               </Layout>
             </ProtectedRoute>
           } />

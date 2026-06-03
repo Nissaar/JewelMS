@@ -50,6 +50,10 @@ export const stock = pgTable('stock', {
   fineness: varchar('fineness', { length: 20 }),
   weightGrams: numeric('weight_grams', { precision: 10, scale: 3 }),
 
+  price: numeric('price', { precision: 15, scale: 2 }).default('0.00'),
+  priceNet: numeric('price_net', { precision: 15, scale: 2 }).default('0.00'),
+  priceVat: numeric('price_vat', { precision: 15, scale: 2 }).default('0.00'),
+
   status: varchar('status', { length: 20 }).default('Disponible').notNull(), // 'Disponible' | 'Vendu'
   soldAt: timestamp('sold_at', { withTimezone: true }),
 
@@ -84,6 +88,8 @@ export const sales = pgTable('sales', {
   fineness: varchar('fineness', { length: 20 }),
   unitSalesPrice: numeric('unit_sales_price', { precision: 15, scale: 2 }),
   amount: numeric('amount', { precision: 15, scale: 2 }),
+  discountAmount: numeric('discount_amount', { precision: 15, scale: 2 }),
+  discountPercentage: numeric('discount_percentage', { precision: 5, scale: 2 }),
   vat15: numeric('vat_15', { precision: 15, scale: 2 }),
   metalType: varchar('metal_type', { length: 50 }),
   orderId: integer('order_id').references(() => orders.id, { onDelete: 'set null' }),

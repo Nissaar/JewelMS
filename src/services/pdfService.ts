@@ -1,7 +1,7 @@
 import PDFDocument from 'pdfkit';
 import { db } from '../db';
 import { sales, customers, receipts, settings, odf, stock, orders } from '../db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { formatCurrency, formatItemDetails } from '../lib/utils';
 
 export interface ReceiptData {
@@ -401,4 +401,129 @@ function addWatermark(doc: PDFKit.PDFDocument, text: string) {
   }
   // Move back to the last page to ensure doc.end() works as expected
   doc.switchToPage(range.start + range.count - 1);
+}
+
+export async function generateVatReportPDF(day?: string, month?: string, year?: string): Promise<PDFKit.PDFDocument> {
+  const conditions = [];
+  if (year) conditions.push(sql`EXTRACT(YEAR FROM ${sales.createdAt}) = ${year}`);
+  if (month) conditions.push(sql`EXTRACT(MONTH FROM ${sales.createdAt}) = ${month}`);
+  if (day) conditions.push(sql`EXTRACT(DAY FROM ${sales.createdAt}) = ${day}`);
+
+  const reportData = await db.select({
+    saleId: sales.id,
+    receiptNo: receipts.receiptSerialNumber,
+    itemDetails: sales.itemDetails,
+    weight: sales.weight,
+    amountExclVat: sales.amount,
+    createdAt: sales.createdAt
+  })
+  .from(sales)
+  .leftJoin(receipts, eq(sales.id, receipts.saleId))
+  .where(conditions.length > 0 ? and(...conditions) : undefined)
+  .orderBy(sales.id);
+
+  const calculatedData = reportData.map(row => {
+    const amount = parseFloat(row.amountExclVat || "0");
+    const vat = amount * 0.15;
+    return {
+      ...row,
+      vatAmount: vat.toFixed(2),
+      total: (amount + vat).toFixed(2)
+    };
+  });
+
+  const allSettings = await db.select().from(settings);
+  const heading = allSettings.find(s => s.key === 'receipt_heading')?.value || 'Haujee Jewellery';
+
+  // Create PDF (A4 size)
+  const doc = new PDFDocument({
+    size: 'A4',
+    margin: 30,
+    bufferPages: true,
+  });
+
+  // Header Title
+  doc.fontSize(18).font('Helvetica-Bold').text(heading, { align: 'center' });
+  doc.fontSize(14).text('RAPPORT DÉTAILLÉ DE TVA (15%)', { align: 'center' });
+  doc.fontSize(10).font('Helvetica-Oblique').text(`Généré le: ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}`, { align: 'center' });
+  doc.moveDown();
+
+  // Period Details
+  doc.fontSize(9).font('Helvetica-Bold').text('PÉRIODE DE FILTRAGE DES RAPPORTS:');
+  const periodParts = [];
+  if (day) periodParts.push(`Jour: ${day}`);
+  if (month) periodParts.push(`Mois: ${month}`);
+  if (year) periodParts.push(`Année: ${year}`);
+  const periodText = periodParts.length > 0 ? periodParts.join(' / ') : 'Toutes les périodes';
+  doc.font('Helvetica').fontSize(9).text(periodText);
+  doc.moveDown();
+
+  // Draw table line
+  let y = doc.y;
+  const bottomThreshold = doc.page.height - 50;
+
+  const drawTableHeader = (startY: number) => {
+    doc.rect(30, startY, 535, 20).fill('#f8fafc');
+    doc.fillColor('#475569');
+    doc.font('Helvetica-Bold').fontSize(8);
+    doc.text('Date', 35, startY + 6);
+    doc.text('Réf. Facture', 105, startY + 6);
+    doc.text('Description', 185, startY + 6);
+    doc.text('Taxable (Rs HT)', 350, startY + 6, { width: 65, align: 'right' });
+    doc.text('TVA (15%)', 425, startY + 6, { width: 65, align: 'right' });
+    doc.text('Total TTC (Rs)', 495, startY + 6, { width: 65, align: 'right' });
+    doc.moveTo(30, startY + 20).lineTo(565, startY + 20).strokeColor('#e2e8f0').stroke();
+    doc.font('Helvetica').fontSize(8).fillColor('black');
+  };
+
+  drawTableHeader(y);
+  y += 24;
+
+  for (const row of calculatedData) {
+    const textHeight = doc.heightOfString(row.itemDetails || 'Article', { width: 160 });
+    const rowHeight = Math.max(25, textHeight + 10);
+
+    if (y + rowHeight > bottomThreshold) {
+      doc.addPage();
+      y = 40;
+      drawTableHeader(y);
+      y += 24;
+    }
+
+    const dateStr = row.createdAt ? new Date(row.createdAt).toLocaleDateString('fr-FR') : 'N/A';
+    const invoiceNo = row.receiptNo ? `#FS-${row.receiptNo}` : 'N/A';
+
+    doc.font('Helvetica').fillColor('#0f172a').fontSize(8);
+    doc.text(dateStr, 35, y + 6);
+    doc.text(invoiceNo, 105, y + 6);
+    doc.text(row.itemDetails || 'Article', 185, y + 6, { width: 160 });
+
+    doc.text(formatCurrency(row.amountExclVat || "0"), 350, y + 6, { width: 65, align: 'right' });
+    doc.text(formatCurrency(row.vatAmount || "0"), 425, y + 6, { width: 65, align: 'right' });
+    doc.text(formatCurrency(row.total || "0"), 495, y + 6, { width: 65, align: 'right' });
+
+    doc.moveTo(30, y + rowHeight).lineTo(565, y + rowHeight).strokeColor('#f1f5f9').stroke();
+    y += rowHeight;
+  }
+
+  // Draw Total row
+  if (y + 35 > bottomThreshold) {
+    doc.addPage();
+    y = 40;
+  }
+
+  const totalTaxable = calculatedData.reduce((sum, row) => sum + parseFloat(row.amountExclVat || "0"), 0);
+  const totalVatCalculated = calculatedData.reduce((sum, row) => sum + parseFloat(row.vatAmount || "0"), 0);
+  const grandTotalCalculated = totalTaxable + totalVatCalculated;
+
+  doc.rect(30, y, 535, 25).fill('#f1f5f9');
+  doc.fillColor('#0f172a');
+  doc.font('Helvetica-Bold').fontSize(8);
+  doc.text('TOTAL GÉNÉRAL / GRAND TOTALS', 35, y + 8);
+  
+  doc.text(formatCurrency(totalTaxable), 350, y + 8, { width: 65, align: 'right' });
+  doc.text(formatCurrency(totalVatCalculated), 425, y + 8, { width: 65, align: 'right' });
+  doc.text(formatCurrency(grandTotalCalculated), 495, y + 8, { width: 65, align: 'right' });
+
+  return doc;
 }

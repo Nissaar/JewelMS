@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import { formatWeight, formatItemDetails } from '../lib/utils';
+import { formatWeight, formatItemDetails, formatCurrency } from '../lib/utils';
 import BarcodeScanner from '../components/BarcodeScanner';
 import { 
   Package, Plus, Search, Filter, Edit2, Trash2, Save, X, 
   Settings as SettingsIcon, Check, AlertCircle, Loader2,
-  ChevronDown, Barcode, Scale, Info, Tag, History, Camera
+  ChevronDown, Barcode, Scale, Info, Tag, History, Camera,
+  DollarSign
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -23,6 +24,7 @@ interface StockItem {
   metalType?: string;
   fineness?: string;
   weightGrams?: string;
+  price?: string;
   createdAt: string;
 }
 
@@ -51,8 +53,45 @@ const Stock = () => {
     serialNumber: '',
     metalType: '',
     fineness: '',
-    weightGrams: ''
+    weightGrams: '',
+    price: ''
   });
+
+  const [allSubCategories, setAllSubCategories] = useState<any[]>([]);
+  const [filteredSubCategories, setFilteredSubCategories] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchFreshSubCategories = async () => {
+      try {
+        const res = await axios.get('/api/settings/stock_sub_categories', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.data && res.data.value) {
+          const list = JSON.parse(res.data.value);
+          setAllSubCategories(list);
+        }
+      } catch (err) {
+        console.error("Error fetching fresh sub-categories on mount:", err);
+      }
+    };
+    if (token) {
+      fetchFreshSubCategories();
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (metadata.stock_sub_categories) {
+      setAllSubCategories(metadata.stock_sub_categories);
+    }
+  }, [metadata.stock_sub_categories]);
+
+  useEffect(() => {
+    const selectedCategory = formData.category;
+    const filtered = allSubCategories.filter(
+      (sub: any) => sub && sub.category === selectedCategory
+    );
+    setFilteredSubCategories(filtered);
+  }, [formData.category, allSubCategories]);
 
   useEffect(() => {
     fetchStock();
@@ -96,7 +135,7 @@ const Stock = () => {
   };
 
   const handleCategoryChange = (val: string) => {
-    const filteredSubs = metadata.stock_sub_categories?.filter((sc: any) => sc.category === val) || [];
+    const filteredSubs = allSubCategories.filter((sc: any) => sc.category === val);
     const defaultSub = filteredSubs.length > 0 ? filteredSubs[0].name : '';
       
     setFormData((prev: any) => ({
@@ -124,7 +163,8 @@ const Stock = () => {
       serialNumber: item.serialNumber || '',
       metalType: item.metalType || '',
       fineness: item.fineness || '',
-      weightGrams: item.weightGrams || ''
+      weightGrams: item.weightGrams || '',
+      price: item.price || ''
     });
     setView('add');
   };
@@ -151,7 +191,8 @@ const Stock = () => {
         serialNumber: '',
         metalType: metadata.stock_metal_types?.[0] || '',
         fineness: metadata.stock_fineness_options?.[0] || '',
-        weightGrams: ''
+        weightGrams: '',
+        price: ''
       });
       setEditingId(null);
       fetchStock();
@@ -285,6 +326,7 @@ const Stock = () => {
                       <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Article</th>
                       <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Catégorie</th>
                       <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Détails</th>
+                      <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Prix de Vente</th>
                       <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Type</th>
                       <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Actions</th>
                     </tr>
@@ -292,13 +334,13 @@ const Stock = () => {
                   <tbody className="divide-y divide-slate-50">
                     {isLoading ? (
                       <tr>
-                        <td colSpan={5} className="py-20 text-center">
+                        <td colSpan={6} className="py-20 text-center">
                           <Loader2 className="animate-spin mx-auto text-amber-500" size={32} />
                         </td>
                       </tr>
                     ) : filteredItems.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="py-20 text-center text-slate-400 font-medium">
+                        <td colSpan={6} className="py-20 text-center text-slate-400 font-medium">
                           Aucun article trouvé dans l'inventaire
                         </td>
                       </tr>
@@ -343,6 +385,11 @@ const Stock = () => {
                                 <p className="text-xs text-slate-400 italic">S/N: {item.serialNumber}</p>
                               )}
                             </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="font-extrabold text-slate-900">
+                              {formatCurrency(item.price)}
+                            </span>
                           </td>
                           <td className="px-6 py-4">
                              <span className={`px-3 py-1 rounded-full text-xs font-bold ${
@@ -392,7 +439,7 @@ const Stock = () => {
               </div>
               
               <form onSubmit={handleSubmitStock} className="p-8 space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <label className="block text-sm font-bold text-slate-700">Code-Barres / SKU</label>
@@ -455,6 +502,21 @@ const Stock = () => {
                       <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
                     </div>
                   </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-2 font-bold">Prix de Vente (TVA 15% Incluse)</label>
+                    <div className="relative">
+                      <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                      <input 
+                        type="number" 
+                        step="0.01"
+                        placeholder="0.00"
+                        className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-10 pr-4 outline-none focus:border-amber-400 font-bold"
+                        value={formData.price}
+                        onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 <div>
@@ -498,11 +560,13 @@ const Stock = () => {
                             value={formData.subCategory}
                             onChange={(e) => setFormData({ ...formData, subCategory: e.target.value })}
                           >
-                            {(metadata.stock_sub_categories || [])
-                              .filter((sc: any) => sc.category === 'Jewellery')
-                              .map((sc: any) => (
+                            {filteredSubCategories.length === 0 ? (
+                              <option value="">Aucune sous-catégorie trouvée</option>
+                            ) : (
+                              filteredSubCategories.map((sc: any) => (
                                 <option key={sc.name} value={sc.name}>{sc.name}</option>
-                              ))}
+                              ))
+                            )}
                             <option value="Autre">Autre</option>
                           </select>
                         </div>
@@ -560,11 +624,13 @@ const Stock = () => {
                           value={formData.subCategory}
                           onChange={(e) => setFormData({ ...formData, subCategory: e.target.value })}
                         >
-                          {(metadata.stock_sub_categories || [])
-                            .filter((sc: any) => sc.category === 'Pen')
-                            .map((sc: any) => (
+                          {filteredSubCategories.length === 0 ? (
+                            <option value="">Aucune sous-catégorie trouvée</option>
+                          ) : (
+                            filteredSubCategories.map((sc: any) => (
                               <option key={sc.name} value={sc.name}>{sc.name}</option>
-                            ))}
+                            ))
+                          )}
                           <option value="Autre">Autre</option>
                         </select>
                       </div>
@@ -590,18 +656,20 @@ const Stock = () => {
                            value={formData.brand}
                            onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
                          >
-                           {(metadata.stock_sub_categories || [])
-                            .filter((sc: any) => typeof sc === 'object' && sc.category === 'Sewing Machine')
-                            .map((sc: any) => (
+                           {filteredSubCategories.length === 0 ? (
+                            <option value="">Aucune sous-catégorie trouvée</option>
+                           ) : (
+                            filteredSubCategories.map((sc: any) => (
                               <option key={sc.name} value={sc.name}>{sc.name}</option>
-                            ))}
+                            ))
+                           )}
                            <option value="Autre">Autre</option>
                          </select>
                        </div>
                       <div>
                         <label className="block text-sm font-bold text-slate-700 mb-2">Garantie (Années)</label>
                         <select 
-                          className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 outline-none focus:border-amber-400 font-bold"
+                           className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 outline-none focus:border-amber-400 font-bold"
                           value={formData.yearsOfGuarantee}
                           onChange={(e) => setFormData({ ...formData, yearsOfGuarantee: parseInt(e.target.value) })}
                         >
@@ -631,11 +699,35 @@ const Stock = () => {
                           value={formData.subCategory}
                           onChange={(e) => setFormData({ ...formData, subCategory: e.target.value })}
                         >
-                          {(metadata.stock_sub_categories || [])
-                            .filter((sc: any) => typeof sc === 'object' && sc.category === 'Parts')
-                            .map((sc: any) => (
+                          {filteredSubCategories.length === 0 ? (
+                            <option value="">Aucune sous-catégorie trouvée</option>
+                          ) : (
+                            filteredSubCategories.map((sc: any) => (
                               <option key={sc.name} value={sc.name}>{sc.name}</option>
-                            ))}
+                            ))
+                          )}
+                          <option value="Autre">Autre</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+
+                  {!['Jewellery', 'Pen', 'Sewing Machine', 'Parts'].includes(formData.category) && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                       <div>
+                        <label className="block text-sm font-bold text-slate-700 mb-2">Sous-Catégorie</label>
+                        <select 
+                          className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 outline-none focus:border-amber-400 font-bold"
+                          value={formData.subCategory}
+                          onChange={(e) => setFormData({ ...formData, subCategory: e.target.value })}
+                        >
+                          {filteredSubCategories.length === 0 ? (
+                            <option value="">Aucune sous-catégorie trouvée</option>
+                          ) : (
+                            filteredSubCategories.map((sc: any) => (
+                              <option key={sc.name} value={sc.name}>{sc.name}</option>
+                            ))
+                          )}
                           <option value="Autre">Autre</option>
                         </select>
                       </div>

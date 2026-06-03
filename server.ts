@@ -15,9 +15,14 @@ async function startServer() {
   try {
     await db.execute(sql`ALTER TABLE stock DROP CONSTRAINT IF EXISTS stock_category_check;`);
     await db.execute(sql`ALTER TABLE stock ALTER COLUMN category TYPE VARCHAR(100);`);
+    await db.execute(sql`ALTER TABLE stock ADD COLUMN IF NOT EXISTS price NUMERIC(15, 2) DEFAULT 0.00;`);
+    await db.execute(sql`ALTER TABLE stock ADD COLUMN IF NOT EXISTS price_net NUMERIC(15, 2) DEFAULT 0.00;`);
+    await db.execute(sql`ALTER TABLE stock ADD COLUMN IF NOT EXISTS price_vat NUMERIC(15, 2) DEFAULT 0.00;`);
+    await db.execute(sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(15, 2);`);
+    await db.execute(sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS discount_percentage NUMERIC(5, 2);`);
     await db.execute(sql`ALTER TABLE sales DROP COLUMN IF EXISTS gold_rate;`);
     await db.execute(sql`ALTER TABLE orders DROP COLUMN IF EXISTS gold_rate;`);
-    console.log("Database migrations: stock_category_check dropped, category length increased, and gold_rate columns dropped.");
+    console.log("Database migrations: stock_category_check dropped, category length increased, price added, and gold_rate columns dropped.");
   } catch (err) {
     console.error("Migration error (non-fatal):", err);
   }
@@ -208,7 +213,7 @@ async function startServer() {
 
   // --- Sales Recording Endpoint ---
   app.post("/api/sales", authenticateToken, checkPermission('sales', 'create'), async (req, res) => {
-    const { customerId, barcode, paymentMode, chequeNumber, qty, amount, unitSalesPrice, itemDetails, orderId } = req.body;
+    const { customerId, barcode, paymentMode, chequeNumber, qty, amount, unitSalesPrice, itemDetails, orderId, discountAmount, discountPercentage } = req.body;
 
     try {
       const result = await db.transaction(async (tx) => {
@@ -234,6 +239,8 @@ async function startServer() {
           fineness: item.fineness,
           unitSalesPrice: (unitSalesPrice && unitSalesPrice !== "") ? unitSalesPrice.toString() : null,
           amount: (amount && amount !== "") ? amount.toString() : null,
+          discountAmount: (discountAmount !== undefined && discountAmount !== null && discountAmount !== "") ? discountAmount.toString() : null,
+          discountPercentage: (discountPercentage !== undefined && discountPercentage !== null && discountPercentage !== "") ? discountPercentage.toString() : null,
           vat15: vat.toFixed(2),
           metalType: item.metalType,
           orderId: orderId || null,
@@ -399,6 +406,18 @@ async function startServer() {
       if (payload.weightGrams === "") payload.weightGrams = null;
       if (payload.yearsOfGuarantee === "") payload.yearsOfGuarantee = null;
       if (payload.fineness === "") payload.fineness = null;
+      if (payload.price === "" || payload.price === undefined || payload.price === null) {
+        payload.price = "0.00";
+        payload.priceNet = "0.00";
+        payload.priceVat = "0.00";
+      } else {
+        const priceNum = parseFloat(payload.price);
+        const priceNet = priceNum / 1.15;
+        const priceVat = priceNum - priceNet;
+        payload.priceNet = priceNet.toFixed(2);
+        payload.priceVat = priceVat.toFixed(2);
+        payload.price = priceNum.toFixed(2);
+      }
       
       const newItem = await db.insert(stock).values(payload).returning();
       res.status(201).json(newItem[0]);
@@ -417,6 +436,18 @@ async function startServer() {
       if (payload.weightGrams === "") payload.weightGrams = null;
       if (payload.yearsOfGuarantee === "") payload.yearsOfGuarantee = null;
       if (payload.fineness === "") payload.fineness = null;
+      if (payload.price === "" || payload.price === undefined || payload.price === null) {
+        payload.price = "0.00";
+        payload.priceNet = "0.00";
+        payload.priceVat = "0.00";
+      } else {
+        const priceNum = parseFloat(payload.price);
+        const priceNet = priceNum / 1.15;
+        const priceVat = priceNum - priceNet;
+        payload.priceNet = priceNet.toFixed(2);
+        payload.priceVat = priceVat.toFixed(2);
+        payload.price = priceNum.toFixed(2);
+      }
 
       const updated = await db.update(stock)
         .set({ ...payload, updatedAt: new Date() })
@@ -1091,6 +1122,88 @@ async function startServer() {
     } catch (error) {
       console.error("VAT Report Error:", error);
       res.status(500).json({ error: "Failed to fetch VAT report" });
+    }
+  });
+
+  app.get("/api/reports/vat/pdf", authenticateToken, checkPermission('reports', 'view'), async (req: any, res) => {
+    const { day, month, year } = req.query;
+    try {
+      const { generateVatReportPDF } = await import("./src/services/pdfService");
+      const doc = await generateVatReportPDF(day?.toString(), month?.toString(), year?.toString());
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', 'attachment; filename=rapport-tva.pdf');
+
+      doc.pipe(res);
+      doc.end();
+    } catch (error: any) {
+      console.error("VAT PDF Generation Error:", error);
+      res.status(500).json({ error: error.message || "Failed to generate VAT PDF report" });
+    }
+  });
+
+  // --- Discount Report Endpoint ---
+  app.get("/api/reports/discounts", authenticateToken, checkPermission('reports', 'view'), async (req: any, res) => {
+    try {
+      const discountReport = await db.select({
+        saleId: sales.id,
+        createdAt: sales.createdAt,
+        customerName: customers.name,
+        customerIdNumber: customers.idNumber,
+        itemBarcode: stock.barcode,
+        itemDetails: sales.itemDetails,
+        stockPrice: stock.price,
+        amount: sales.amount,
+        vat15: sales.vat15,
+        discountAmount: sales.discountAmount,
+        discountPercentage: sales.discountPercentage,
+        unitSalesPrice: sales.unitSalesPrice,
+      })
+      .from(sales)
+      .leftJoin(customers, eq(sales.customerId, customers.id))
+      .leftJoin(stock, eq(sales.stockId, stock.id))
+      .where(
+        and(
+          sql`${sales.discountAmount} IS NOT NULL`,
+          sql`CAST(${sales.discountAmount} AS NUMERIC) > 0`
+        )
+      )
+      .orderBy(sql`${sales.createdAt} DESC`);
+
+      const formattedReport = discountReport.map(row => {
+        const discAmt = parseFloat(row.discountAmount || "0");
+        const discPct = parseFloat(row.discountPercentage || "0");
+        const amt = parseFloat(row.amount || "0");
+        const vat = parseFloat(row.vat15 || "0");
+        const finalPriceTTC = amt + vat;
+        const originalPriceTTC = finalPriceTTC + discAmt;
+
+        return {
+          saleId: row.saleId,
+          createdAt: row.createdAt,
+          customerName: row.customerName || "Client inconnu",
+          customerIdNumber: row.customerIdNumber || "",
+          itemBarcode: row.itemBarcode || "N/A",
+          itemDetails: row.itemDetails || "N/A",
+          originalPriceTTC: originalPriceTTC.toFixed(2),
+          finalPriceTTC: finalPriceTTC.toFixed(2),
+          discountAmount: discAmt.toFixed(2),
+          discountPercentage: discPct.toFixed(2),
+        };
+      });
+
+      const totalDiscounts = formattedReport.reduce((sum, row) => sum + parseFloat(row.discountAmount), 0);
+
+      res.json({
+        data: formattedReport,
+        summary: {
+          totalDiscounts: totalDiscounts.toFixed(2),
+          count: formattedReport.length
+        }
+      });
+    } catch (error) {
+      console.error("Discount Report Error:", error);
+      res.status(500).json({ error: "Failed to fetch discount report" });
     }
   });
 
