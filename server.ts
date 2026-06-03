@@ -1471,6 +1471,21 @@ async function startServer() {
     }
   });
 
+  app.delete("/api/orders/:id", authenticateToken, async (req, res) => {
+    try {
+      const orderId = parseInt(req.params.id);
+      const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
+      if (!order) {
+        return res.status(404).json({ error: "Order not found" });
+      }
+      await db.delete(orders).where(eq(orders.id, orderId));
+      res.json({ success: true, message: "Commande supprimée avec succès" });
+    } catch (error) {
+      console.error("Delete Order Error:", error);
+      res.status(500).json({ error: "Failed to delete order" });
+    }
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

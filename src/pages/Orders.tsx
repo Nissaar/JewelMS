@@ -5,7 +5,7 @@ import {
   Package, User, Plus, Check, AlertCircle, 
   Loader2, Search, Scale, X,
   ShoppingCart, Info, Clock, CheckCircle2, Banknote, UserPlus,
-  Smartphone, Mail, Download, History
+  Smartphone, Mail, Download, History, Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
@@ -45,6 +45,31 @@ const Orders = () => {
   const [completedOrderSaleId, setCompletedOrderSaleId] = useState<number | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+
+  // Delete Order State
+  const [orderToDelete, setOrderToDelete] = useState<any>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteOrder = async (orderId: number) => {
+    setIsDeleting(true);
+    try {
+      await axios.delete(`/api/orders/${orderId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setOrders(prev => prev.filter(o => o.id !== orderId));
+      setMessage({ type: 'success', text: "Commande supprimée avec succès" });
+      setOrderToDelete(null);
+      // Auto clear message after 4s
+      setTimeout(() => {
+        setMessage(prev => prev.text === "Commande supprimée avec succès" ? { type: '', text: '' } : prev);
+      }, 4000);
+    } catch (err: any) {
+      console.error(err);
+      setMessage({ type: 'error', text: err.response?.data?.error || "Erreur lors de la suppression de la commande" });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   useEffect(() => {
     if (view === 'list') fetchOrders();
@@ -374,6 +399,20 @@ const Orders = () => {
           <motion.div 
             key="list" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6"
           >
+            {message.text && (
+              <div className={`p-4 rounded-2xl font-bold flex items-center gap-3 border ${
+                message.type === 'success' 
+                  ? 'bg-emerald-50 text-emerald-600 border-emerald-100' 
+                  : 'bg-red-50 text-red-600 border-red-100'
+              }`}>
+                {message.type === 'success' ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />}
+                <span>{message.text}</span>
+                <button className="ml-auto hover:opacity-75" onClick={() => setMessage({ type: '', text: '' })}>
+                  <X size={16} />
+                </button>
+              </div>
+            )}
+
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
               <Search className="text-slate-400" size={20} />
               <input 
@@ -394,8 +433,17 @@ const Orders = () => {
                 filteredOrders.map((order) => (
                   <div key={order.id} className={`bg-white p-6 rounded-3xl shadow-sm border transition-all ${order.status === 'Finalized' ? 'border-emerald-100' : 'border-slate-100 hover:border-amber-200'}`}>
                     <div className="flex justify-between items-start mb-4">
-                      <div className={`h-10 w-10 rounded-xl flex items-center justify-center ${order.status === 'Finalized' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
-                        {order.status === 'Finalized' ? <CheckCircle2 size={24} /> : <Clock size={24} />}
+                      <div className="flex gap-2">
+                        <div className={`h-10 w-10 rounded-xl flex items-center justify-center ${order.status === 'Finalized' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
+                          {order.status === 'Finalized' ? <CheckCircle2 size={24} /> : <Clock size={24} />}
+                        </div>
+                        <button
+                          onClick={() => setOrderToDelete(order)}
+                          className="h-10 w-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center hover:bg-red-100 transition-all shadow-sm"
+                          title="Supprimer la commande"
+                        >
+                          <Trash2 size={20} />
+                        </button>
                       </div>
                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{new Date(order.createdAt).toLocaleDateString()}</span>
                     </div>
@@ -433,6 +481,55 @@ const Orders = () => {
         onSuccess={(customer) => setSelectedCustomer(customer)}
         initialName={customerSearch}
       />
+
+      {/* Confirmation Delete Modal */}
+      <AnimatePresence>
+        {orderToDelete && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden mx-auto p-8"
+            >
+              <div className="text-center space-y-4">
+                <div className="mx-auto h-16 w-16 bg-red-50 text-red-600 rounded-full flex items-center justify-center">
+                  <AlertCircle size={32} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-slate-900">Confirmation de suppression</h3>
+                  <p className="text-sm text-slate-500 mt-2">
+                    Êtes-vous sûr de vouloir supprimer cette commande ? Cette action est irréversible.
+                  </p>
+                </div>
+                <div className="bg-slate-50 p-4 rounded-2xl text-left border border-slate-100 mt-4">
+                  <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Détails Commande</p>
+                  <p className="font-bold text-slate-800">{orderToDelete.customerName}</p>
+                  <p className="text-sm text-slate-600 line-clamp-2">{formatItemDetails(orderToDelete.itemDescription)}</p>
+                </div>
+                <div className="flex gap-4 pt-4">
+                  <button
+                    type="button"
+                    disabled={isDeleting}
+                    onClick={() => setOrderToDelete(null)}
+                    className="flex-1 bg-slate-100 text-slate-600 py-3 rounded-xl font-black text-sm hover:bg-slate-200 transition-all border border-slate-100"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isDeleting}
+                    onClick={() => handleDeleteOrder(orderToDelete.id)}
+                    className="flex-1 bg-red-600 text-white py-3 rounded-xl font-black text-sm hover:bg-red-700 transition-all flex items-center justify-center gap-2"
+                  >
+                    {isDeleting ? <Loader2 className="animate-spin" size={16} /> : "Supprimer"}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Finalize Modal */}
       <AnimatePresence>
