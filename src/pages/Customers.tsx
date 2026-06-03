@@ -9,7 +9,7 @@ import {
   Check, AlertCircle, Mail, Edit2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { formatCurrency } from '../lib/utils';
+import { formatCurrency, getItemFullDescription } from '../lib/utils';
 import CustomerModal from '../components/CustomerModal';
 
 const Customers = () => {
@@ -296,7 +296,7 @@ const Customers = () => {
                               <div className="flex items-center gap-4">
                                 <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl"><TrendingUp size={18} /></div>
                                 <div>
-                                  <p className="font-bold text-slate-900">{r.barcode ? `${r.barcode} - ` : ''}{r.itemDetails}</p>
+                                  <p className="font-bold text-slate-900">{r.barcode ? `${r.barcode} - ` : ''}{getItemFullDescription(r)}</p>
                                   <p className="text-[10px] font-black text-slate-400">{r.receiptNo ? `FACTURE #${r.receiptNo}` : 'PAS DE FACTURE'}</p>
                                 </div>
                               </div>

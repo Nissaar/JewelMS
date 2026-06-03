@@ -4,6 +4,7 @@ import { Search, User, LogOut, Package, Users, ShoppingCart, FileText, Settings,
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'motion/react';
+import { getCleanDisplayLabel } from '../lib/utils';
 
 export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, token, logout } = useAuth();
@@ -191,13 +192,12 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
                           <div>
                             <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Stock</h3>
                             {searchResults.stock.slice(0, 5).map((item: any) => (
-                              <div key={item.id} className="p-2 hover:bg-slate-50 rounded-lg cursor-pointer flex justify-between" onClick={() => { navigate(`/stock/${item.id}`); setIsSearchOpen(false); }}>
+                              <div key={item.id} className="p-3 hover:bg-slate-50 rounded-lg cursor-pointer flex justify-between items-center" onClick={() => { navigate(`/stock/${item.id}`); setIsSearchOpen(false); }}>
                                 <div>
-                                  <p className="font-medium text-sm text-slate-900">{item.barcode}</p>
-                                  <p className="text-xs text-slate-500">{item.subCategory}</p>
+                                  <p className="font-semibold text-sm text-slate-900">{getCleanDisplayLabel(item)}</p>
                                 </div>
-                                <div className="text-right">
-                                  <p className="text-xs font-semibold text-amber-600">{item.weightGrams}g</p>
+                                <div className="text-right ml-4">
+                                  <p className="text-xs font-bold text-amber-600">{item.weightGrams ? `${item.weightGrams}g` : ''}</p>
                                 </div>
                               </div>
                             ))}

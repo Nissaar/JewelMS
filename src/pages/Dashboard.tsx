@@ -13,7 +13,7 @@ import {
   Scale
 } from 'lucide-react';
 import { motion } from 'motion/react';
-import { formatCurrency, formatItemDetails, formatWeight } from '../lib/utils';
+import { formatCurrency, formatItemDetails, formatWeight, getItemFullDescription } from '../lib/utils';
 
 const Dashboard = () => {
   const { token } = useAuth();
@@ -136,7 +136,7 @@ const Dashboard = () => {
                       <ShoppingCart size={20} />
                     </div>
                     <div>
-                      <p className="font-black text-slate-900 truncate max-w-[150px]">{formatItemDetails(sale.itemDetails) || 'Article'}</p>
+                      <p className="font-black text-slate-900 truncate max-w-[150px]" title={getItemFullDescription(sale)}>{getItemFullDescription(sale) || 'Article'}</p>
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{sale.customerName || 'Client anonyme'}</p>
                     </div>
                   </div>

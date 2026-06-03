@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import BarcodeScanner from '../components/BarcodeScanner';
-import { formatCurrency, formatItemDetails } from '../lib/utils';
+import { formatCurrency, formatItemDetails, getCleanDisplayLabel, getItemFullDescription } from '../lib/utils';
 import CustomerModal from '../components/CustomerModal';
 
 const Sales = () => {
@@ -354,8 +354,7 @@ const Sales = () => {
                                 <Tag size={18} />
                               </div>
                               <div>
-                                <p className="font-bold text-slate-900">{formatItemDetails(item.subCategory || item.category)}</p>
-                                <p className="text-xs text-slate-500 font-mono">{item.barcode}</p>
+                                <p className="font-bold text-slate-900">{getCleanDisplayLabel(item)}</p>
                               </div>
                             </div>
                             <div className="text-right">
@@ -387,8 +386,7 @@ const Sales = () => {
                     <div className="flex-1 grid grid-cols-2 gap-4">
                       <div>
                         <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Détails</p>
-                        <p className="text-lg font-black text-slate-900">{formatItemDetails(scannedItem.subCategory)}</p>
-                        <p className="text-sm font-medium text-slate-500">{formatItemDetails(scannedItem.metalType)} {formatItemDetails(scannedItem.fineness)}</p>
+                        <p className="text-lg font-black text-slate-900">{getItemFullDescription(scannedItem)}</p>
                       </div>
                       <div>
                         <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Code-Barres</p>
@@ -544,8 +542,8 @@ const Sales = () => {
                      <tbody className="divide-y divide-slate-50">
                        <tr className="text-sm">
                          <td className="py-4 pr-2 font-black text-slate-900">
-                           <div>{formatItemDetails(scannedItem.subCategory)}</div>
-                           <div className="text-xs text-slate-400 font-semibold">{formatItemDetails(scannedItem.metalType)} {formatItemDetails(scannedItem.fineness)}</div>
+                           <div>{getItemFullDescription(scannedItem)}</div>
+
                          </td>
                          <td className="py-4 px-2 text-center font-bold text-slate-700">1</td>
                          <td className="py-4 px-2 text-center font-bold text-amber-600 italic">

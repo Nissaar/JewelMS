@@ -360,9 +360,9 @@ async function startServer() {
     const { q } = req.query;
     
     try {
-      let queryBuilder = db.select().from(stock).where(eq(stock.status, 'Disponible'));
+      let queryBuilder;
       
-      if (q && typeof q === 'string' && q.length >= 2) {
+      if (q && typeof q === 'string' && q.trim().length >= 2) {
         const searchStr = `%${q}%`;
         queryBuilder = db.select().from(stock).where(
           and(
@@ -370,15 +370,21 @@ async function startServer() {
             or(
               ilike(stock.barcode, searchStr),
               ilike(stock.category, searchStr),
-              ilike(stock.subCategory, searchStr)
+              ilike(stock.subCategory, searchStr),
+              ilike(stock.brand, searchStr),
+              ilike(stock.metalType, searchStr),
+              ilike(stock.fineness, searchStr),
+              ilike(stock.serialNumber, searchStr)
             )
           )
         );
+      } else {
+        queryBuilder = db.select().from(stock).where(eq(stock.status, 'Disponible'));
       }
       
       const results = await queryBuilder
         .orderBy(sql`${stock.createdAt} DESC`)
-        .limit(10);
+        .limit(20);
         
       res.json(results);
     } catch (error) {
@@ -619,8 +625,8 @@ async function startServer() {
     try {
       if (isDefault) {
         const [stockRecent, customersRecent] = await Promise.all([
-          db.select().from(stock).where(eq(stock.status, 'Disponible')).orderBy(sql`${stock.createdAt} DESC`).limit(5),
-          db.select().from(customers).orderBy(sql`${customers.createdAt} DESC`).limit(5)
+          db.select().from(stock).where(eq(stock.status, 'Disponible')).orderBy(sql`${stock.createdAt} DESC`).limit(20),
+          db.select().from(customers).orderBy(sql`${customers.createdAt} DESC`).limit(20)
         ]);
         return res.json({
           stock: stockRecent,
@@ -634,12 +640,20 @@ async function startServer() {
         db.select().from(stock).where(
           and(
             eq(stock.status, 'Disponible'),
-            or(ilike(stock.barcode, searchStr), ilike(stock.serialNumber, searchStr))
+            or(
+              ilike(stock.barcode, searchStr), 
+              ilike(stock.serialNumber, searchStr),
+              ilike(stock.category, searchStr),
+              ilike(stock.subCategory, searchStr),
+              ilike(stock.brand, searchStr),
+              ilike(stock.metalType, searchStr),
+              ilike(stock.fineness, searchStr)
+            )
           )
-        ).limit(10),
-        db.select().from(customers).where(or(ilike(customers.name, searchStr), ilike(customers.idNumber, searchStr))).limit(10),
-        db.select().from(receipts).where(sql`CAST(${receipts.receiptSerialNumber} AS TEXT) ILIKE ${searchStr}`).limit(10),
-        db.select().from(orders).where(sql`CAST(${orders.orderNumber} AS TEXT) ILIKE ${searchStr}`).limit(10)
+        ).limit(20),
+        db.select().from(customers).where(or(ilike(customers.name, searchStr), ilike(customers.idNumber, searchStr))).limit(20),
+        db.select().from(receipts).where(sql`CAST(${receipts.receiptSerialNumber} AS TEXT) ILIKE ${searchStr}`).limit(20),
+        db.select().from(orders).where(sql`CAST(${orders.orderNumber} AS TEXT) ILIKE ${searchStr}`).limit(20)
       ]);
 
       res.json({
