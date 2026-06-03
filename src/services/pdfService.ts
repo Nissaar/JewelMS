@@ -415,6 +415,8 @@ export async function generateVatReportPDF(day?: string, month?: string, year?: 
     itemDetails: sales.itemDetails,
     weight: sales.weight,
     amountExclVat: sales.amount,
+    metalType: sales.metalType,
+    fineness: sales.fineness,
     createdAt: sales.createdAt
   })
   .from(sales)
@@ -480,7 +482,19 @@ export async function generateVatReportPDF(day?: string, month?: string, year?: 
   y += 24;
 
   for (const row of calculatedData) {
-    const textHeight = doc.heightOfString(row.itemDetails || 'Article', { width: 160 });
+    let cleanDescription = row.itemDetails || 'Article';
+    try {
+      const parsed = typeof row.itemDetails === 'string' ? JSON.parse(row.itemDetails) : row.itemDetails;
+      if (parsed) {
+        cleanDescription = [parsed.name, parsed.category, parsed.brand].filter(Boolean).join(' - ');
+      }
+    } catch (e) {
+      // Not JSON string or parsing failed
+    }
+    const metalParts = [row.metalType, row.fineness].filter(Boolean).join(' ');
+    const finalPdfDescription = metalParts ? `${cleanDescription} (${metalParts})` : cleanDescription;
+
+    const textHeight = doc.heightOfString(finalPdfDescription || 'Article', { width: 160 });
     const rowHeight = Math.max(25, textHeight + 10);
 
     if (y + rowHeight > bottomThreshold) {
@@ -496,7 +510,7 @@ export async function generateVatReportPDF(day?: string, month?: string, year?: 
     doc.font('Helvetica').fillColor('#0f172a').fontSize(8);
     doc.text(dateStr, 35, y + 6);
     doc.text(invoiceNo, 105, y + 6);
-    doc.text(row.itemDetails || 'Article', 185, y + 6, { width: 160 });
+    doc.text(finalPdfDescription, 185, y + 6, { width: 160 });
 
     doc.text(formatCurrency(row.amountExclVat || "0"), 350, y + 6, { width: 65, align: 'right' });
     doc.text(formatCurrency(row.vatAmount || "0"), 425, y + 6, { width: 65, align: 'right' });

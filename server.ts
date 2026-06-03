@@ -1234,6 +1234,14 @@ async function startServer() {
 
   app.get("/api/sales/history", authenticateToken, async (req, res) => {
     try {
+      const { search, query, q } = req.query;
+      const searchTerm = (search || query || q)?.toString();
+
+      let conditions = [];
+      if (searchTerm) {
+        conditions.push(ilike(sales.itemDetails, `%${searchTerm}%`));
+      }
+
       const history = await db.select({
         id: sales.id,
         receiptId: receipts.id,
@@ -1264,6 +1272,7 @@ async function startServer() {
       .leftJoin(receipts, eq(sales.id, receipts.saleId))
       .leftJoin(stock, eq(sales.stockId, stock.id))
       .leftJoin(orders, eq(sales.orderId, orders.id))
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(sql`${sales.datetime} DESC`);
 
       res.json(history);

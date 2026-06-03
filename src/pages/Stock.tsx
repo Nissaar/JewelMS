@@ -429,10 +429,10 @@ const Stock = () => {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
-            className="grid grid-cols-1 lg:grid-cols-3 gap-8"
+            className="w-full max-w-5xl mx-auto flex flex-col gap-8"
           >
             {/* Form */}
-            <div className="lg:col-span-2 bg-white rounded-3xl shadow-xl border border-slate-100 overflow-hidden">
+            <div className="w-full bg-white rounded-3xl shadow-xl border border-slate-100 overflow-hidden">
               <div className="p-8 bg-slate-900 text-white">
                 <h3 className="text-2xl font-bold">{editingId ? 'Modifier l\'Article' : 'Nouvel Article'}</h3>
                 <p className="text-slate-400 font-medium">{editingId ? 'Mettez à jour les informations de l\'article' : 'Remplissez les informations de l\'article'}</p>
@@ -774,31 +774,18 @@ const Stock = () => {
               </form>
             </div>
 
-            {/* Sidebar / Info */}
-            <div className="space-y-6">
-              <div className="bg-amber-50 p-6 rounded-3xl border border-amber-100">
-                 <h4 className="font-bold text-amber-800 flex items-center gap-2 mb-3">
-                   <Info size={18} />
-                   Rappel KYC
-                 </h4>
-                 <p className="text-sm text-amber-700 leading-relaxed">
-                   Chaque article doit avoir un code-barres unique. Pour les bijoux en métaux précieux, le poids doit être précis à 3 décimales.
-                 </p>
-              </div>
-
-              {message.text && (
-                <motion.div 
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className={`p-4 rounded-2xl flex items-center gap-3 text-sm font-bold ${
-                    message.type === 'success' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-red-50 text-red-600 border border-red-100'
-                  }`}
-                >
-                  {message.type === 'success' ? <Check size={20} /> : <AlertCircle size={20} />}
-                  {message.text}
-                </motion.div>
-              )}
-            </div>
+            {message.text && (
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className={`p-6 rounded-3xl flex items-center gap-3 text-sm font-bold w-full ${
+                  message.type === 'success' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-red-50 text-red-600 border border-red-100'
+                }`}
+              >
+                {message.type === 'success' ? <Check size={20} /> : <AlertCircle size={20} />}
+                {message.text}
+              </motion.div>
+            )}
           </motion.div>
         )}
 

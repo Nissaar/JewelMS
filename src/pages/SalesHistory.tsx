@@ -26,10 +26,24 @@ const SalesHistory = () => {
     fetchSalesHistory();
   }, []);
 
+  const formatDetails = (details: any): string => {
+    if (!details) return '';
+    try {
+      const parsed = typeof details === 'string' ? JSON.parse(details) : details;
+      return [parsed.name, parsed.category, parsed.brand].filter(Boolean).join(' - ');
+    } catch (e) {
+      return details; // Fallback to raw text if it's not JSON
+    }
+  };
+
   const fetchSalesHistory = async () => {
     setIsLoading(true);
     try {
-      const res = await axios.get('/api/sales/history', {
+      const params = new URLSearchParams();
+      if (searchQuery) {
+        params.append('search', searchQuery);
+      }
+      const res = await axios.get(`/api/sales/history?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setSales(res.data);
@@ -46,8 +60,10 @@ const SalesHistory = () => {
     const cName = String(sale?.customerName || '').toLowerCase();
     const rNo = String(sale?.receiptNo || '').toLowerCase();
     const sId = String(sale?.id || '').toLowerCase();
+    const detailsTxt = String(sale?.itemDetails || '').toLowerCase();
+    const formattedDetailsTxt = formatDetails(sale?.itemDetails).toLowerCase();
     
-    const matchesSearch = cName.includes(search) || rNo.includes(search) || sId.includes(search);
+    const matchesSearch = cName.includes(search) || rNo.includes(search) || sId.includes(search) || detailsTxt.includes(search) || formattedDetailsTxt.includes(search);
     
     const saleDateStr = new Date(sale.date).toISOString().split('T')[0];
     const matchesDate = !dateFilter || saleDateStr === dateFilter;
@@ -189,7 +205,7 @@ const SalesHistory = () => {
                     </td>
                     <td className="px-8 py-6">
                       <p className="text-sm font-medium text-slate-700 truncate max-w-[200px]">
-                        {formatItemDetails(sale.itemDetails) || `${formatItemDetails(sale.barcode)} - ${formatItemDetails(sale.category)} ${formatItemDetails(sale.subCategory)} ${sale.metalType ? `(${formatItemDetails(sale.metalType)})` : ''}`.trim().replace(/\s+/g, ' ')}
+                        {formatDetails(sale.itemDetails) || `${formatItemDetails(sale.barcode)} - ${formatItemDetails(sale.category)} ${formatItemDetails(sale.subCategory)} ${sale.metalType ? `(${formatItemDetails(sale.metalType)})` : ''}`.trim().replace(/\s+/g, ' ')}
                       </p>
                       {sale.category === 'Jewellery' && (
                         <p className="text-[10px] font-bold text-emerald-600 tracking-widest uppercase">{formatItemDetails(sale.metalType)} {formatItemDetails(sale.fineness)}</p>
@@ -280,7 +296,7 @@ const SalesHistory = () => {
                     <div className="flex justify-between items-start">
                       <div>
                         <p className="font-black text-slate-900 text-lg">
-                          {formatItemDetails(selectedSale.itemDetails) || `${formatItemDetails(selectedSale.barcode)} - ${formatItemDetails(selectedSale.category)} ${formatItemDetails(selectedSale.subCategory)} ${selectedSale.metalType ? `(${formatItemDetails(selectedSale.metalType)})` : ''}`.trim().replace(/\s+/g, ' ')}
+                          {formatDetails(selectedSale.itemDetails) || `${formatItemDetails(selectedSale.barcode)} - ${formatItemDetails(selectedSale.category)} ${formatItemDetails(selectedSale.subCategory)} ${selectedSale.metalType ? `(${formatItemDetails(selectedSale.metalType)})` : ''}`.trim().replace(/\s+/g, ' ')}
                         </p>
                         {selectedSale.category === 'Jewellery' && (
                           <p className="text-xs font-bold text-emerald-600 uppercase tracking-widest">{formatItemDetails(selectedSale.metalType)} {formatItemDetails(selectedSale.fineness)}</p>
