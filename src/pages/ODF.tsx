@@ -4,7 +4,8 @@ import axios from 'axios';
 import { 
   Scale, User, Camera, Plus, Check, AlertCircle, 
   Loader2, Search, History, Image as ImageIcon,
-  X, UserPlus, Info, Tag, Calendar, FileText, Printer, Send, Banknote
+  X, UserPlus, Info, Tag, Calendar, FileText, Printer, Send, Banknote,
+  Smartphone, Mail
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatCurrency, formatWeight, formatItemDetails } from '../lib/utils';
@@ -465,9 +466,23 @@ const ODF = () => {
                               <FileText size={18} />
                             </button>
                             <button 
+                              onClick={() => handleSendFull(record.id, 'whatsapp')}
+                              className="p-2 bg-slate-50 text-slate-400 hover:text-emerald-600 rounded-lg transition-colors"
+                              title="Envoyer via WhatsApp"
+                            >
+                              <Smartphone size={18} />
+                            </button>
+                            <button 
+                              onClick={() => handleSendFull(record.id, 'email')}
+                              className="p-2 bg-slate-50 text-slate-400 hover:text-blue-500 rounded-lg transition-colors"
+                              title="Envoyer via Email"
+                            >
+                              <Mail size={18} />
+                            </button>
+                            <button 
                               onClick={() => handleSendFull(record.id, 'both')}
-                              className="p-2 bg-slate-50 text-slate-400 hover:text-emerald-500 rounded-lg transition-colors"
-                              title="Envoyer WhatsApp/Email"
+                              className="p-2 bg-slate-50 text-slate-400 hover:text-indigo-500 rounded-lg transition-colors"
+                              title="Envoyer via WhatsApp et Email"
                             >
                               <Send size={18} />
                             </button>
@@ -509,26 +524,45 @@ const ODF = () => {
               <h2 className="text-3xl font-black text-slate-900 mb-2">Rachat Enregistré!</h2>
               <p className="text-slate-400 font-bold mb-8 italic">ODF N°: {successData.odfSerialNumber}</p>
               
-              <div className="grid grid-cols-2 gap-4 mb-8">
-                <button 
-                  onClick={() => handleExportPDF(successData.id)}
-                  className="flex flex-col items-center gap-3 p-6 bg-slate-50 rounded-3xl hover:bg-slate-100 transition-colors group"
-                >
-                  <div className="p-3 bg-white rounded-xl shadow-sm text-indigo-500 group-hover:scale-110 transition-transform">
-                    <FileText size={24} />
-                  </div>
-                  <span className="text-xs font-black uppercase text-slate-600">Export PDF</span>
-                </button>
-                <button 
-                  onClick={() => handleSendFull(successData.id, 'both')}
-                  disabled={isProcessing}
-                  className="flex flex-col items-center gap-3 p-6 bg-slate-50 rounded-3xl hover:bg-slate-100 transition-colors group"
-                >
-                  <div className="p-3 bg-white rounded-xl shadow-sm text-emerald-500 group-hover:scale-110 transition-transform">
-                    {isProcessing ? <Loader2 className="animate-spin" size={24} /> : <Send size={24} />}
-                  </div>
-                  <span className="text-xs font-black uppercase text-slate-600">Envoyer Tout</span>
-                </button>
+              <div className="space-y-4 mb-8">
+                <div className="grid grid-cols-2 gap-4">
+                  <button 
+                    onClick={() => handleExportPDF(successData.id)}
+                    className="flex flex-col items-center gap-3 p-6 bg-slate-50 rounded-3xl hover:bg-slate-100 transition-colors group"
+                  >
+                    <div className="p-3 bg-white rounded-xl shadow-sm text-indigo-500 group-hover:scale-110 transition-transform">
+                      <FileText size={24} />
+                    </div>
+                    <span className="text-xs font-black uppercase text-slate-600">Export PDF</span>
+                  </button>
+                  <button 
+                    onClick={() => handleSendFull(successData.id, 'both')}
+                    disabled={isProcessing}
+                    className="flex flex-col items-center gap-3 p-6 bg-slate-50 rounded-3xl hover:bg-slate-100 transition-colors group"
+                  >
+                    <div className="p-3 bg-white rounded-xl shadow-sm text-indigo-500 group-hover:scale-110 transition-transform">
+                      {isProcessing ? <Loader2 className="animate-spin" size={24} /> : <Send size={24} />}
+                    </div>
+                    <span className="text-xs font-black uppercase text-slate-600">Envoyer les Deux</span>
+                  </button>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <button 
+                    onClick={() => handleSendFull(successData.id, 'whatsapp')}
+                    disabled={isProcessing}
+                    className="flex items-center justify-center gap-2 py-3.5 px-4 bg-emerald-50 text-emerald-700 rounded-2xl hover:bg-emerald-100 font-bold transition-all text-sm"
+                  >
+                    <Smartphone size={18} /> WhatsApp
+                  </button>
+                  <button 
+                    onClick={() => handleSendFull(successData.id, 'email')}
+                    disabled={isProcessing}
+                    className="flex items-center justify-center gap-2 py-3.5 px-4 bg-blue-50 text-blue-700 rounded-2xl hover:bg-blue-100 font-bold transition-all text-sm"
+                  >
+                    <Mail size={18} /> Email
+                  </button>
+                </div>
               </div>
 
               <button 

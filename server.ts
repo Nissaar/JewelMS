@@ -859,7 +859,7 @@ async function startServer() {
 
     if (method === 'whatsapp' && !hasWhatsApp) return false;
     if (method === 'email' && !hasEmail) return false;
-    if (method === 'both' && (!hasWhatsApp || !hasEmail)) return false;
+    if (method === 'both' && (!hasWhatsApp && !hasEmail)) return false;
     
     return true;
   };
