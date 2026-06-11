@@ -145,13 +145,19 @@ export async function sendEmailReceipt(email: string, customerName: string, pdfU
 
     return response.data;
   } catch (error: any) {
-    if (error.response && !error.response.text) {
-      error.response.text = typeof error.response.data === 'object'
-        ? JSON.stringify(error.response.data)
-        : error.response.data;
+    console.error("=== DETAILED BREVO FAILURE ===");
+
+    // Check for Brevo SDK/Axios nested response body structures
+    if (error.response && error.response.body) {
+      console.error("Brevo API Body Error:", JSON.stringify(error.response.body, null, 2));
+    } else if (error.response && error.response.data) {
+      console.error("Brevo API Data Error:", JSON.stringify(error.response.data, null, 2));
+    } else {
+      console.error("Raw Error Object:", error);
     }
-    console.error("Brevo Error:", error.response ? error.response.text : error.message);
-    throw new Error("Failed to send email");
+
+    console.error("==============================");
+    throw error; // Re-throw the authentic error instead of a generic string
   }
 }
 
@@ -190,12 +196,18 @@ export async function sendEmailODF(email: string, customerName: string, pdfUrl: 
 
     return response.data;
   } catch (error: any) {
-    if (error.response && !error.response.text) {
-      error.response.text = typeof error.response.data === 'object'
-        ? JSON.stringify(error.response.data)
-        : error.response.data;
+    console.error("=== DETAILED BREVO FAILURE ===");
+
+    // Check for Brevo SDK/Axios nested response body structures
+    if (error.response && error.response.body) {
+      console.error("Brevo API Body Error:", JSON.stringify(error.response.body, null, 2));
+    } else if (error.response && error.response.data) {
+      console.error("Brevo API Data Error:", JSON.stringify(error.response.data, null, 2));
+    } else {
+      console.error("Raw Error Object:", error);
     }
-    console.error("Brevo Error:", error.response ? error.response.text : error.message);
-    throw new Error("Failed to send ODF email");
+
+    console.error("==============================");
+    throw error; // Re-throw the authentic error instead of a generic string
   }
 }
