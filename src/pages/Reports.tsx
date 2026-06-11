@@ -68,9 +68,9 @@ const Reports = () => {
     }
   };
 
-  const handleResend = async (receiptId: number, method: 'whatsapp' | 'email') => {
+  const handleResend = async (saleId: number, method: 'whatsapp' | 'email') => {
     try {
-      await axios.post(`/api/receipts/${receiptId}/send`, { method }, {
+      await axios.post(`/api/receipts/${saleId}/send`, { method }, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setMessage({ type: 'success', text: `Reçu envoyé via ${method}` });
@@ -359,13 +359,13 @@ const Reports = () => {
 
                     <div className="grid grid-cols-2 gap-2">
                        <button 
-                        onClick={() => handleResend(r.id, 'whatsapp')}
+                        onClick={() => handleResend(r.saleId, 'whatsapp')}
                         className="flex items-center justify-center gap-2 py-2 rounded-lg bg-emerald-50 text-emerald-600 text-xs font-bold hover:bg-emerald-600 hover:text-white transition-all underline decoration-transparent hover:decoration-white"
                        >
                          <Smartphone size={14} /> WhatsApp
                        </button>
                        <button 
-                        onClick={() => handleResend(r.id, 'email')}
+                        onClick={() => handleResend(r.saleId, 'email')}
                         className="flex items-center justify-center gap-2 py-2 rounded-lg bg-blue-50 text-blue-600 text-xs font-bold hover:bg-blue-600 hover:text-white transition-all underline decoration-transparent hover:decoration-white"
                        >
                          <Mail size={14} /> Email

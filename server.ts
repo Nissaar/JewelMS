@@ -882,10 +882,24 @@ async function startServer() {
       const sale = saleArr[0];
 
       const receiptArr = await db.select().from(receipts).where(eq(receipts.saleId, sale.id)).limit(1);
-      if (receiptArr.length === 0) return res.status(404).json({ error: "Receipt not found. Generate it first." });
-      const receipt = receiptArr[0];
+      let receipt = receiptArr[0];
 
-      if (!receipt.fileUrl) return res.status(400).json({ error: "Receipt has not been uploaded to storage yet." });
+      if (!receipt || !receipt.fileUrl) {
+        const { generateReceiptPDF, getPDFBuffer } = await import("./src/services/pdfService");
+        const { uploadReceiptToStorage } = await import("./src/services/storageService");
+        const { sanitize } = await import("./src/lib/utils");
+        
+        const { doc, receipt: genReceipt } = await generateReceiptPDF(sale.id);
+        const buffer = await getPDFBuffer(doc);
+        const fileName = `receipt-${genReceipt.id}-${sanitize(genReceipt.receiptSerialNumber.toString())}.pdf`;
+        const fileUrl = await uploadReceiptToStorage(fileName, buffer);
+        
+        await db.update(receipts)
+          .set({ fileUrl })
+          .where(eq(receipts.id, genReceipt.id));
+          
+        receipt = { ...genReceipt, fileUrl };
+      }
 
       const customerArr = sale.customerId 
         ? await db.select().from(customers).where(eq(customers.id, sale.customerId)).limit(1)
@@ -935,10 +949,24 @@ async function startServer() {
       const sale = saleArr[0];
 
       const receiptArr = await db.select().from(receipts).where(eq(receipts.saleId, sale.id)).limit(1);
-      if (receiptArr.length === 0) return res.status(404).json({ error: "Receipt not found. Generate it first." });
-      const receipt = receiptArr[0];
+      let receipt = receiptArr[0];
 
-      if (!receipt.fileUrl) return res.status(400).json({ error: "Receipt has not been uploaded to storage yet." });
+      if (!receipt || !receipt.fileUrl) {
+        const { generateReceiptPDF, getPDFBuffer } = await import("./src/services/pdfService");
+        const { uploadReceiptToStorage } = await import("./src/services/storageService");
+        const { sanitize } = await import("./src/lib/utils");
+        
+        const { doc, receipt: genReceipt } = await generateReceiptPDF(sale.id);
+        const buffer = await getPDFBuffer(doc);
+        const fileName = `receipt-${genReceipt.id}-${sanitize(genReceipt.receiptSerialNumber.toString())}.pdf`;
+        const fileUrl = await uploadReceiptToStorage(fileName, buffer);
+        
+        await db.update(receipts)
+          .set({ fileUrl })
+          .where(eq(receipts.id, genReceipt.id));
+          
+        receipt = { ...genReceipt, fileUrl };
+      }
 
       const customerArr = sale.customerId 
         ? await db.select().from(customers).where(eq(customers.id, sale.customerId)).limit(1)
@@ -1068,9 +1096,25 @@ async function startServer() {
     try {
       const odfArr = await db.select().from(odf).where(eq(odf.id, odfId)).limit(1);
       if (odfArr.length === 0) return res.status(404).json({ error: "ODF record not found" });
-      const record = odfArr[0];
+      let record = odfArr[0];
 
-      if (!record.fileUrl) return res.status(400).json({ error: "ODF document has not been uploaded to storage yet." });
+      if (!record.fileUrl) {
+        const { generateODFPDF, getPDFBuffer } = await import("./src/services/pdfService");
+        const { uploadODFToStorage } = await import("./src/services/storageService");
+        const { sanitize } = await import("./src/lib/utils");
+        
+        const { doc, odfRecord } = await generateODFPDF(odfId);
+        const buffer = await getPDFBuffer(doc);
+        
+        const fileName = `odf-${odfRecord.id}-${sanitize(odfRecord.odfSerialNumber.toString())}.pdf`;
+        const fileUrl = await uploadODFToStorage(fileName, buffer);
+        
+        await db.update(odf)
+          .set({ fileUrl })
+          .where(eq(odf.id, odfId));
+        
+        record = { ...odfRecord, fileUrl };
+      }
 
       const customerArr = record.customerId 
         ? await db.select().from(customers).where(eq(customers.id, record.customerId)).limit(1)
