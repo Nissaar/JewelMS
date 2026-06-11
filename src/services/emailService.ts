@@ -2,6 +2,33 @@ import axios from 'axios';
 import fs from 'fs';
 import path from 'path';
 
+// Custom Axios instance with 10 seconds timeout for Brevo API
+const brevoClient = axios.create({
+  baseURL: 'https://api.brevo.com/v3',
+  timeout: 10000, // 10 seconds hard timeout
+});
+
+// Simple automatic retry interceptor for intermittent network drops or timeouts
+brevoClient.interceptors.response.use(null, async (error) => {
+  const { config } = error;
+  
+  if (!config) {
+    return Promise.reject(error);
+  }
+
+  // If it is a timeout error, network error, or socket hang up and we haven't retried yet
+  const isTimeout = error.code === 'ETIMEDOUT' || error.code === 'ECONNABORTED' || error.message?.includes('timeout');
+  const isNetworkError = error.code === 'ENOTFOUND' || error.message?.includes('Network Error') || error.code === 'ECONNRESET';
+  
+  if ((isTimeout || isNetworkError) && !config._isRetry) {
+    config._isRetry = true;
+    console.warn(`[Brevo Client] Temporary error encountered (${error.code || error.message}). Retrying request to ${config.url}...`);
+    return brevoClient(config); // Retry the exact same request
+  }
+  
+  return Promise.reject(error);
+});
+
 async function getBase64ForReceipt(pdfUrl: string | null | undefined, receiptNumber: string): Promise<string> {
   // Try existing file paths first if pdfUrl is provided
   if (pdfUrl) {
@@ -132,8 +159,8 @@ export async function sendEmailReceipt(email: string, customerName: string, pdfU
       attachment: [{ name: `Facture_${receiptId}.pdf`, content: pdfBase64String }]
     };
 
-    const response = await axios.post(
-      'https://api.brevo.com/v3/smtp/email',
+    const response = await brevoClient.post(
+      '/smtp/email',
       sendSmtpEmail,
       {
         headers: {
@@ -183,8 +210,8 @@ export async function sendEmailODF(email: string, customerName: string, pdfUrl: 
       attachment: [{ name: `ODF_${odfNumber}.pdf`, content: pdfBase64String }]
     };
 
-    const response = await axios.post(
-      'https://api.brevo.com/v3/smtp/email',
+    const response = await brevoClient.post(
+      '/smtp/email',
       sendSmtpEmail,
       {
         headers: {

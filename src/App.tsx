@@ -24,6 +24,16 @@ import Customers from './pages/Customers';
 // Placeholders for other pages
 
 const App: React.FC = () => {
+  React.useEffect(() => {
+    const FIVE_MINUTES = 5 * 60 * 1000;
+    const timer = setInterval(() => {
+      console.log('[App Auto-Refresh] Refreshing application to sync updates...');
+      window.location.reload();
+    }, FIVE_MINUTES);
+
+    return () => clearInterval(timer);
+  }, []);
+
   return (
     <AuthProvider>
       <PWAProvider>
