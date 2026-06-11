@@ -74,10 +74,20 @@ const Reports = () => {
         headers: { Authorization: `Bearer ${token}` }
       });
       setMessage({ type: 'success', text: `Reçu envoyé via ${method}` });
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Échec de l\'envoi' });
+    } catch (err: any) {
+      if (err.response?.status === 400) {
+        if (err.response.data?.error === 'CLIENT_EMAIL_MISSING') {
+          setMessage({ type: 'error', text: 'Erreur : Veuillez ajouter une adresse email au profil de ce client.' });
+        } else {
+          setMessage({ type: 'error', text: "Erreur d'envoi. Vérifiez la configuration Brevo." });
+        }
+      } else if (err.response?.status === 412) {
+        setMessage({ type: 'error', text: 'Configuration manquante — Veuillez configurer vos paramètres Email/WhatsApp.' });
+      } else {
+        setMessage({ type: 'error', text: 'Échec de l\'envoi' });
+      }
     }
-    setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+    setTimeout(() => setMessage({ type: '', text: '' }), 4000);
   };
 
   const handleViewPDF = async (saleId: number) => {

@@ -176,6 +176,12 @@ const Orders = () => {
     } catch (err: any) {
       if (err.response?.status === 412) {
         setMessage({ type: 'error', text: 'Configuration manquante — Veuillez configurer vos paramètres Email/WhatsApp.' });
+      } else if (err.response?.status === 400) {
+        if (err.response.data?.error === 'CLIENT_EMAIL_MISSING') {
+          setMessage({ type: 'error', text: 'Erreur : Veuillez ajouter une adresse email au profil de ce client.' });
+        } else {
+          setMessage({ type: 'error', text: "Erreur d'envoi. Vérifiez la configuration Brevo." });
+        }
       } else {
         setMessage({ type: 'error', text: 'Erreur lors de l\'envoi du reçu.' });
       }

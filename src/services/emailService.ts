@@ -1,8 +1,30 @@
 import axios from 'axios';
+import fs from 'fs';
+import path from 'path';
+
+async function getBase64FromUrl(pdfUrl: string, defaultDir: string): Promise<string> {
+  const fileName = path.basename(pdfUrl);
+  const possiblePaths = [
+    path.join(process.cwd(), 'uploads', defaultDir, fileName),
+    path.join(process.cwd(), 'uploads', fileName),
+    path.join(process.cwd(), fileName),
+  ];
+  for (const p of possiblePaths) {
+    try {
+      if (fs.existsSync(p)) {
+        const buffer = await fs.promises.readFile(p);
+        return buffer.toString('base64');
+      }
+    } catch (e) {
+      // Continue
+    }
+  }
+  throw new Error(`Could not find or read PDF file: ${fileName}`);
+}
 
 export async function sendEmailReceipt(email: string, customerName: string, pdfUrl: string, receiptNumber: string) {
   const apiKey = process.env.BREVO_API_KEY;
-  const senderEmail = process.env.BREVO_SENDER_EMAIL;
+  const senderEmail = process.env.SENDER_EMAIL || process.env.BREVO_SENDER_EMAIL;
   const senderName = process.env.BREVO_SENDER_NAME || 'Haujee Jewellery';
 
   if (!apiKey || !senderEmail) {
@@ -10,35 +32,22 @@ export async function sendEmailReceipt(email: string, customerName: string, pdfU
     return;
   }
 
-  const absoluteUrl = pdfUrl.startsWith('/') ? (process.env.APP_URL || 'http://localhost:3000') + pdfUrl : pdfUrl;
-
   try {
+    const pdfBase64String = await getBase64FromUrl(pdfUrl, 'receipts');
+    const receiptId = receiptNumber;
+    const customer = { email, name: customerName };
+
+    const sendSmtpEmail = {
+      sender: { email: senderEmail, name: senderName },
+      to: [{ email: customer.email, name: customer.name }],
+      subject: `Votre Reçu - Haujee Jewellery`,
+      htmlContent: `<html><body><p>Bonjour ${customer.name}, veuillez trouver votre reçu en pièce jointe.</p></body></html>`,
+      attachment: [{ name: `Facture_${receiptId}.pdf`, content: pdfBase64String }]
+    };
+
     const response = await axios.post(
       'https://api.brevo.com/v3/smtp/email',
-      {
-        sender: { name: senderName, email: senderEmail },
-        to: [{ email: email, name: customerName }],
-        subject: `Votre Reçu Haujee Jewellery - N° ${receiptNumber}`,
-        htmlContent: `
-          <html>
-            <body>
-              <p>Bonjour ${customerName},</p>
-              <p>Merci pour votre achat chez Haujee Jewellery.</p>
-              <p>Veuillez trouver ci-joint votre reçu électronique (N° ${receiptNumber}).</p>
-              <p>Lien vers le reçu: <a href="${absoluteUrl}">Télécharger mon reçu</a></p>
-              <br/>
-              <p>Cordialement,</p>
-              <p>L'équipe Haujee Jewellery</p>
-            </body>
-          </html>
-        `,
-        attachment: [
-          {
-            url: absoluteUrl,
-            name: `Recu_${receiptNumber}.pdf`
-          }
-        ]
-      },
+      sendSmtpEmail,
       {
         headers: {
           'api-key': apiKey,
@@ -49,14 +58,19 @@ export async function sendEmailReceipt(email: string, customerName: string, pdfU
 
     return response.data;
   } catch (error: any) {
-    console.error("Brevo Email API Error:", error.response?.data || error.message);
+    if (error.response && !error.response.text) {
+      error.response.text = typeof error.response.data === 'object'
+        ? JSON.stringify(error.response.data)
+        : error.response.data;
+    }
+    console.error("Brevo Error:", error.response ? error.response.text : error.message);
     throw new Error("Failed to send email");
   }
 }
 
 export async function sendEmailODF(email: string, customerName: string, pdfUrl: string, odfNumber: string) {
   const apiKey = process.env.BREVO_API_KEY;
-  const senderEmail = process.env.BREVO_SENDER_EMAIL;
+  const senderEmail = process.env.SENDER_EMAIL || process.env.BREVO_SENDER_EMAIL;
   const senderName = process.env.BREVO_SENDER_NAME || 'Haujee Jewellery';
 
   if (!apiKey || !senderEmail) {
@@ -64,34 +78,21 @@ export async function sendEmailODF(email: string, customerName: string, pdfUrl: 
     return;
   }
 
-  const absoluteUrl = pdfUrl.startsWith('/') ? (process.env.APP_URL || 'http://localhost:3000') + pdfUrl : pdfUrl;
-
   try {
+    const pdfBase64String = await getBase64FromUrl(pdfUrl, 'odf');
+    const customer = { email, name: customerName };
+
+    const sendSmtpEmail = {
+      sender: { email: senderEmail, name: senderName },
+      to: [{ email: customer.email, name: customer.name }],
+      subject: `Votre Formulaire de Rachat - Haujee Jewellery`,
+      htmlContent: `<html><body><p>Bonjour ${customer.name}, veuillez trouver votre formulaire de rachat en pièce jointe (ODF N° ${odfNumber}).</p></body></html>`,
+      attachment: [{ name: `ODF_${odfNumber}.pdf`, content: pdfBase64String }]
+    };
+
     const response = await axios.post(
       'https://api.brevo.com/v3/smtp/email',
-      {
-        sender: { name: senderName, email: senderEmail },
-        to: [{ email: email, name: customerName }],
-        subject: `Formulaire de Rachat Haujee Jewellery - N° ${odfNumber}`,
-        htmlContent: `
-          <html>
-            <body>
-              <p>Bonjour ${customerName},</p>
-              <p>Veuillez trouver ci-joint votre formulaire de rachat (ODF N° ${odfNumber}).</p>
-              <p>Lien vers le document: <a href="${absoluteUrl}">Télécharger mon ODF</a></p>
-              <br/>
-              <p>Cordialement,</p>
-              <p>L'équipe Haujee Jewellery</p>
-            </body>
-          </html>
-        `,
-        attachment: [
-          {
-            url: absoluteUrl,
-            name: `ODF_${odfNumber}.pdf`
-          }
-        ]
-      },
+      sendSmtpEmail,
       {
         headers: {
           'api-key': apiKey,
@@ -102,7 +103,12 @@ export async function sendEmailODF(email: string, customerName: string, pdfUrl: 
 
     return response.data;
   } catch (error: any) {
-    console.error("Brevo Email ODF Error:", error.response?.data || error.message);
+    if (error.response && !error.response.text) {
+      error.response.text = typeof error.response.data === 'object'
+        ? JSON.stringify(error.response.data)
+        : error.response.data;
+    }
+    console.error("Brevo Error:", error.response ? error.response.text : error.message);
     throw new Error("Failed to send ODF email");
   }
 }

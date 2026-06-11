@@ -894,6 +894,10 @@ async function startServer() {
 
       if (!customer) return res.status(404).json({ error: "Customer info required for sending receipt." });
 
+      if ((method === 'email' || method === 'both') && !customer.email) {
+        return res.status(400).json({ success: false, error: 'CLIENT_EMAIL_MISSING', message: "Le client n'a pas d'adresse email configurée." });
+      }
+
       const results: any = {};
 
       if (method === 'whatsapp' || method === 'both') {
@@ -942,6 +946,10 @@ async function startServer() {
       const customer = customerArr[0];
 
       if (!customer) return res.status(404).json({ error: "Customer info required for sending receipt." });
+
+      if ((method === 'email' || method === 'both') && !customer.email) {
+        return res.status(400).json({ success: false, error: 'CLIENT_EMAIL_MISSING', message: "Le client n'a pas d'adresse email configurée." });
+      }
 
       const results: any = {};
 
@@ -1070,6 +1078,10 @@ async function startServer() {
       const customer = customerArr[0];
 
       if (!customer) return res.status(404).json({ error: "Customer info required for sending ODF." });
+
+      if ((method === 'email' || method === 'both') && !customer.email) {
+        return res.status(400).json({ success: false, error: 'CLIENT_EMAIL_MISSING', message: "Le client n'a pas d'adresse email configurée." });
+      }
 
       const results: any = {};
 
