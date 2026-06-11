@@ -912,19 +912,33 @@ async function startServer() {
         return res.status(400).json({ success: false, error: 'CLIENT_EMAIL_MISSING', message: "Le client n'a pas d'adresse email configurée." });
       }
 
-      const results: any = {};
+      // Return success response immediately to prevent frontend timeout
+      res.json({ 
+        success: true, 
+        message: "Demande reçue. L'envoi est en cours d'exécution en arrière-plan.",
+        results: { queued: true } 
+      });
 
-      if (method === 'whatsapp' || method === 'both') {
-        const { sendWhatsAppReceipt } = await import("./src/services/whatsappService");
-        results.whatsapp = await sendWhatsAppReceipt(customer.phoneNumber || '', receipt.fileUrl, receipt.receiptSerialNumber.toString());
-      }
+      // Fire the asynchronous transmission in background
+      setImmediate(async () => {
+        try {
+          const results: any = {};
+          if (method === 'whatsapp' || method === 'both') {
+            const { sendWhatsAppReceipt } = await import("./src/services/whatsappService");
+            results.whatsapp = await sendWhatsAppReceipt(customer.phoneNumber || '', receipt.fileUrl, receipt.receiptSerialNumber.toString());
+            console.log(`[Background Sender] WhatsApp for receipt ${receipt.receiptSerialNumber} sent successfully.`);
+          }
 
-      if (method === 'email' || method === 'both') {
-        const { sendEmailReceipt } = await import("./src/services/emailService");
-        results.email = await sendEmailReceipt(customer.email || '', customer.name, receipt.fileUrl, receipt.receiptSerialNumber.toString());
-      }
+          if (method === 'email' || method === 'both') {
+            const { sendEmailReceipt } = await import("./src/services/emailService");
+            results.email = await sendEmailReceipt(customer.email || '', customer.name, receipt.fileUrl, receipt.receiptSerialNumber.toString());
+            console.log(`[Background Sender] Email for receipt ${receipt.receiptSerialNumber} sent successfully.`);
+          }
+        } catch (error: any) {
+          console.error(`[Background Sender Error] Failed sending notifications for receipt/sale ID ${saleId}:`, error.message || error);
+        }
+      });
 
-      res.json({ message: "Send operations completed", results });
     } catch (error: any) {
       console.error("Send Notification Error:", error);
       res.status(500).json({ error: error.message || "Failed to send notification" });
@@ -979,27 +993,41 @@ async function startServer() {
         return res.status(400).json({ success: false, error: 'CLIENT_EMAIL_MISSING', message: "Le client n'a pas d'adresse email configurée." });
       }
 
-      const results: any = {};
+      // Return success response immediately to prevent frontend timeout
+      res.json({ 
+        success: true, 
+        message: "Demande reçue. L'envoi est en cours d'exécution en arrière-plan.",
+        results: { queued: true } 
+      });
 
-      if (method === 'whatsapp' || method === 'both') {
-        if (customer.phoneNumber) {
-          const { sendWhatsAppReceipt } = await import("./src/services/whatsappService");
-          results.whatsapp = await sendWhatsAppReceipt(customer.phoneNumber, receipt.fileUrl, receipt.receiptSerialNumber.toString());
-        } else {
-          results.whatsapp = "Phone number missing for customer";
+      // Fire the asynchronous transmission in background
+      setImmediate(async () => {
+        try {
+          const results: any = {};
+          if (method === 'whatsapp' || method === 'both') {
+            if (customer.phoneNumber) {
+              const { sendWhatsAppReceipt } = await import("./src/services/whatsappService");
+              results.whatsapp = await sendWhatsAppReceipt(customer.phoneNumber, receipt.fileUrl, receipt.receiptSerialNumber.toString());
+              console.log(`[Background Sender] WhatsApp for receipt ${receipt.receiptSerialNumber} sent successfully.`);
+            } else {
+              console.warn(`[Background Sender Warn] WhatsApp skipped: customer ${customer.id} has no phone number.`);
+            }
+          }
+
+          if (method === 'email' || method === 'both') {
+            if (customer.email) {
+              const { sendEmailReceipt } = await import("./src/services/emailService");
+              results.email = await sendEmailReceipt(customer.email, customer.name, receipt.fileUrl, receipt.receiptSerialNumber.toString());
+              console.log(`[Background Sender] Email for receipt ${receipt.receiptSerialNumber} sent successfully.`);
+            } else {
+              console.warn(`[Background Sender Warn] Email skipped: customer ${customer.id} has no email.`);
+            }
+          }
+        } catch (error: any) {
+          console.error(`[Background Sender Error] Failed sending notifications for receipt/sale ID ${saleId}:`, error.message || error);
         }
-      }
+      });
 
-      if (method === 'email' || method === 'both') {
-        if (customer.email) {
-          const { sendEmailReceipt } = await import("./src/services/emailService");
-          results.email = await sendEmailReceipt(customer.email, customer.name, receipt.fileUrl, receipt.receiptSerialNumber.toString());
-        } else {
-          results.email = "Email missing for customer";
-        }
-      }
-
-      res.json({ message: "Send operations completed", results });
     } catch (error: any) {
       console.error("Send Error:", error);
       res.status(500).json({ error: error.message || "Failed to send receipt" });
@@ -1127,27 +1155,41 @@ async function startServer() {
         return res.status(400).json({ success: false, error: 'CLIENT_EMAIL_MISSING', message: "Le client n'a pas d'adresse email configurée." });
       }
 
-      const results: any = {};
+      // Return success response immediately to prevent frontend timeout
+      res.json({ 
+        success: true, 
+        message: "Demande reçue. L'envoi est en cours d'exécution en arrière-plan.",
+        results: { queued: true } 
+      });
 
-      if (method === 'whatsapp' || method === 'both') {
-        if (customer.phoneNumber) {
-          const { sendWhatsAppODF } = await import("./src/services/whatsappService");
-          results.whatsapp = await sendWhatsAppODF(customer.phoneNumber, record.fileUrl, record.odfSerialNumber.toString());
-        } else {
-          results.whatsapp = "Phone number missing for customer";
+      // Fire the asynchronous transmission in background
+      setImmediate(async () => {
+        try {
+          const results: any = {};
+          if (method === 'whatsapp' || method === 'both') {
+            if (customer.phoneNumber) {
+              const { sendWhatsAppODF } = await import("./src/services/whatsappService");
+              results.whatsapp = await sendWhatsAppODF(customer.phoneNumber, record.fileUrl, record.odfSerialNumber.toString());
+              console.log(`[Background Sender] WhatsApp for ODF ${record.odfSerialNumber} sent successfully.`);
+            } else {
+              console.warn(`[Background Sender Warn] WhatsApp skipped: customer ${customer.id} has no phone number.`);
+            }
+          }
+
+          if (method === 'email' || method === 'both') {
+            if (customer.email) {
+              const { sendEmailODF } = await import("./src/services/emailService");
+              results.email = await sendEmailODF(customer.email, customer.name, record.fileUrl, record.odfSerialNumber.toString());
+              console.log(`[Background Sender] Email for ODF ${record.odfSerialNumber} sent successfully.`);
+            } else {
+              console.warn(`[Background Sender Warn] Email skipped: customer ${customer.id} has no email.`);
+            }
+          }
+        } catch (error: any) {
+          console.error(`[Background Sender Error] Failed sending notifications for ODF ID ${odfId}:`, error.message || error);
         }
-      }
+      });
 
-      if (method === 'email' || method === 'both') {
-        if (customer.email) {
-          const { sendEmailODF } = await import("./src/services/emailService");
-          results.email = await sendEmailODF(customer.email, customer.name, record.fileUrl, record.odfSerialNumber.toString());
-        } else {
-          results.email = "Email missing for customer";
-        }
-      }
-
-      res.json({ message: "ODF sending operations completed", results });
     } catch (error: any) {
       console.error("ODF Send Error:", error);
       res.status(500).json({ error: error.message || "Failed to send ODF" });
