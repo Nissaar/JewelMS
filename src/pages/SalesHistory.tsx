@@ -19,6 +19,7 @@ const SalesHistory = () => {
   const [selectedSale, setSelectedSale] = useState<any>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const [isGeneratingDecl, setIsGeneratingDecl] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
 
@@ -86,6 +87,24 @@ const SalesHistory = () => {
       setMessage({ type: 'error', text: 'Échec de l\'ouverture du PDF' });
     } finally {
       setIsGeneratingPDF(false);
+    }
+  };
+
+  const handleDownloadDeclarationPDF = async (saleId: number) => {
+    setIsGeneratingDecl(true);
+    try {
+      const response = await axios.get(`/api/receipts/${saleId}/declaration-pdf`, {
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: 'blob'
+      });
+      
+      const blobUrl = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+      window.open(blobUrl, '_blank');
+    } catch (err) {
+      console.error(err);
+      setMessage({ type: 'error', text: 'Échec de l\'ouverture de la déclaration' });
+    } finally {
+      setIsGeneratingDecl(false);
     }
   };
 
@@ -356,35 +375,49 @@ const SalesHistory = () => {
                          (selectedSale.orderId ? parseFloat(selectedSale.orderDeposit || "0") : 0)
                        ) }
                      </span>
-                   </div>
-                </div>
+                    </div>
+                 </div>
 
-                <div className="grid grid-cols-2 gap-4 pt-4">
+                 <div className="flex flex-col gap-3 pt-4">
                   {user?.role === 'Admin' && selectedSale.status !== 'Cancelled' && (
                     <button 
                       onClick={() => handleCancelSale(selectedSale.id)}
                       disabled={isCancelling}
-                      className="col-span-2 flex items-center justify-center gap-3 py-4 bg-red-50 text-red-600 border-2 border-red-100 rounded-2xl font-black hover:bg-red-100 transition-all shadow-sm mb-2 disabled:opacity-50"
+                      className="w-full flex items-center justify-center gap-3 py-4 bg-red-50 text-red-600 border-2 border-red-100 rounded-2xl font-black hover:bg-red-100 transition-all shadow-sm disabled:opacity-50"
                     >
                       {isCancelling ? <Loader2 className="animate-spin" size={20} /> : <Trash2 size={20} />}
                       {isCancelling ? 'Annulation en cours...' : 'Annuler la vente'}
                     </button>
                   )}
-                  <button 
-                    onClick={() => handleDownloadPDF(selectedSale.id)}
-                    disabled={isGeneratingPDF || selectedSale.status === 'Cancelled'}
-                    className="flex items-center justify-center gap-3 py-4 bg-emerald-500 text-white rounded-2xl font-black hover:bg-emerald-600 transition-all shadow-lg disabled:opacity-50"
-                  >
-                    {isGeneratingPDF ? (
-                      <Loader2 className="animate-spin" size={20} />
-                    ) : (
-                      <Download size={20} />
-                    )}
-                    {isGeneratingPDF ? 'Génération...' : 'Télécharger PDF'}
-                  </button>
+                  <div className="grid grid-cols-2 gap-4">
+                    <button 
+                      onClick={() => handleDownloadPDF(selectedSale.id)}
+                      disabled={isGeneratingPDF || selectedSale.status === 'Cancelled'}
+                      className="flex items-center justify-center gap-3 py-4 bg-emerald-500 text-white rounded-2xl font-black hover:bg-emerald-600 transition-all shadow-lg disabled:opacity-50 text-sm"
+                    >
+                      {isGeneratingPDF ? (
+                        <Loader2 className="animate-spin" size={20} />
+                      ) : (
+                        <Download size={20} />
+                      )}
+                      {isGeneratingPDF ? 'Génération...' : 'Télécharger PDF'}
+                    </button>
+                    <button 
+                      onClick={() => handleDownloadDeclarationPDF(selectedSale.id)}
+                      disabled={isGeneratingDecl || selectedSale.status === 'Cancelled'}
+                      className="flex items-center justify-center gap-3 py-4 bg-indigo-600 text-white rounded-2xl font-black hover:bg-indigo-700 transition-all shadow-lg disabled:opacity-50 text-sm text-center px-2"
+                    >
+                      {isGeneratingDecl ? (
+                        <Loader2 className="animate-spin" size={20} />
+                      ) : (
+                        <FileText size={20} />
+                      )}
+                      {isGeneratingDecl ? 'Génération...' : 'Imprimer Déclaration'}
+                    </button>
+                  </div>
                   <button 
                     onClick={() => setIsModalOpen(false)}
-                    className="flex items-center justify-center gap-3 py-4 bg-slate-100 text-slate-700 rounded-2xl font-black hover:bg-slate-200 transition-all"
+                    className="w-full flex items-center justify-center gap-3 py-4 bg-slate-100 text-slate-700 rounded-2xl font-black hover:bg-slate-200 transition-all"
                   >
                     Fermer
                   </button>

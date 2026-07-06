@@ -8,13 +8,14 @@ import {
   Package, Plus, Search, Filter, Edit2, Trash2, Save, X, 
   Settings as SettingsIcon, Check, AlertCircle, Loader2,
   ChevronDown, Barcode, Scale, Info, Tag, History, Camera,
-  DollarSign
+  Coins
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface StockItem {
   id: number;
   barcode: string;
+  itemCode?: string;
   category: string;
   subCategory: string;
   stockType: string;
@@ -45,6 +46,7 @@ const Stock = () => {
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [formData, setFormData] = useState<any>({
     barcode: '',
+    itemCode: '',
     category: 'Jewellery',
     subCategory: '',
     stockType: 'on-display',
@@ -155,6 +157,7 @@ const Stock = () => {
     setEditingId(item.id);
     setFormData({
       barcode: item.barcode,
+      itemCode: item.itemCode || '',
       category: item.category,
       subCategory: item.subCategory,
       stockType: item.stockType,
@@ -183,6 +186,7 @@ const Stock = () => {
       
       setFormData({
         barcode: '',
+        itemCode: '',
         category: 'Jewellery',
         subCategory: metadata.stock_sub_categories?.[0] || '',
         stockType: 'on-display',
@@ -221,8 +225,9 @@ const Stock = () => {
     const search = String(searchQuery || '').toLowerCase();
     const barcode = String(item?.barcode || '').toLowerCase();
     const serial = String(item?.serialNumber || '').toLowerCase();
+    const itemCode = String(item?.itemCode || '').toLowerCase();
     
-    const matchesSearch = barcode.includes(search) || serial.includes(search);
+    const matchesSearch = barcode.includes(search) || serial.includes(search) || itemCode.includes(search);
     const matchesCategory = filterCategory === 'All' || item.category === filterCategory;
     return matchesSearch && matchesCategory;
   });
@@ -353,10 +358,17 @@ const Stock = () => {
                                 <Barcode size={20} />
                               </div>
                               <div>
+                                <div className="flex items-center gap-2">
                                   <p className="font-bold text-slate-900">{formatItemDetails(item.barcode)}</p>
-                                  <p className="text-xs text-slate-500">
-                                    {`${formatItemDetails(item.category)} ${formatItemDetails(item.subCategory)} ${item.metalType ? `(${formatItemDetails(item.metalType)})` : ''}`.trim().replace(/\s+/g, ' ')}
-                                  </p>
+                                  {item.itemCode && (
+                                    <span className="px-2 py-0.5 bg-indigo-50 border border-indigo-100 text-indigo-600 rounded-md text-[10px] font-black uppercase">
+                                      {item.itemCode}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-slate-500">
+                                  {`${formatItemDetails(item.category)} ${formatItemDetails(item.subCategory)} ${item.metalType ? `(${formatItemDetails(item.metalType)})` : ''}`.trim().replace(/\s+/g, ' ')}
+                                </p>
                               </div>
                             </div>
                           </td>
@@ -439,7 +451,7 @@ const Stock = () => {
               </div>
               
               <form onSubmit={handleSubmitStock} className="p-8 space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <label className="block text-sm font-bold text-slate-700">Code-Barres / SKU</label>
@@ -486,6 +498,20 @@ const Stock = () => {
                   </div>
 
                   <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-2">Code Article (Optionnel)</label>
+                    <div className="relative">
+                      <Tag className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                      <input 
+                        type="text" 
+                        placeholder="Ex: H-1234"
+                        className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-10 pr-4 outline-none focus:border-amber-400 font-bold"
+                        value={formData.itemCode || ''}
+                        onChange={(e) => setFormData({ ...formData, itemCode: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
                     <label className="block text-sm font-bold text-slate-700 mb-2">Catégorie</label>
                     <div className="relative">
                       <Tag className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
@@ -506,7 +532,7 @@ const Stock = () => {
                   <div>
                     <label className="block text-sm font-bold text-slate-700 mb-2 font-bold">Prix de Vente (TVA 15% Incluse)</label>
                     <div className="relative">
-                      <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                      <Coins className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                       <input 
                         type="number" 
                         step="0.01"

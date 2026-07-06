@@ -36,6 +36,7 @@ export const auditLogs = pgTable('audit_logs', {
 export const stock = pgTable('stock', {
   id: serial('id').primaryKey(),
   barcode: varchar('barcode', { length: 100 }).unique().notNull(),
+  itemCode: varchar('item_code', { length: 100 }),
   category: varchar('category', { length: 100 }).notNull(),
   subCategory: varchar('sub_category', { length: 100 }),
   stockType: varchar('stock_type', { length: 20 }).notNull(), // 'on-display' | 'in-store'
@@ -59,7 +60,9 @@ export const stock = pgTable('stock', {
 
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-});
+}, (t) => ({
+  itemCodeIdx: index('idx_stock_item_code').on(t.itemCode),
+}));
 
 export const customers = pgTable('customers', {
   id: serial('id').primaryKey(),
@@ -67,7 +70,7 @@ export const customers = pgTable('customers', {
   email: varchar('email', { length: 100 }),
   address: text('address'),
   phoneNumber: varchar('phone_number', { length: 20 }),
-  idNumber: varchar('id_number', { length: 100 }).unique().notNull(),
+  idNumber: varchar('id_number', { length: 100 }).unique(),
   riskRating: varchar('risk_rating', { length: 20 }).default('Low').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -93,6 +96,8 @@ export const sales = pgTable('sales', {
   vat15: numeric('vat_15', { precision: 15, scale: 2 }),
   metalType: varchar('metal_type', { length: 50 }),
   orderId: integer('order_id').references(() => orders.id, { onDelete: 'set null' }),
+  linkedOdfId: integer('linked_odf_id').references(() => odf.id, { onDelete: 'set null' }),
+  linkedCommandeId: integer('linked_commande_id').references(() => orders.id, { onDelete: 'set null' }),
   status: varchar('status', { length: 20 }).default('Completed').notNull(), // 'Completed' | 'Cancelled'
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
@@ -128,7 +133,6 @@ export const odf = pgTable('odf', {
   customerId: integer('customer_id').references(() => customers.id, { onDelete: 'set null' }),
   itemReservedRepair: text('item_reserved_repair'),
   description: text('description'),
-  parameters: text('parameters'),
   comments: text('comments'),
   weight: numeric('weight', { precision: 10, scale: 3 }),
   metalType: varchar('metal_type', { length: 50 }),
@@ -136,6 +140,15 @@ export const odf = pgTable('odf', {
   amount: numeric('amount', { precision: 15, scale: 2 }),
   imageUrl: text('image_url'),
   fileUrl: text('file_url'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const odfItems = pgTable('odf_items', {
+  id: serial('id').primaryKey(),
+  odfId: integer('odf_id').references(() => odf.id, { onDelete: 'cascade' }).notNull(),
+  description: text('description').notNull(),
+  mass: numeric('mass', { precision: 10, scale: 3 }).notNull(),
+  fineness: varchar('fineness', { length: 20 }).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 

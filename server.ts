@@ -5,7 +5,7 @@ import cors from "cors";
 import multer from "multer";
 import { createServer as createViteServer } from "vite";
 import { db } from "./src/db/index";
-import { settings, stock, customers, receipts, orders, sales, odf, users, rolesPermissions, auditLogs } from "./src/db/schema";
+import { settings, stock, customers, receipts, orders, sales, odf, odfItems, users, rolesPermissions, auditLogs } from "./src/db/schema";
 import { eq, or, ilike, and, sql } from "drizzle-orm";
 import { authenticateToken, checkPermission } from "./src/middleware/auth";
 import { auditLogger } from "./src/middleware/audit";
@@ -18,11 +18,30 @@ async function startServer() {
     await db.execute(sql`ALTER TABLE stock ADD COLUMN IF NOT EXISTS price NUMERIC(15, 2) DEFAULT 0.00;`);
     await db.execute(sql`ALTER TABLE stock ADD COLUMN IF NOT EXISTS price_net NUMERIC(15, 2) DEFAULT 0.00;`);
     await db.execute(sql`ALTER TABLE stock ADD COLUMN IF NOT EXISTS price_vat NUMERIC(15, 2) DEFAULT 0.00;`);
+    await db.execute(sql`ALTER TABLE stock ADD COLUMN IF NOT EXISTS item_code VARCHAR(100);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_stock_item_code ON stock(item_code);`);
     await db.execute(sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(15, 2);`);
     await db.execute(sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS discount_percentage NUMERIC(5, 2);`);
+    await db.execute(sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS linked_odf_id INTEGER REFERENCES odf(id) ON DELETE SET NULL;`);
+    await db.execute(sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS linked_commande_id INTEGER REFERENCES orders(id) ON DELETE SET NULL;`);
     await db.execute(sql`ALTER TABLE sales DROP COLUMN IF EXISTS gold_rate;`);
     await db.execute(sql`ALTER TABLE orders DROP COLUMN IF EXISTS gold_rate;`);
-    console.log("Database migrations: stock_category_check dropped, category length increased, price added, and gold_rate columns dropped.");
+    
+    // Make customers.id_number nullable for over-the-counter sales
+    await db.execute(sql`ALTER TABLE customers ALTER COLUMN id_number DROP NOT NULL;`);
+    
+    // Create odf_items table if not exists
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS odf_items (
+        id SERIAL PRIMARY KEY,
+        odf_id INTEGER REFERENCES odf(id) ON DELETE CASCADE NOT NULL,
+        description TEXT NOT NULL,
+        mass NUMERIC(10, 3) NOT NULL,
+        fineness VARCHAR(20) NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+      );
+    `);
+    console.log("Database migrations: stock_category_check dropped, category length increased, price added, gold_rate columns dropped, and odf_items table verified.");
   } catch (err) {
     console.error("Migration error (non-fatal):", err);
   }
@@ -213,10 +232,41 @@ async function startServer() {
 
   // --- Sales Recording Endpoint ---
   app.post("/api/sales", authenticateToken, checkPermission('sales', 'create'), async (req, res) => {
-    const { customerId, barcode, paymentMode, chequeNumber, qty, amount, unitSalesPrice, itemDetails, orderId, discountAmount, discountPercentage } = req.body;
+    const { customerId, barcode, paymentMode, chequeNumber, qty, amount, unitSalesPrice, itemDetails, orderId, discountAmount, discountPercentage, linkedOdfId, linkedCommandeId } = req.body;
 
     try {
       const result = await db.transaction(async (tx) => {
+        const lOdfId = linkedOdfId ? parseInt(linkedOdfId) : null;
+        const lCommandeId = linkedCommandeId ? parseInt(linkedCommandeId) : null;
+
+        // Verify linked ODF has a completed Declaration of Ownership (Customer profile details filled)
+        if (lOdfId) {
+          const odfRecords = await tx.select().from(odf).where(eq(odf.id, lOdfId)).limit(1);
+          if (odfRecords.length === 0) {
+            throw new Error("L'ODF lié est introuvable");
+          }
+          const odfRec = odfRecords[0];
+          if (!odfRec.customerId) {
+            throw new Error("L'ODF lié ne possède pas de client associé");
+          }
+          const custRecords = await tx.select().from(customers).where(eq(customers.id, odfRec.customerId)).limit(1);
+          if (custRecords.length === 0) {
+            throw new Error("Le client associé à l'ODF lié est introuvable");
+          }
+          const cust = custRecords[0];
+          if (!cust.name || !cust.idNumber || !cust.phoneNumber || !cust.address) {
+            throw new Error("Le profil du client lié à l'ODF est incomplet. Veuillez renseigner le nom, le numéro de carte d'identité (NIC), le téléphone et l'adresse pour finaliser la déclaration de propriété.");
+          }
+        }
+
+        // Verify linked Commande exists
+        if (lCommandeId) {
+          const orderRecords = await tx.select().from(orders).where(eq(orders.id, lCommandeId)).limit(1);
+          if (orderRecords.length === 0) {
+            throw new Error("La commande liée est introuvable");
+          }
+        }
+
         // 1. Fetch item from stock to verify and get details
         const stockItems = await tx.select().from(stock).where(and(eq(stock.barcode, barcode), eq(stock.status, 'Disponible'))).limit(1);
         if (stockItems.length === 0) {
@@ -243,7 +293,9 @@ async function startServer() {
           discountPercentage: (discountPercentage !== undefined && discountPercentage !== null && discountPercentage !== "") ? discountPercentage.toString() : null,
           vat15: vat.toFixed(2),
           metalType: item.metalType,
-          orderId: orderId || null,
+          orderId: orderId || lCommandeId || null,
+          linkedOdfId: lOdfId,
+          linkedCommandeId: lCommandeId,
         }).returning();
 
         // 4. Mark as sold in stock
@@ -369,6 +421,7 @@ async function startServer() {
             eq(stock.status, 'Disponible'),
             or(
               ilike(stock.barcode, searchStr),
+              ilike(stock.itemCode, searchStr),
               ilike(stock.category, searchStr),
               ilike(stock.subCategory, searchStr),
               ilike(stock.brand, searchStr),
@@ -501,7 +554,22 @@ async function startServer() {
 
   app.post("/api/customers", authenticateToken, checkPermission('customers', 'create'), async (req, res) => {
     try {
-      const newCustomer = await db.insert(customers).values(req.body).returning();
+      const data = { ...req.body };
+      // Map empty or whitespace-only optional fields to null
+      if (data.idNumber === undefined || data.idNumber === null || String(data.idNumber).trim() === '') {
+        data.idNumber = null;
+      }
+      if (data.email === undefined || data.email === null || String(data.email).trim() === '') {
+        data.email = null;
+      }
+      if (data.address === undefined || data.address === null || String(data.address).trim() === '') {
+        data.address = null;
+      }
+      if (data.phoneNumber === undefined || data.phoneNumber === null || String(data.phoneNumber).trim() === '') {
+        data.phoneNumber = null;
+      }
+
+      const newCustomer = await db.insert(customers).values(data).returning();
       res.status(201).json(newCustomer[0]);
     } catch (error: any) {
       if (error.code === '23505') {
@@ -513,8 +581,23 @@ async function startServer() {
 
   app.put("/api/customers/:id", authenticateToken, checkPermission('customers', 'edit'), async (req, res) => {
     try {
+      const data = { ...req.body };
+      // Map empty or whitespace-only optional fields to null
+      if (data.idNumber === undefined || data.idNumber === null || String(data.idNumber).trim() === '') {
+        data.idNumber = null;
+      }
+      if (data.email === undefined || data.email === null || String(data.email).trim() === '') {
+        data.email = null;
+      }
+      if (data.address === undefined || data.address === null || String(data.address).trim() === '') {
+        data.address = null;
+      }
+      if (data.phoneNumber === undefined || data.phoneNumber === null || String(data.phoneNumber).trim() === '') {
+        data.phoneNumber = null;
+      }
+
       const updated = await db.update(customers)
-        .set({ ...req.body, updatedAt: new Date() })
+        .set({ ...data, updatedAt: new Date() })
         .where(eq(customers.id, parseInt(req.params.id)))
         .returning();
       if (updated.length === 0) return res.status(404).json({ error: "Customer not found" });
@@ -642,6 +725,7 @@ async function startServer() {
             eq(stock.status, 'Disponible'),
             or(
               ilike(stock.barcode, searchStr), 
+              ilike(stock.itemCode, searchStr), 
               ilike(stock.serialNumber, searchStr),
               ilike(stock.category, searchStr),
               ilike(stock.subCategory, searchStr),
@@ -802,6 +886,26 @@ async function startServer() {
     } catch (error: any) {
       console.error("PDF Generation Error:", error);
       res.status(500).json({ error: error.message || "Failed to generate PDF" });
+    }
+  });
+
+  // --- Trade-in Declaration PDF Generation ---
+  app.get("/api/receipts/:saleId/declaration-pdf", authenticateToken, async (req, res) => {
+    try {
+      const { saleId } = req.params;
+      const sId = parseInt(saleId);
+
+      const { generateDeclarationPDF } = await import("./src/services/pdfService");
+      const { doc } = await generateDeclarationPDF(sId);
+      
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename=tradein-declaration-${saleId}.pdf`);
+      
+      doc.pipe(res);
+      doc.end();
+    } catch (error: any) {
+      console.error("Declaration PDF Generation Error:", error);
+      res.status(500).json({ error: error.message || "Failed to generate trade-in declaration PDF" });
     }
   });
 
@@ -1254,6 +1358,198 @@ async function startServer() {
     }
   });
 
+  // --- Registre Trade-In (Assay Office) Endpoints ---
+  app.get("/api/reports/tradein", authenticateToken, checkPermission('reports', 'view'), async (req: any, res) => {
+    const { startDate, endDate } = req.query;
+    try {
+      let conditions = [];
+      if (startDate) {
+        conditions.push(sql`${odf.createdAt} >= ${new Date(startDate as string)}`);
+      }
+      if (endDate) {
+        const end = new Date(endDate as string);
+        end.setHours(23, 59, 59, 999);
+        conditions.push(sql`${odf.createdAt} <= ${end}`);
+      }
+
+      const allOdf = await db.select({
+        id: odf.id,
+        odfSerialNumber: odf.odfSerialNumber,
+        createdAt: odf.createdAt,
+        customerId: odf.customerId,
+        customerName: customers.name,
+        customerNIC: customers.idNumber,
+        customerAddress: customers.address,
+        metalType: odf.metalType,
+        fineness: odf.fineness,
+        weight: odf.weight,
+        amount: odf.amount,
+        description: odf.description,
+        receiptNo: receipts.receiptSerialNumber
+      })
+      .from(odf)
+      .innerJoin(customers, eq(odf.customerId, customers.id))
+      .leftJoin(sales, eq(sales.linkedOdfId, odf.id))
+      .leftJoin(receipts, eq(receipts.saleId, sales.id))
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(odf.createdAt);
+
+      const allOdfWithItems = await Promise.all(allOdf.map(async (record) => {
+        const items = await db.select().from(odfItems).where(eq(odfItems.odfId, record.id));
+        return {
+          ...record,
+          tradeInItems: items
+        };
+      }));
+
+      // Flatten items for the ledger
+      const flattened = [];
+      for (const record of allOdfWithItems) {
+        if (record.tradeInItems && record.tradeInItems.length > 0) {
+          for (const item of record.tradeInItems) {
+            flattened.push({
+              id: record.id,
+              date: record.createdAt,
+              customerName: record.customerName,
+              customerNIC: record.customerNIC,
+              customerAddress: record.customerAddress,
+              description: item.description || `${record.metalType} ${item.fineness || record.fineness}`,
+              weight: item.mass,
+              fineness: item.fineness,
+              invNo: record.receiptNo ? `#FS-${record.receiptNo}` : `#ODF-${record.odfSerialNumber || record.id}`,
+              out: '-'
+            });
+          }
+        } else {
+          flattened.push({
+            id: record.id,
+            date: record.createdAt,
+            customerName: record.customerName,
+            customerNIC: record.customerNIC,
+            customerAddress: record.customerAddress,
+            description: record.description || `${record.metalType} ${record.fineness}`,
+            weight: record.weight,
+            fineness: record.fineness,
+            invNo: record.receiptNo ? `#FS-${record.receiptNo}` : `#ODF-${record.odfSerialNumber || record.id}`,
+            out: '-'
+          });
+        }
+      }
+
+      res.json(flattened);
+    } catch (error) {
+      console.error("Trade-In Ledger Report Error:", error);
+      res.status(500).json({ error: "Failed to fetch trade-in ledger report" });
+    }
+  });
+
+  app.get("/api/reports/tradein/pdf", authenticateToken, checkPermission('reports', 'view'), async (req: any, res) => {
+    const { startDate, endDate } = req.query;
+    try {
+      const { generateTradeInReportPDF } = await import("./src/services/pdfService");
+      const doc = await generateTradeInReportPDF(startDate?.toString(), endDate?.toString());
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename=registre-tradein-${startDate || 'all'}-to-${endDate || 'all'}.pdf`);
+
+      doc.pipe(res);
+      doc.end();
+    } catch (error: any) {
+      console.error("Trade-In PDF Generation Error:", error);
+      res.status(500).json({ error: error.message || "Failed to generate Trade-In PDF report" });
+    }
+  });
+
+  // --- Sales by Metal Report Endpoint ---
+  app.get("/api/reports/sales-by-metal", authenticateToken, checkPermission('reports', 'view'), async (req: any, res) => {
+    const { startDate, endDate, metalType, fineness } = req.query;
+    try {
+      let conditions = [];
+      
+      // Filter out cancelled sales
+      conditions.push(eq(sales.status, 'Completed'));
+
+      if (startDate) {
+        conditions.push(sql`${sales.createdAt} >= ${new Date(startDate as string)}`);
+      }
+      if (endDate) {
+        const end = new Date(endDate as string);
+        end.setHours(23, 59, 59, 999);
+        conditions.push(sql`${sales.createdAt} <= ${end}`);
+      }
+
+      if (metalType && metalType !== 'all') {
+        let mType = (metalType as string).toLowerCase().trim();
+        if (mType === 'or' || mType === 'gold') {
+          conditions.push(or(ilike(sales.metalType, 'Gold'), ilike(sales.metalType, 'Or')));
+        } else if (mType === 'argent' || mType === 'silver') {
+          conditions.push(or(ilike(sales.metalType, 'Silver'), ilike(sales.metalType, 'Argent')));
+        } else if (mType === 'platine' || mType === 'platinum') {
+          conditions.push(or(ilike(sales.metalType, 'Platinum'), ilike(sales.metalType, 'Platine')));
+        } else {
+          conditions.push(ilike(sales.metalType, metalType as string));
+        }
+      }
+
+      if (fineness && fineness !== 'all') {
+        conditions.push(ilike(sales.fineness, fineness as string));
+      }
+
+      const matchingSales = await db.select({
+        id: sales.id,
+        createdAt: sales.createdAt,
+        customerName: customers.name,
+        itemDetails: sales.itemDetails,
+        barcode: stock.barcode,
+        metalType: sales.metalType,
+        fineness: sales.fineness,
+        weight: sales.weight,
+        amount: sales.amount,
+        vat15: sales.vat15,
+        receiptNo: receipts.receiptSerialNumber
+      })
+      .from(sales)
+      .leftJoin(customers, eq(sales.customerId, customers.id))
+      .leftJoin(stock, eq(sales.stockId, stock.id))
+      .leftJoin(receipts, eq(sales.id, receipts.saleId))
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(sql`${sales.createdAt} DESC`);
+
+      let totalWeight = 0;
+      let totalRevenue = 0;
+      
+      const items = matchingSales.map(row => {
+        const w = parseFloat(row.weight || "0");
+        const amt = parseFloat(row.amount || "0");
+        const vat = parseFloat(row.vat15 || "0");
+        const totalWithVat = amt + vat;
+        
+        totalWeight += w;
+        totalRevenue += amt;
+        
+        return {
+          ...row,
+          weight: w,
+          amount: amt,
+          totalWithVat: totalWithVat
+        };
+      });
+
+      res.json({
+        items,
+        summary: {
+          totalWeight,
+          totalRevenue,
+          totalRevenueWithVat: items.reduce((sum, item) => sum + item.totalWithVat, 0),
+          count: items.length
+        }
+      });
+    } catch (error) {
+      console.error("Sales by Metal Report Error:", error);
+      res.status(500).json({ error: "Failed to generate sales by metal report" });
+    }
+  });
+
   // --- Discount Report Endpoint ---
   app.get("/api/reports/discounts", authenticateToken, checkPermission('reports', 'view'), async (req: any, res) => {
     try {
@@ -1429,7 +1725,6 @@ async function startServer() {
         amount: odf.amount,
         itemReservedRepair: odf.itemReservedRepair,
         description: odf.description,
-        parameters: odf.parameters,
         comments: odf.comments,
         imageUrl: odf.imageUrl,
         createdAt: odf.createdAt
@@ -1437,14 +1732,24 @@ async function startServer() {
       .from(odf)
       .innerJoin(customers, eq(odf.customerId, customers.id))
       .orderBy(odf.createdAt);
-      res.json(allOdf);
+
+      const allOdfWithItems = await Promise.all(allOdf.map(async (record) => {
+        const items = await db.select().from(odfItems).where(eq(odfItems.odfId, record.id));
+        return {
+          ...record,
+          tradeInItems: items
+        };
+      }));
+
+      res.json(allOdfWithItems);
     } catch (error) {
+      console.error("Failed to fetch ODF records:", error);
       res.status(500).json({ error: "Failed to fetch ODF records" });
     }
   });
 
   app.post("/api/odf", authenticateToken, checkPermission('odf', 'create'), upload.single('image'), async (req: any, res) => {
-    const { customerId, metalType, fineness, weight, amount, itemReservedRepair, description, parameters, comments, createdAt, fileUrl } = req.body;
+    const { customerId, metalType, itemReservedRepair, description, comments, createdAt, fileUrl, tradeInItems } = req.body;
     let imageUrl = null;
 
     if (req.file) {
@@ -1452,15 +1757,91 @@ async function startServer() {
     }
 
     try {
+      // Parse tradeInItems
+      let parsedItems: any[] = [];
+      if (tradeInItems) {
+        try {
+          parsedItems = typeof tradeInItems === 'string' ? JSON.parse(tradeInItems) : tradeInItems;
+        } catch (e) {
+          console.error("Error parsing tradeInItems:", e);
+        }
+      }
+
+      // If no items, but individual parameters were sent, we can fall back to make it backward compatible
+      if (parsedItems.length === 0 && (req.body.weight || req.body.amount)) {
+        parsedItems.push({
+          description: description || "Article",
+          mass: req.body.weight || "0",
+          fineness: req.body.fineness || "18K"
+        });
+      }
+
+      // Helper function to get purity fraction
+      const getPurityFraction = (fineness: string): number => {
+        const clean = String(fineness || '').toLowerCase().trim();
+        if (clean.includes('24k') || clean.includes('999') || clean.includes('99.9')) return 1.0;
+        if (clean.includes('22k') || clean.includes('916') || clean.includes('91.6')) return 0.916;
+        if (clean.includes('18k') || clean.includes('750') || clean.includes('75')) return 0.75;
+        if (clean.includes('14k') || clean.includes('585') || clean.includes('58.5')) return 0.585;
+        if (clean.includes('9k') || clean.includes('375') || clean.includes('37.5')) return 0.375;
+        
+        const matchFraction = clean.match(/(\d+)\s*\/\s*(\d+)/);
+        if (matchFraction) {
+          const num = parseInt(matchFraction[1]);
+          const den = parseInt(matchFraction[2]);
+          if (den > 0) return num / den;
+        }
+        
+        const matchPct = clean.match(/([\d.]+)\s*%/);
+        if (matchPct) {
+          return parseFloat(matchPct[1]) / 100;
+        }
+        
+        const matchNum = clean.match(/^(\d+)$/);
+        if (matchNum) {
+          const val = parseInt(matchNum[1]);
+          if (val > 100) return val / 1000;
+          if (val > 0) return val / 100;
+        }
+        
+        return 0.75; // Default to 18K
+      };
+
+      // Helper function to get metal rate
+      const getMetalRatePerGram = (mType: string): number => {
+        const metal = String(mType || 'Gold').toLowerCase().trim();
+        if (metal.includes('silver') || metal.includes('argent')) {
+          return 60; // Rs 60 per gram of pure silver
+        }
+        if (metal.includes('platinum') || metal.includes('platine')) {
+          return 1800; // Rs 1800 per gram of pure platinum
+        }
+        return 3300; // Rs 3300 per gram of pure gold
+      };
+
+      // Backend Calculation: Calculate mass and valuation dynamically
+      let totalWeight = 0;
+      let totalAmount = 0;
+      const baseRate = getMetalRatePerGram(metalType);
+
+      parsedItems.forEach((item: any) => {
+        const massVal = parseFloat(item.mass || "0");
+        const purity = getPurityFraction(item.fineness);
+        const itemValuation = parseFloat((massVal * purity * baseRate).toFixed(2));
+        
+        totalWeight += massVal;
+        totalAmount += itemValuation;
+      });
+
+      // Insert ODF master record
       const newOdf = await db.insert(odf).values({
         customerId: customerId ? parseInt(customerId) : null,
         metalType,
-        fineness: (fineness && fineness !== "") ? fineness : null,
-        weight: (weight && weight !== "") ? weight : null,
-        amount: (amount && amount !== "") ? amount : null,
+        fineness: parsedItems[0]?.fineness || null, // default to first item's fineness
+        weight: totalWeight.toFixed(3),
+        amount: totalAmount.toFixed(2),
         itemReservedRepair,
         description,
-        parameters,
         comments,
         imageUrl,
         fileUrl,
@@ -1468,9 +1849,24 @@ async function startServer() {
         createdAt: createdAt ? new Date(createdAt) : new Date()
       }).returning();
 
+      const createdOdf = newOdf[0];
+
+      // Insert items into odf_items table
+      if (parsedItems.length > 0) {
+        await Promise.all(parsedItems.map(async (item: any) => {
+          await db.insert(odfItems).values({
+            odfId: createdOdf.id,
+            description: item.description,
+            mass: parseFloat(item.mass || "0").toFixed(3),
+            fineness: item.fineness
+          });
+        }));
+      }
+
       res.status(201).json({
-        id: newOdf[0].id,
-        ...newOdf[0]
+        id: createdOdf.id,
+        ...createdOdf,
+        tradeInItems: parsedItems
       });
     } catch (error) {
       console.error("ODF Creation Error:", error);

@@ -12,7 +12,7 @@ import { formatCurrency, formatWeight } from '../lib/utils';
 
 const Reports = () => {
   const { token, user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'vat' | 'receipts'>('vat');
+  const [activeTab, setActiveTab] = useState<'vat' | 'receipts' | 'tradein' | 'metal'>('vat');
   const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState({ type: '', text: '' });
 
@@ -29,10 +29,85 @@ const Reports = () => {
   const [receipts, setReceipts] = useState<any[]>([]);
   const [receiptSearch, setReceiptSearch] = useState('');
 
+  // Trade-In (Assay Office) State
+  const [tradeInData, setTradeInData] = useState<any[]>([]);
+  const [tradeInFilters, setTradeInFilters] = useState({
+    startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
+    endDate: new Date().toISOString().split('T')[0]
+  });
+
+  // Sales by Metal Report State
+  const [salesByMetalData, setSalesByMetalData] = useState<any[]>([]);
+  const [salesByMetalSummary, setSalesByMetalSummary] = useState<any>({
+    totalWeight: 0,
+    totalRevenue: 0,
+    totalRevenueWithVat: 0,
+    count: 0
+  });
+  const [metalFilters, setMetalFilters] = useState({
+    startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
+    endDate: new Date().toISOString().split('T')[0],
+    metalType: 'all',
+    fineness: 'all'
+  });
+
   useEffect(() => {
-    if (activeTab === 'vat') fetchVatReport();
-    else fetchReceiptHistory();
-  }, [activeTab, filters]);
+    if (activeTab === 'vat') {
+      fetchVatReport();
+    } else if (activeTab === 'receipts') {
+      fetchReceiptHistory();
+    } else if (activeTab === 'tradein') {
+      fetchTradeInReport();
+    } else if (activeTab === 'metal') {
+      fetchSalesByMetalReport();
+    }
+  }, [activeTab, filters, tradeInFilters, metalFilters]);
+
+  const fetchSalesByMetalReport = async () => {
+    setIsLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (metalFilters.startDate) params.append('startDate', metalFilters.startDate);
+      if (metalFilters.endDate) params.append('endDate', metalFilters.endDate);
+      if (metalFilters.metalType) params.append('metalType', metalFilters.metalType);
+      if (metalFilters.fineness) params.append('fineness', metalFilters.fineness);
+
+      const res = await axios.get(`/api/reports/sales-by-metal?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setSalesByMetalData(res.data.items || []);
+      setSalesByMetalSummary(res.data.summary || {
+        totalWeight: 0,
+        totalRevenue: 0,
+        totalRevenueWithVat: 0,
+        count: 0
+      });
+    } catch (err) {
+      console.error(err);
+      setMessage({ type: 'error', text: 'Échec du chargement du rapport de ventes par métal' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const fetchTradeInReport = async () => {
+    setIsLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (tradeInFilters.startDate) params.append('startDate', tradeInFilters.startDate);
+      if (tradeInFilters.endDate) params.append('endDate', tradeInFilters.endDate);
+
+      const res = await axios.get(`/api/reports/tradein?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setTradeInData(res.data);
+    } catch (err) {
+      console.error(err);
+      setMessage({ type: 'error', text: 'Échec du chargement du registre Trade-In' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const fetchVatReport = async () => {
     setIsLoading(true);
@@ -133,6 +208,114 @@ const Reports = () => {
     setTimeout(() => setMessage({ type: '', text: '' }), 3000);
   };
 
+  const handleExportTradeInPDF = async () => {
+    try {
+      const params = new URLSearchParams();
+      if (tradeInFilters.startDate) params.append('startDate', tradeInFilters.startDate);
+      if (tradeInFilters.endDate) params.append('endDate', tradeInFilters.endDate);
+
+      const response = await axios.get(`/api/reports/tradein/pdf?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: 'blob'
+      });
+      
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `registre_tradein_${tradeInFilters.startDate || 'all'}_to_${tradeInFilters.endDate || 'all'}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode?.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      setMessage({ type: 'success', text: 'Registre Trade-In PDF exporté avec succès' });
+    } catch (err) {
+      console.error(err);
+      setMessage({ type: 'error', text: 'Échec de l\'exportation du PDF' });
+    }
+    setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+  };
+
+  const handleExportTradeInExcel = () => {
+    try {
+      if (tradeInData.length === 0) {
+        setMessage({ type: 'error', text: 'Aucune donnée à exporter' });
+        setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+        return;
+      }
+
+      // CSV Headers matching the exact physical register layout
+      const headers = ['DATE', 'DESCRIPTION', 'NAME', 'NIC', 'ADDRESS', 'IN (Mass/g)', 'FINENESS', 'INV. NO.', 'OUT'];
+      const rows = tradeInData.map(row => [
+        row.date ? new Date(row.date).toLocaleDateString('fr-FR') : 'N/A',
+        `"${(row.description || '').replace(/"/g, '""')}"`,
+        `"${(row.customerName || '').replace(/"/g, '""')}"`,
+        `"${(row.customerNIC || '').replace(/"/g, '""')}"`,
+        `"${(row.customerAddress || '').replace(/"/g, '""')}"`,
+        row.weight ? parseFloat(row.weight).toFixed(3) : '0.000',
+        row.fineness || '-',
+        row.invNo || '-',
+        row.out || '-'
+      ]);
+
+      const csvContent = "data:text/csv;charset=utf-8,\uFEFF" 
+        + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+      
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement('a');
+      link.setAttribute('href', encodedUri);
+      link.setAttribute('download', `registre_tradein_${tradeInFilters.startDate || 'all'}_to_${tradeInFilters.endDate || 'all'}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setMessage({ type: 'success', text: 'Registre Trade-In CSV (Excel) exporté avec succès' });
+    } catch (err) {
+      console.error(err);
+      setMessage({ type: 'error', text: 'Échec de l\'exportation CSV' });
+    }
+    setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+  };
+
+  const handleExportSalesByMetalExcel = () => {
+    try {
+      if (salesByMetalData.length === 0) {
+        setMessage({ type: 'error', text: 'Aucune donnée à exporter' });
+        setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+        return;
+      }
+
+      // CSV Headers
+      const headers = ['DATE', 'FACTURE N° / RECEIPT NO.', 'CLIENT / CUSTOMER', 'DESCRIPTION', 'MÉTAL / METAL', 'PURETÉ / FINENESS', 'POIDS (g) / WEIGHT', 'REVENU HT (Rs) / REVENUE EXCL. VAT', 'TOTAL TTC (Rs) / TOTAL INCL. VAT'];
+      const rows = salesByMetalData.map(row => [
+        row.createdAt ? new Date(row.createdAt).toLocaleDateString('fr-FR') : 'N/A',
+        row.receiptNo ? `#FS-${row.receiptNo}` : `Ref #${row.id}`,
+        `"${(row.customerName || '').replace(/"/g, '""')}"`,
+        `"${(row.itemDetails || '').replace(/"/g, '""')}"`,
+        row.metalType || '-',
+        row.fineness || '-',
+        row.weight ? parseFloat(row.weight).toFixed(3) : '0.000',
+        row.amount ? parseFloat(row.amount).toFixed(2) : '0.00',
+        row.totalWithVat ? parseFloat(row.totalWithVat).toFixed(2) : '0.00'
+      ]);
+
+      const csvContent = "data:text/csv;charset=utf-8,\uFEFF" 
+        + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+      
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement('a');
+      link.setAttribute('href', encodedUri);
+      link.setAttribute('download', `rapport_ventes_metal_${metalFilters.metalType}_${metalFilters.fineness}_${metalFilters.startDate}_to_${metalFilters.endDate}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setMessage({ type: 'success', text: 'Rapport de ventes par métal CSV exporté avec succès' });
+    } catch (err) {
+      console.error(err);
+      setMessage({ type: 'error', text: 'Échec de l\'exportation CSV' });
+    }
+    setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+  };
+
   const filteredReceipts = (receipts || []).filter(r => {
     const rNo = String(r?.receiptNo || '').toLowerCase();
     const cName = String(r?.customerName || '').toLowerCase();
@@ -184,6 +367,22 @@ const Reports = () => {
           >
             Archives Factures
           </button>
+          <button
+            onClick={() => setActiveTab('tradein')}
+            className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${
+              activeTab === 'tradein' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Registre Trade-In (Assay Office)
+          </button>
+          <button
+            onClick={() => setActiveTab('metal')}
+            className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${
+              activeTab === 'metal' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Rapport par Métal
+          </button>
         </div>
 
         {activeTab === 'vat' && (
@@ -194,6 +393,38 @@ const Reports = () => {
           >
             <Download size={18} />
             Exporter en PDF
+          </button>
+        )}
+
+        {activeTab === 'tradein' && (
+          <div className="flex gap-2">
+            <button
+              id="export-tradein-excel-btn"
+              onClick={handleExportTradeInExcel}
+              className="bg-slate-900 hover:bg-slate-800 text-white font-black px-6 py-3 rounded-2xl shadow-lg transition-all flex items-center gap-2 text-sm select-none"
+            >
+              <Download size={18} />
+              Exporter en Excel (CSV)
+            </button>
+            <button
+              id="export-tradein-pdf-btn"
+              onClick={handleExportTradeInPDF}
+              className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-black px-6 py-3 rounded-2xl shadow-lg transition-all flex items-center gap-2 text-sm select-none"
+            >
+              <Download size={18} />
+              Exporter en PDF
+            </button>
+          </div>
+        )}
+
+        {activeTab === 'metal' && (
+          <button
+            id="export-sales-metal-excel-btn"
+            onClick={handleExportSalesByMetalExcel}
+            className="bg-slate-900 hover:bg-slate-800 text-white font-black px-6 py-3 rounded-2xl shadow-lg transition-all flex items-center gap-2 text-sm select-none"
+          >
+            <Download size={18} />
+            Exporter en CSV (Excel)
           </button>
         )}
       </div>
@@ -317,7 +548,7 @@ const Reports = () => {
                </div>
             </div>
           </motion.div>
-        ) : (
+        ) : activeTab === 'receipts' ? (
           <motion.div 
             key="receipts" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
             className="space-y-6"
@@ -380,6 +611,314 @@ const Reports = () => {
                   </div>
                 ))
               )}
+            </div>
+          </motion.div>
+        ) : activeTab === 'tradein' ? (
+          <motion.div 
+            key="tradein" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
+            className="space-y-6"
+          >
+            {/* Filters */}
+            <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100 flex flex-wrap items-end gap-6">
+              <div className="space-y-2">
+                <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Date de Début / Start Date</label>
+                <input 
+                  type="date" 
+                  className="w-48 bg-slate-50 border-2 border-slate-100 rounded-xl py-2 px-3 font-bold outline-none focus:border-amber-400"
+                  value={tradeInFilters.startDate}
+                  onChange={(e) => setTradeInFilters({...tradeInFilters, startDate: e.target.value})}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Date de Fin / End Date</label>
+                <input 
+                  type="date" 
+                  className="w-48 bg-slate-50 border-2 border-slate-100 rounded-xl py-2 px-3 font-bold outline-none focus:border-amber-400"
+                  value={tradeInFilters.endDate}
+                  onChange={(e) => setTradeInFilters({...tradeInFilters, endDate: e.target.value})}
+                />
+              </div>
+              <button 
+                onClick={fetchTradeInReport}
+                className="bg-slate-900 text-white p-3 rounded-xl hover:bg-slate-800 transition-all shadow-lg flex items-center justify-center"
+              >
+                <RefreshCcw size={20} />
+              </button>
+            </div>
+
+            {/* Assay Office Ledger Table */}
+            <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden">
+              <div className="p-6 border-b border-slate-50 bg-slate-50/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                <div>
+                  <h3 className="text-lg font-black text-slate-900">Registre Physique de Contrôle - Assay Office</h3>
+                  <p className="text-xs text-slate-500 font-medium">Format conforme aux exigences règlementaires de l'Assay Office</p>
+                </div>
+                <div className="text-right text-xs text-slate-400 font-mono">
+                  {tradeInData.length} Ligne(s) trouvée(s)
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead className="bg-slate-50 border-b border-slate-100">
+                    <tr>
+                      <th className="px-4 py-3 text-xs font-black text-slate-500 uppercase tracking-widest">DATE</th>
+                      <th className="px-4 py-3 text-xs font-black text-slate-500 uppercase tracking-widest">DESCRIPTION</th>
+                      <th className="px-4 py-3 text-xs font-black text-slate-500 uppercase tracking-widest">NAME</th>
+                      <th className="px-4 py-3 text-xs font-black text-slate-500 uppercase tracking-widest">NIC</th>
+                      <th className="px-4 py-3 text-xs font-black text-slate-500 uppercase tracking-widest">ADDRESS</th>
+                      <th className="px-4 py-3 text-xs font-black text-slate-500 uppercase tracking-widest text-right">IN (g)</th>
+                      <th className="px-4 py-3 text-xs font-black text-slate-500 uppercase tracking-widest">FINENESS</th>
+                      <th className="px-4 py-3 text-xs font-black text-slate-500 uppercase tracking-widest">INV. NO.</th>
+                      <th className="px-4 py-3 text-xs font-black text-slate-500 uppercase tracking-widest text-right">OUT (g)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {isLoading ? (
+                      <tr>
+                        <td colSpan={9} className="py-20 text-center">
+                          <Loader2 className="animate-spin mx-auto text-amber-500" />
+                        </td>
+                      </tr>
+                    ) : tradeInData.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} className="py-20 text-center text-slate-400 font-medium">
+                          Aucune transaction de Trade-In enregistrée pour cette période
+                        </td>
+                      </tr>
+                    ) : (
+                      tradeInData.map((row, idx) => (
+                        <tr key={`${row.id}-${idx}`} className="hover:bg-slate-50/80 transition-colors text-sm">
+                          <td className="px-4 py-3 font-semibold text-slate-700 whitespace-nowrap">
+                            {row.date ? new Date(row.date).toLocaleDateString('fr-FR') : 'N/A'}
+                          </td>
+                          <td className="px-4 py-3 text-slate-900 font-bold">
+                            {row.description}
+                          </td>
+                          <td className="px-4 py-3 font-black text-slate-900">
+                            {row.customerName}
+                          </td>
+                          <td className="px-4 py-3 font-mono text-xs text-slate-600 font-bold">
+                            {row.customerNIC}
+                          </td>
+                          <td className="px-4 py-3 text-slate-500 font-medium max-w-xs truncate" title={row.customerAddress}>
+                            {row.customerAddress || '-'}
+                          </td>
+                          <td className="px-4 py-3 text-right font-black text-emerald-600">
+                            {row.weight ? parseFloat(row.weight).toFixed(3) : '0.000'}g
+                          </td>
+                          <td className="px-4 py-3 font-bold text-amber-600">
+                            {row.fineness}
+                          </td>
+                          <td className="px-4 py-3 font-mono text-xs font-black text-slate-800">
+                            {row.invNo}
+                          </td>
+                          <td className="px-4 py-3 text-right text-slate-400 font-medium">
+                            {row.out}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Signature Blocks inside UI */}
+              <div className="p-8 bg-slate-50/50 border-t border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="border border-dashed border-slate-200 p-6 rounded-2xl bg-white space-y-3">
+                  <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Preparer Signature</h4>
+                  <div className="h-12 border-b border-slate-200 flex items-end">
+                    <p className="text-xs text-slate-300 italic font-medium">Signé électroniquement par {user?.username || 'Haujee Jewellery'}</p>
+                  </div>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Nom & Signature du Responsable</p>
+                </div>
+                <div className="border border-dashed border-slate-200 p-6 rounded-2xl bg-white space-y-3">
+                  <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Assay Office Verification</h4>
+                  <div className="h-12 border-b border-slate-200 flex items-end justify-center">
+                    <p className="text-xs text-slate-300 uppercase font-bold tracking-widest italic">[ STAMP AREA ]</p>
+                  </div>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Stamp & Date of Inspection</p>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        ) : (
+          <motion.div 
+            key="metal" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
+            className="space-y-6"
+          >
+            {/* Summary Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Poids Total Vendu</p>
+                  <h3 className="text-2xl font-black text-slate-900 mt-1">{formatWeight(salesByMetalSummary.totalWeight)}</h3>
+                  <p className="text-xs text-slate-500 font-medium mt-1">Poids total cumulé (g)</p>
+                </div>
+                <div className="p-4 bg-amber-50 rounded-2xl text-amber-500">
+                  <Scale size={24} />
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Revenu Total (HT)</p>
+                  <h3 className="text-2xl font-black text-slate-900 mt-1">{formatCurrency(salesByMetalSummary.totalRevenue)}</h3>
+                  <p className="text-xs text-slate-500 font-medium mt-1">Total ventes hors taxes</p>
+                </div>
+                <div className="p-4 bg-emerald-50 rounded-2xl text-emerald-600">
+                  <Banknote size={24} />
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Revenu Total (TTC)</p>
+                  <h3 className="text-2xl font-black text-slate-900 mt-1">{formatCurrency(salesByMetalSummary.totalRevenueWithVat)}</h3>
+                  <p className="text-xs text-slate-500 font-medium mt-1">Total ventes avec TVA (15%)</p>
+                </div>
+                <div className="p-4 bg-blue-50 rounded-2xl text-blue-600">
+                  <ArrowUpRight size={24} />
+                </div>
+              </div>
+            </div>
+
+            {/* Filters */}
+            <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100 flex flex-wrap items-end gap-6">
+              <div className="space-y-2">
+                <label className="text-xs font-black text-slate-400 uppercase tracking-widest block">Date de Début / Start Date</label>
+                <input 
+                  type="date" 
+                  className="w-48 bg-slate-50 border-2 border-slate-100 rounded-xl py-2 px-3 font-bold outline-none focus:border-amber-400 text-sm"
+                  value={metalFilters.startDate}
+                  onChange={(e) => setMetalFilters({...metalFilters, startDate: e.target.value})}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-black text-slate-400 uppercase tracking-widest block">Date de Fin / End Date</label>
+                <input 
+                  type="date" 
+                  className="w-48 bg-slate-50 border-2 border-slate-100 rounded-xl py-2 px-3 font-bold outline-none focus:border-amber-400 text-sm"
+                  value={metalFilters.endDate}
+                  onChange={(e) => setMetalFilters({...metalFilters, endDate: e.target.value})}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-black text-slate-400 uppercase tracking-widest block">Métal / Metal</label>
+                <select 
+                  className="w-48 bg-slate-50 border-2 border-slate-100 rounded-xl py-2 px-3 font-bold outline-none focus:border-amber-400 text-sm"
+                  value={metalFilters.metalType}
+                  onChange={(e) => setMetalFilters({...metalFilters, metalType: e.target.value})}
+                >
+                  <option value="all">Tous les métaux</option>
+                  <option value="Or">Or / Gold</option>
+                  <option value="Argent">Argent / Silver</option>
+                  <option value="Platinum">Platine / Platinum</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-black text-slate-400 uppercase tracking-widest block">Pureté / Purity</label>
+                <select 
+                  className="w-48 bg-slate-50 border-2 border-slate-100 rounded-xl py-2 px-3 font-bold outline-none focus:border-amber-400 text-sm"
+                  value={metalFilters.fineness}
+                  onChange={(e) => setMetalFilters({...metalFilters, fineness: e.target.value})}
+                >
+                  <option value="all">Toutes les puretés</option>
+                  <option value="18K">18K (750)</option>
+                  <option value="22K">22K (916)</option>
+                  <option value="24K">24K (999)</option>
+                  <option value="925">925 (Argent)</option>
+                  <option value="950">950 (Platine)</option>
+                </select>
+              </div>
+              <button 
+                onClick={fetchSalesByMetalReport}
+                className="bg-slate-900 text-white p-3 rounded-xl hover:bg-slate-800 transition-all shadow-lg flex items-center justify-center h-[38px] w-[38px]"
+              >
+                <RefreshCcw size={18} />
+              </button>
+            </div>
+
+            {/* Sales table */}
+            <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden">
+              <div className="p-6 border-b border-slate-50 bg-slate-50/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                <div>
+                  <h3 className="text-lg font-black text-slate-900 font-sans tracking-tight">Rapport de Ventes - Détails par Métal</h3>
+                  <p className="text-xs text-slate-500 font-medium">Bilan analytique des ventes de métaux précieux</p>
+                </div>
+                <div className="text-right text-xs text-slate-400 font-mono">
+                  {salesByMetalData.length} Vente(s) trouvée(s)
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead className="bg-slate-50 border-b border-slate-100">
+                    <tr>
+                      <th className="px-6 py-3 text-xs font-black text-slate-500 uppercase tracking-widest">DATE</th>
+                      <th className="px-6 py-3 text-xs font-black text-slate-500 uppercase tracking-widest">FACTURE N°</th>
+                      <th className="px-6 py-3 text-xs font-black text-slate-500 uppercase tracking-widest">CLIENT</th>
+                      <th className="px-6 py-3 text-xs font-black text-slate-500 uppercase tracking-widest">DESCRIPTION</th>
+                      <th className="px-6 py-3 text-xs font-black text-slate-500 uppercase tracking-widest">MÉTAL</th>
+                      <th className="px-6 py-3 text-xs font-black text-slate-500 uppercase tracking-widest">PURETÉ</th>
+                      <th className="px-6 py-3 text-xs font-black text-slate-500 uppercase tracking-widest text-right">POIDS (g)</th>
+                      <th className="px-6 py-3 text-xs font-black text-slate-500 uppercase tracking-widest text-right">REVENU HT</th>
+                      <th className="px-6 py-3 text-xs font-black text-slate-500 uppercase tracking-widest text-right">TOTAL TTC</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {isLoading ? (
+                      <tr>
+                        <td colSpan={9} className="py-20 text-center">
+                          <Loader2 className="animate-spin mx-auto text-amber-500" />
+                        </td>
+                      </tr>
+                    ) : salesByMetalData.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} className="py-20 text-center text-slate-400 font-medium">
+                          Aucune transaction enregistrée pour ces critères de recherche
+                        </td>
+                      </tr>
+                    ) : (
+                      salesByMetalData.map((row, idx) => (
+                        <tr key={`${row.id}-${idx}`} className="hover:bg-slate-50/80 transition-colors text-sm">
+                          <td className="px-6 py-4 font-semibold text-slate-700 whitespace-nowrap">
+                            {row.createdAt ? new Date(row.createdAt).toLocaleDateString('fr-FR') : 'N/A'}
+                          </td>
+                          <td className="px-6 py-4 font-mono text-xs font-black text-slate-800">
+                            {row.receiptNo ? `#FS-${row.receiptNo}` : `Ref #${row.id}`}
+                          </td>
+                          <td className="px-6 py-4 font-black text-slate-900">
+                            {row.customerName || 'Client de passage'}
+                          </td>
+                          <td className="px-6 py-4 text-slate-600 font-medium max-w-xs truncate" title={row.itemDetails}>
+                            {row.itemDetails || '-'}
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
+                              row.metalType === 'Gold' || row.metalType === 'Or'
+                                ? 'bg-amber-100 text-amber-800'
+                                : 'bg-slate-100 text-slate-700'
+                            }`}>
+                              {row.metalType || '-'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 font-bold text-amber-600">
+                            {row.fineness || '-'}
+                          </td>
+                          <td className="px-6 py-4 text-right font-bold text-slate-900 whitespace-nowrap">
+                            {row.weight ? parseFloat(row.weight).toFixed(3) : '0.000'} g
+                          </td>
+                          <td className="px-6 py-4 text-right font-black text-emerald-600 whitespace-nowrap">
+                            {formatCurrency(row.amount)}
+                          </td>
+                          <td className="px-6 py-4 text-right font-black text-slate-950 whitespace-nowrap">
+                            {formatCurrency(row.totalWithVat)}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </motion.div>
         )}

@@ -8,7 +8,7 @@ import {
   Clock, 
   ArrowUpRight, 
   Loader2,
-  DollarSign,
+  Coins,
   ShoppingCart,
   Scale
 } from 'lucide-react';
@@ -52,7 +52,7 @@ const Dashboard = () => {
     { 
       label: 'Ventes du jour', 
       value: `${formatCurrency(data?.todaySales || 0)}`, 
-      icon: DollarSign, 
+      icon: Coins, 
       color: 'text-emerald-600', 
       bgColor: 'bg-emerald-50' 
     },

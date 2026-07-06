@@ -6,7 +6,7 @@ import {
   ShoppingCart, Barcode, User, CreditCard, Search, 
   Plus, Check, AlertCircle, Loader2, Banknote,
   Smartphone, Mail, Download, History, X, UserPlus,
-  Scale, Tag, Info, Camera, ArrowLeft
+  Scale, Tag, Info, Camera, ArrowLeft, FileText
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import BarcodeScanner from '../components/BarcodeScanner';
@@ -33,6 +33,77 @@ const Sales = () => {
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
+
+  // Linked Documents State
+  const [linkedOdf, setLinkedOdf] = useState<any>(null);
+  const [linkedCommande, setLinkedCommande] = useState<any>(null);
+  const [odfSearch, setOdfSearch] = useState('');
+  const [commandeSearch, setCommandeSearch] = useState('');
+  const [showOdfDropdown, setShowOdfDropdown] = useState(false);
+  const [showCommandeDropdown, setShowCommandeDropdown] = useState(false);
+  const [odfsList, setOdfsList] = useState<any[]>([]);
+  const [commandesList, setCommandesList] = useState<any[]>([]);
+  const [customersList, setCustomersList] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (saleStep === 'customer' && token) {
+      const loadDocuments = async () => {
+        try {
+          const [odfsRes, ordersRes, custsRes] = await Promise.all([
+            axios.get('/api/odf', { headers: { Authorization: `Bearer ${token}` } }),
+            axios.get('/api/orders', { headers: { Authorization: `Bearer ${token}` } }),
+            axios.get('/api/customers', { headers: { Authorization: `Bearer ${token}` } })
+          ]);
+          setOdfsList(odfsRes.data);
+          setCommandesList(ordersRes.data);
+          setCustomersList(custsRes.data);
+        } catch (err) {
+          console.error("Error loading linked documents lists:", err);
+        }
+      };
+      loadDocuments();
+    }
+  }, [saleStep, token]);
+
+  const filteredOdfs = odfsList.filter(o => 
+    `odf #${o.id}`.toLowerCase().includes(odfSearch.toLowerCase()) || 
+    o.customerName?.toLowerCase().includes(odfSearch.toLowerCase()) ||
+    (o.amount && o.amount.toString().includes(odfSearch))
+  );
+
+  const filteredCommandes = commandesList.filter(c => 
+    `commande ${c.orderNumber}`.toLowerCase().includes(commandeSearch.toLowerCase()) || 
+    c.customerName?.toLowerCase().includes(commandeSearch.toLowerCase()) ||
+    (c.deposit && c.deposit.toString().includes(commandeSearch))
+  );
+
+  const handleSelectOdf = (o: any) => {
+    setLinkedOdf(o);
+    setOdfSearch(`ODF #${o.id} - ${o.customerName}`);
+    setShowOdfDropdown(false);
+    
+    // Auto-fill customer
+    const foundCust = customersList.find(c => c.id === o.customerId);
+    if (foundCust) {
+      setSelectedCustomer(foundCust);
+    } else {
+      setSelectedCustomer({ id: o.customerId, name: o.customerName });
+    }
+  };
+
+  const handleSelectCommande = (c: any) => {
+    setLinkedCommande(c);
+    setCommandeSearch(`Commande N° ${c.orderNumber} - ${c.customerName}`);
+    setShowCommandeDropdown(false);
+
+    // Auto-fill customer
+    const foundCust = customersList.find(cust => cust.id === c.customerId);
+    if (foundCust) {
+      setSelectedCustomer(foundCust);
+    } else {
+      setSelectedCustomer({ id: c.customerId, name: c.customerName });
+    }
+  };
   
   // Sale Details
   const [paymentMode, setPaymentMode] = useState('Cash');
@@ -47,6 +118,7 @@ const Sales = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const [isGeneratingDecl, setIsGeneratingDecl] = useState(false);
 
   const barcodeInputRef = useRef<HTMLInputElement>(null);
 
@@ -184,7 +256,9 @@ const Sales = () => {
         unitSalesPrice: finalPrice,
         discountAmount: computedDiscountAmount > 0 ? computedDiscountAmount.toFixed(2) : '0.00',
         discountPercentage: computedDiscountPercentage > 0 ? computedDiscountPercentage.toFixed(2) : '0.00',
-        itemDetails: `${scannedItem.subCategory} (${scannedItem.metalType} ${scannedItem.fineness})`
+        itemDetails: `${scannedItem.subCategory} (${scannedItem.metalType} ${scannedItem.fineness})`,
+        linkedOdfId: linkedOdf?.id || null,
+        linkedCommandeId: linkedCommande?.id || null,
       };
       
       const res = await axios.post('/api/sales', salePayload, { headers: { Authorization: `Bearer ${token}` } });
@@ -213,6 +287,25 @@ const Sales = () => {
       setMessage({ type: 'error', text: 'Échec de la génération du PDF' });
     } finally {
       setIsGeneratingPDF(false);
+    }
+  };
+
+  const handleDownloadDeclarationPDF = async () => {
+    if (!completedSale) return;
+    setIsGeneratingDecl(true);
+    try {
+      const response = await axios.get(`/api/receipts/${completedSale.id}/declaration-pdf`, {
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: 'blob'
+      });
+      
+      const blobUrl = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+      window.open(blobUrl, '_blank');
+    } catch (err) {
+      console.error(err);
+      setMessage({ type: 'error', text: 'Échec de la génération de la Déclaration PDF' });
+    } finally {
+      setIsGeneratingDecl(false);
     }
   };
 
@@ -452,6 +545,121 @@ const Sales = () => {
                   </button>
                </div>
 
+               {/* Lier à un document existant Section */}
+               <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 mb-6 space-y-4">
+                  <h3 className="text-sm font-black text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                     <FileText size={18} className="text-amber-500" />
+                     Lier à un document existant
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium -mt-2">
+                     Liez cette vente à un acompte de commande ou à une reprise (ODF) pour calculer le solde et remplir les détails du client.
+                  </p>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                     {/* Rechercher ODF */}
+                     <div className="relative">
+                        <label className="block text-xs font-extrabold text-slate-500 uppercase tracking-widest mb-1">Rechercher ODF</label>
+                        <div className="relative">
+                           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                           <input 
+                              type="text"
+                              placeholder="N° ODF, nom client..."
+                              className="w-full bg-white border border-slate-200 rounded-xl py-2.5 pl-9 pr-8 text-sm font-bold outline-none focus:border-amber-400 transition-all font-mono"
+                              value={odfSearch}
+                              onChange={(e) => {
+                                setOdfSearch(e.target.value);
+                                setShowOdfDropdown(true);
+                              }}
+                              onFocus={() => setShowOdfDropdown(true)}
+                              onBlur={() => setTimeout(() => setShowOdfDropdown(false), 200)}
+                           />
+                           {linkedOdf && (
+                             <button 
+                               onClick={() => {
+                                 setLinkedOdf(null);
+                                 setOdfSearch('');
+                               }}
+                               className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-500 font-bold"
+                             >
+                               <X size={16} />
+                             </button>
+                           )}
+                        </div>
+                        
+                        {showOdfDropdown && filteredOdfs.length > 0 && (
+                          <div className="absolute z-10 w-full bg-white border border-slate-200 rounded-xl mt-1 shadow-xl max-h-48 overflow-y-auto divide-y divide-slate-100">
+                             {filteredOdfs.map(o => (
+                               <div 
+                                 key={o.id}
+                                 onMouseDown={() => handleSelectOdf(o)}
+                                 className="p-3 hover:bg-slate-50 cursor-pointer transition-all flex justify-between items-center text-xs text-slate-700"
+                               >
+                                  <div className="text-left">
+                                     <p className="font-bold text-slate-900 font-mono">ODF #{o.id}</p>
+                                     <p className="text-slate-500 font-medium">{o.customerName}</p>
+                                  </div>
+                                  <span className="bg-indigo-50 text-indigo-700 px-2 py-1 rounded font-black font-mono">
+                                     {formatCurrency(parseFloat(o.amount || '0'))}
+                                  </span>
+                               </div>
+                             ))}
+                          </div>
+                        )}
+                     </div>
+
+                     {/* Rechercher Commande */}
+                     <div className="relative">
+                        <label className="block text-xs font-extrabold text-slate-500 uppercase tracking-widest mb-1">Rechercher Commande</label>
+                        <div className="relative">
+                           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                           <input 
+                              type="text"
+                              placeholder="N° Commande, nom client..."
+                              className="w-full bg-white border border-slate-200 rounded-xl py-2.5 pl-9 pr-8 text-sm font-bold outline-none focus:border-amber-400 transition-all font-mono"
+                              value={commandeSearch}
+                              onChange={(e) => {
+                                setCommandeSearch(e.target.value);
+                                setShowCommandeDropdown(true);
+                              }}
+                              onFocus={() => setShowCommandeDropdown(true)}
+                              onBlur={() => setTimeout(() => setShowCommandeDropdown(false), 200)}
+                           />
+                           {linkedCommande && (
+                             <button 
+                               onClick={() => {
+                                 setLinkedCommande(null);
+                                 setCommandeSearch('');
+                               }}
+                               className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-500 font-bold"
+                             >
+                               <X size={16} />
+                             </button>
+                           )}
+                        </div>
+                        
+                        {showCommandeDropdown && filteredCommandes.length > 0 && (
+                          <div className="absolute z-10 w-full bg-white border border-slate-200 rounded-xl mt-1 shadow-xl max-h-48 overflow-y-auto divide-y divide-slate-100">
+                             {filteredCommandes.map(c => (
+                               <div 
+                                 key={c.id}
+                                 onMouseDown={() => handleSelectCommande(c)}
+                                 className="p-3 hover:bg-slate-50 cursor-pointer transition-all flex justify-between items-center text-xs text-slate-700"
+                               >
+                                  <div className="text-left">
+                                     <p className="font-bold text-slate-900 font-mono">Commande N° {c.orderNumber}</p>
+                                     <p className="text-slate-500 font-medium">{c.customerName}</p>
+                                  </div>
+                                  <span className="bg-amber-50 text-amber-700 px-2 py-1 rounded font-black font-mono">
+                                     Acompte: {formatCurrency(parseFloat(c.deposit || '0'))}
+                                  </span>
+                               </div>
+                             ))}
+                          </div>
+                        )}
+                     </div>
+                  </div>
+               </div>
+
                <div className="space-y-6">
                   <div className="relative">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={24} />
@@ -602,10 +810,29 @@ const Sales = () => {
                       <span className="font-bold uppercase text-xs tracking-widest">TVA (15%)</span>
                       <span className="text-xl font-bold">{formatCurrency(vatAmount)}</span>
                     </div>
+                    <div className="flex justify-between items-center text-slate-300 border-t border-slate-800/60 pt-2">
+                      <span className="font-bold uppercase text-xs tracking-widest">Total Brut TTC</span>
+                      <span className="text-xl font-bold">{formatCurrency(totalWithVat)}</span>
+                    </div>
+
+                    {linkedOdf && (
+                      <div className="flex justify-between items-center text-rose-400">
+                        <span className="font-bold uppercase text-xs tracking-widest font-mono text-xs">Reprise Trade-In (ODF #{linkedOdf.id})</span>
+                        <span className="text-xl font-bold">-{formatCurrency(parseFloat(linkedOdf.amount || '0'))}</span>
+                      </div>
+                    )}
+
+                    {linkedCommande && (
+                      <div className="flex justify-between items-center text-rose-400">
+                        <span className="font-bold uppercase text-xs tracking-widest font-mono text-xs">Acompte Reçu (N° {linkedCommande.orderNumber})</span>
+                        <span className="text-xl font-bold">-{formatCurrency(parseFloat(linkedCommande.deposit || '0'))}</span>
+                      </div>
+                    )}
+
                     <div className="pt-4 border-t border-slate-800 flex justify-between items-center">
-                      <span className="text-slate-200 font-black uppercase text-sm tracking-widest">Total TTC</span>
+                      <span className="text-slate-200 font-black uppercase text-sm tracking-widest">Net À Payer</span>
                       <span className="text-4xl font-black text-white tracking-tighter">
-                        {formatCurrency(totalWithVat)}
+                        {formatCurrency(Math.max(0, totalWithVat - (linkedOdf ? parseFloat(linkedOdf.amount || '0') : 0) - (linkedCommande ? parseFloat(linkedCommande.deposit || '0') : 0)))}
                       </span>
                     </div>
                   </div>
@@ -699,7 +926,7 @@ const Sales = () => {
              </div>
 
              <div className="p-12 space-y-8">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-8 text-center">
                    <div className="p-6 bg-slate-50 rounded-3xl hover:bg-emerald-50 transition-colors cursor-pointer group" onClick={handleDownloadPDF}>
                       {isGeneratingPDF ? (
                         <Loader2 className="mx-auto text-emerald-600 mb-4 animate-spin" size={32} />
@@ -708,6 +935,17 @@ const Sales = () => {
                       )}
                       <p className="font-black text-slate-900">{isGeneratingPDF ? 'Génération...' : 'Télécharger PDF'}</p>
                       <p className="text-xs text-slate-500 font-medium">{isGeneratingPDF ? 'Veuillez patienter' : 'Impression directe'}</p>
+                    </div>
+                    <div className="p-6 bg-slate-50 rounded-3xl hover:bg-emerald-50 transition-colors cursor-pointer group" onClick={handleDownloadDeclarationPDF}>
+                       {isGeneratingDecl ? (
+                         <Loader2 className="mx-auto text-emerald-600 mb-4 animate-spin" size={32} />
+                       ) : (
+                         <FileText className="mx-auto text-slate-400 mb-4 group-hover:text-emerald-600" size={32} />
+                       )}
+                       <p className="font-black text-slate-900">{isGeneratingDecl ? 'Génération...' : 'Imprimer Déclaration'}</p>
+                       <p className="text-xs text-slate-500 font-medium">{isGeneratingDecl ? 'Veuillez patienter' : 'Trade-in PDF'}</p>
+                    </div>
+                    <div className="hidden" style={{display: 'none'}}>
                    </div>
                    <div className="p-6 bg-slate-50 rounded-3xl hover:bg-emerald-50 transition-colors cursor-pointer group" onClick={() => handleUploadAndSend('whatsapp')}>
                       <Smartphone className="mx-auto text-slate-400 mb-4 group-hover:text-emerald-600" size={32} />
@@ -746,6 +984,10 @@ const Sales = () => {
                       setBarcode('');
                       setCompletedSale(null);
                       setMessage({ type: '', text: '' });
+                      setLinkedOdf(null);
+                      setLinkedCommande(null);
+                      setOdfSearch('');
+                      setCommandeSearch('');
                     }}
                     className="flex-1 bg-slate-900 text-white py-4 rounded-2xl font-black text-lg hover:shadow-xl transition-all"
                    >

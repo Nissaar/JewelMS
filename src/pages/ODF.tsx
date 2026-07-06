@@ -28,15 +28,14 @@ const ODF = () => {
 
   const [formData, setFormData] = useState({
     metalType: 'Gold',
-    fineness: '22K',
-    weight: '',
-    amount: '',
     itemReservedRepair: '',
     description: '',
-    parameters: '',
     comments: '',
     createdAt: new Date().toISOString().split('T')[0]
   });
+  const [tradeInItems, setTradeInItems] = useState<Array<{ description: string, mass: string, fineness: string }>>([
+    { description: '', mass: '', fineness: '22K' }
+  ]);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -59,6 +58,77 @@ const ODF = () => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const getPurityFraction = (fineness: string): number => {
+    const clean = String(fineness || '').toLowerCase().trim();
+    if (clean.includes('24k') || clean.includes('999') || clean.includes('99.9')) return 1.0;
+    if (clean.includes('22k') || clean.includes('916') || clean.includes('91.6')) return 0.916;
+    if (clean.includes('18k') || clean.includes('750') || clean.includes('75')) return 0.75;
+    if (clean.includes('14k') || clean.includes('585') || clean.includes('58.5')) return 0.585;
+    if (clean.includes('9k') || clean.includes('375') || clean.includes('37.5')) return 0.375;
+    
+    const matchFraction = clean.match(/(\d+)\s*\/\s*(\d+)/);
+    if (matchFraction) {
+      const num = parseInt(matchFraction[1]);
+      const den = parseInt(matchFraction[2]);
+      if (den > 0) return num / den;
+    }
+    
+    const matchPct = clean.match(/([\d.]+)\s*%/);
+    if (matchPct) {
+      return parseFloat(matchPct[1]) / 100;
+    }
+    
+    const matchNum = clean.match(/^(\d+)$/);
+    if (matchNum) {
+      const val = parseInt(matchNum[1]);
+      if (val > 100) return val / 1000;
+      if (val > 0) return val / 100;
+    }
+    
+    return 0.75; // Default to 18K
+  };
+
+  const getMetalRatePerGram = (mType: string): number => {
+    const metal = String(mType || 'Gold').toLowerCase().trim();
+    if (metal.includes('silver') || metal.includes('argent')) {
+      return 60; // Rs 60 per gram of pure silver
+    }
+    if (metal.includes('platinum') || metal.includes('platine')) {
+      return 1800; // Rs 1800 per gram of pure platinum
+    }
+    return 3300; // Rs 3300 per gram of pure gold
+  };
+
+  // Real-time Calculations
+  const baseRate = getMetalRatePerGram(formData.metalType);
+  let totalWeight = 0;
+  let totalAmount = 0;
+
+  tradeInItems.forEach((item) => {
+    const massVal = parseFloat(item.mass || "0");
+    const purity = getPurityFraction(item.fineness);
+    const itemValuation = massVal * purity * baseRate;
+    
+    totalWeight += massVal;
+    totalAmount += itemValuation;
+  });
+
+  const handleAddItem = () => {
+    setTradeInItems([...tradeInItems, { description: '', mass: '', fineness: '22K' }]);
+  };
+
+  const handleRemoveItem = (index: number) => {
+    if (tradeInItems.length > 1) {
+      setTradeInItems(tradeInItems.filter((_, i) => i !== index));
+    }
+  };
+
+  const handleItemChange = (index: number, field: string, value: string) => {
+    const updated = [...tradeInItems];
+    updated[index] = { ...updated[index], [field]: value };
+    setTradeInItems(updated);
   };
 
   const handleExportPDF = async (id: number) => {
@@ -141,14 +211,11 @@ const ODF = () => {
       const payload = new FormData();
       payload.append('customerId', selectedCustomer.id);
       payload.append('metalType', formData.metalType);
-      payload.append('fineness', formData.fineness);
-      payload.append('weight', formData.weight);
-      payload.append('amount', formData.amount);
       payload.append('itemReservedRepair', formData.itemReservedRepair);
       payload.append('description', formData.description);
-      payload.append('parameters', formData.parameters);
       payload.append('comments', formData.comments);
       payload.append('createdAt', formData.createdAt);
+      payload.append('tradeInItems', JSON.stringify(tradeInItems));
       if (imageFile) payload.append('image', imageFile);
 
       const res = await axios.post('/api/odf', payload, {
@@ -279,43 +346,7 @@ const ODF = () => {
                   </select>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Finesse / Karat</label>
-                  <input 
-                    type="text" required placeholder="Ex: 22K, 916"
-                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 font-bold outline-none focus:border-amber-400"
-                    value={formData.fineness}
-                    onChange={(e) => setFormData({...formData, fineness: e.target.value})}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Poids (Grammes)</label>
-                  <div className="relative">
-                    <Scale className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                    <input 
-                      type="number" step="0.01" required placeholder="0.00"
-                      className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-12 pr-4 font-bold outline-none focus:border-amber-400"
-                      value={formData.weight}
-                      onChange={(e) => setFormData({...formData, weight: e.target.value})}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Montant du Rachat</label>
-                  <div className="relative">
-                    <Banknote className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                    <input 
-                      type="number" required placeholder="0"
-                      className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-12 pr-4 font-bold outline-none focus:border-amber-400"
-                      value={formData.amount}
-                      onChange={(e) => setFormData({...formData, amount: e.target.value})}
-                    />
-                  </div>
-                </div>
-
-                <div>
+                <div className="col-span-2 md:col-span-1">
                   <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Article Réservé / Réparé</label>
                   <div className="relative">
                     <Tag className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
@@ -328,24 +359,84 @@ const ODF = () => {
                   </div>
                 </div>
 
-                <div className="col-span-2 md:col-span-1">
-                  <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Description de l'Article</label>
-                  <input 
-                    type="text" placeholder="Détails de l'article..."
-                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 font-bold outline-none focus:border-amber-400"
-                    value={formData.description}
-                    onChange={(e) => setFormData({...formData, description: e.target.value})}
-                  />
-                </div>
+                {/* Dynamic Trade-in Items List */}
+                <div className="col-span-2 space-y-4 border-t-2 border-slate-50 pt-6">
+                  <div className="flex justify-between items-center mb-2">
+                    <h4 className="text-sm font-black text-slate-900 uppercase tracking-wider">Articles à échanger (Trade-In Items)</h4>
+                    <button
+                      type="button"
+                      onClick={handleAddItem}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-amber-500 text-white text-xs font-bold rounded-xl hover:bg-amber-600 transition-colors shadow-sm shadow-amber-500/20"
+                    >
+                      <Plus size={16} /> Ajouter un article
+                    </button>
+                  </div>
 
-                <div className="col-span-2">
-                  <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Paramètres / Spécifications</label>
-                  <input 
-                    type="text" placeholder="Tailles, mesures, gravures..."
-                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 font-bold outline-none focus:border-amber-400"
-                    value={formData.parameters}
-                    onChange={(e) => setFormData({...formData, parameters: e.target.value})}
-                  />
+                  <div className="space-y-4">
+                    {tradeInItems.map((item, index) => (
+                      <div key={index} className="grid grid-cols-12 gap-3 items-end bg-slate-50/50 p-4 rounded-2xl border-2 border-slate-100">
+                        <div className="col-span-12 sm:col-span-5">
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1.5">Description</label>
+                          <input
+                            type="text" required placeholder="Ex: Bracelet, Collier..."
+                            className="w-full bg-white border-2 border-slate-100 rounded-xl py-2 px-3 text-sm font-bold outline-none focus:border-amber-400"
+                            value={item.description}
+                            onChange={(e) => handleItemChange(index, 'description', e.target.value)}
+                          />
+                        </div>
+
+                        <div className="col-span-6 sm:col-span-3">
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1.5">Masse (g)</label>
+                          <input
+                            type="number" step="0.001" required placeholder="0.000"
+                            className="w-full bg-white border-2 border-slate-100 rounded-xl py-2 px-3 text-sm font-bold outline-none focus:border-amber-400"
+                            value={item.mass}
+                            onChange={(e) => handleItemChange(index, 'mass', e.target.value)}
+                          />
+                        </div>
+
+                        <div className="col-span-6 sm:col-span-3">
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1.5">Finesse / Karat</label>
+                          <input
+                            type="text" required placeholder="Ex: 22K, 750"
+                            className="w-full bg-white border-2 border-slate-100 rounded-xl py-2 px-3 text-sm font-bold outline-none focus:border-amber-400"
+                            value={item.fineness}
+                            onChange={(e) => handleItemChange(index, 'fineness', e.target.value)}
+                          />
+                        </div>
+
+                        <div className="col-span-12 sm:col-span-1 flex justify-center sm:justify-end pb-1">
+                          <button
+                            type="button"
+                            disabled={tradeInItems.length === 1}
+                            onClick={() => handleRemoveItem(index)}
+                            className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all disabled:opacity-30"
+                            title="Supprimer"
+                          >
+                            <X size={18} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Calculations Live Summary */}
+                  <div className="bg-amber-50/50 p-6 rounded-2xl border-2 border-amber-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 mt-6">
+                    <div>
+                      <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest">Base de calcul ({formData.metalType})</p>
+                      <p className="text-sm font-bold text-slate-700">Taux appliqué: <span className="font-black text-slate-900">{formatCurrency(baseRate)}</span> / gramme de pur</p>
+                    </div>
+                    <div className="flex gap-6">
+                      <div className="text-right">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Poids Total</p>
+                        <p className="text-xl font-black text-slate-900">{formatWeight(totalWeight)}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Estimation Totale</p>
+                        <p className="text-xl font-black text-emerald-600">{formatCurrency(totalAmount)}</p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="col-span-2">

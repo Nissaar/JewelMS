@@ -43,17 +43,18 @@ export const formatItemDetails = (details: any): string => {
 
 export const getCleanDisplayLabel = (item: any): string => {
   if (!item) return "";
+  const codeSuffix = item.itemCode || item.item_code ? ` [${item.itemCode || item.item_code}]` : "";
   // Check if item_details exists and needs parsing
   let details = item.item_details || item.itemDetails || item.description || item.subCategory || item.category || item.name;
   if (typeof details === 'string' && details.startsWith('{')) {
     try {
       const parsed = JSON.parse(details);
-      return `${item.barcode || ''} - ${parsed.name || ''} (${item.metal_type || item.metalType || parsed.metal_type || ''} ${item.fineness || ''})`.replace(/^\s*-\s*/, '');
+      return `${item.barcode || ''}${codeSuffix} - ${parsed.name || ''} (${item.metal_type || item.metalType || parsed.metal_type || ''} ${item.fineness || ''})`.replace(/^\s*-\s*/, '');
     } catch (e) {
-      return item.barcode ? `${item.barcode} - ${details}` : details;
+      return item.barcode ? `${item.barcode}${codeSuffix} - ${details}` : details;
     }
   }
-  return `${item.barcode || ''} - ${item.name || details || 'Article Sans Nom'}`;
+  return `${item.barcode || ''}${codeSuffix} - ${item.name || details || 'Article Sans Nom'}`;
 };
 
 export const getItemFullDescription = (item: any): string => {

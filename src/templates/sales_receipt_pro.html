@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 11px; color: #000; margin: 0; padding: 20px; }
+        .header { text-align: center; border-bottom: 2px solid #5c3a21; padding-bottom: 15px; margin-bottom: 10px; }
+        .header h1 { margin: 0; font-size: 24px; color: #5c3a21; letter-spacing: 2px; }
+        .header h2 { margin: 5px 0; font-size: 14px; }
+        .top-info { display: flex; justify-content: space-between; margin-bottom: 10px; border: 1px solid #000; padding: 10px; border-radius: 5px; }
+        .info-col { width: 48%; line-height: 1.6; }
+        .info-col span { display: inline-block; width: 120px; font-weight: bold; }
+        
+        table.items { width: 100%; border-collapse: collapse; margin-bottom: 0; }
+        table.items th, table.items td { border: 1px solid #000; padding: 6px; text-align: right; }
+        table.items th { background-color: #eaeaea; text-align: center; font-weight: bold; font-size: 10px; }
+        table.items td.text-left { text-align: left; }
+        table.items td.text-center { text-align: center; }
+        
+        .totals-section { width: 100%; border-collapse: collapse; margin-top: 0; border-top: none; }
+        .totals-section td { border: 1px solid #000; padding: 6px; text-align: right; font-weight: bold; }
+        .totals-section .label { width: 75%; text-align: right; background-color: #f9f9f9; }
+        
+        .amount-words { margin-top: 10px; font-style: italic; font-weight: bold; font-size: 12px; }
+        
+        .signatures { display: flex; justify-content: space-between; margin-top: 50px; text-align: center; }
+        .sig-box { width: 30%; border-top: 1px solid #000; padding-top: 5px; font-weight: bold; }
+        
+        .footer { text-align: center; margin-top: 30px; padding: 10px; background-color: #5c3a21; color: #fff; font-weight: bold; border-radius: 3px; }
+        
+        /* Terms and Conditions Page */
+        .page-break { page-break-before: always; }
+        .tc-header { text-align: center; font-size: 16px; font-weight: bold; text-decoration: underline; margin-bottom: 20px; }
+        .tc-box { border: 1px solid #ccc; padding: 15px; margin-bottom: 15px; border-radius: 5px; }
+        .tc-box h3 { margin-top: 0; color: #5c3a21; border-bottom: 1px solid #eee; padding-bottom: 5px; }
+        .tc-box ul { padding-left: 20px; margin-bottom: 0; }
+        .tc-box li { margin-bottom: 5px; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>HAUJEE JEWELLERY</h1>
+        <h2>TAX INVOICE</h2>
+        <div>VAT / BRN : C10012345</div>
+    </div>
+
+    <div class="top-info">
+        <div class="info-col">
+            <div><span>Customer Name :</span> {{customer_name}}</div>
+            <div><span>Mobile Number :</span> {{customer_phone}}</div>
+            <div><span>ID No./NIC :</span> {{customer_nic}}</div>
+            <div><span>Email :</span> {{customer_email}}</div>
+        </div>
+        <div class="info-col">
+            <div><span>Invoice No :</span> {{receipt_serial}}</div>
+            <div><span>Date & Time :</span> {{date}} {{time}}</div>
+            <div><span>Salesman :</span> {{salesman_name}}</div>
+            <div><span>Ref ODF/Order :</span> {{linked_ref}}</div>
+        </div>
+    </div>
+
+    <table class="items">
+        <thead>
+            <tr>
+                <th>No.</th>
+                <th>Stock Code</th>
+                <th>Description</th>
+                <th>Pcs</th>
+                <th>Qty (g)</th>
+                <th>Net Amount (Excl.VAT)</th>
+                <th>Vat %</th>
+                <th>Tax Amount</th>
+                <th>Gross Amount (Incl.VAT)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{#items}}
+            <tr>
+                <td class="text-center">{{index}}</td>
+                <td class="text-center">{{item_code}}</td>
+                <td class="text-left">{{description}}</td>
+                <td class="text-center">{{pieces}}</td>
+                <td>{{weight}}</td>
+                <td>{{net_excl_vat}}</td>
+                <td class="text-center">15.00</td>
+                <td>{{tax_amount}}</td>
+                <td>{{gross_incl_vat}}</td>
+            </tr>
+            {{/items}}
+        </tbody>
+    </table>
+
+    <table class="totals-section">
+        <tr>
+            <td class="label">Total ({{total_items}} Items)</td>
+            <td>{{sum_net_excl}}</td>
+            <td>{{sum_tax}}</td>
+            <td>{{sum_gross_incl}}</td>
+        </tr>
+        {{#if scrap_exchange_value}}
+        <tr>
+            <td colspan="3" class="label">Scrap Exchange / Trade-in</td>
+            <td style="color: red;">-{{scrap_exchange_value}}</td>
+        </tr>
+        {{/if}}
+        <tr>
+            <td colspan="3" class="label">Total Before VAT</td>
+            <td>{{total_before_vat}}</td>
+        </tr>
+        <tr>
+            <td colspan="3" class="label">Total VAT (15%)</td>
+            <td>{{total_vat_final}}</td>
+        </tr>
+        <tr>
+            <td colspan="3" class="label" style="font-size: 14px;">Net Amount To Pay (Rs)</td>
+            <td style="font-size: 14px;">{{final_net_amount}}</td>
+        </tr>
+    </table>
+
+    <div class="amount-words">
+        {{amount_in_words}} Mauritian Rupees Only.<br>
+        Received By: {{payment_method}}
+    </div>
+
+    <div class="signatures">
+        <div class="sig-box">CUSTOMER'S SIGNATURE</div>
+        <div class="sig-box">INVOICE CHECKED BY</div>
+        <div class="sig-box">AUTHORISED SIGNATORY</div>
+    </div>
+
+    <div class="footer">
+        Thank you for choosing us for your precious jewellery. We hope to see you again!
+    </div>
+
+    <div class="page-break"></div>
+    
+    <div class="tc-header">TERMS & CONDITIONS</div>
+    <div style="text-align: center; margin-bottom: 20px;">Returns, Exchange & Upgrade Policy - Valid within 7 days of purchase</div>
+
+    <div class="tc-box">
+        <h3>Gold Jewellery</h3>
+        <ul>
+            <li>Gold jewellery can be exchanged for other jewellery of equivalent value.</li>
+            <li>Making charges will be deducted during the exchange.</li>
+            <li>No cash refunds.</li>
+        </ul>
+    </div>
+
+    <div class="tc-box">
+        <h3>Diamond Jewellery</h3>
+        <ul>
+            <li>Diamond jewellery can be exchanged for diamond jewellery of equivalent invoice value.</li>
+            <li>No cash refunds.</li>
+        </ul>
+    </div>
+
+    <div class="tc-box">
+        <h3>Important Notes</h3>
+        <ul>
+            <li>The original invoice must be returned for any exchange or upgrade.</li>
+            <li>If the jewellery sold includes a certificate, the original certificate must also be returned.</li>
+        </ul>
+    </div>
+
+    <div style="text-align: center; margin-top: 40px; font-weight: bold; color: #5c3a21;">
+        Haujee Jewellery<br>
+        12 Rue de la Corderie, Port Louis, Mauritius<br>
+        Tel: +230 212 3456
+    </div>
+
+</body>
+</html>

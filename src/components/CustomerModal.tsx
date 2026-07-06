@@ -141,7 +141,9 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSucces
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
-              <label htmlFor="customer-name" className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Nom Complet</label>
+              <label htmlFor="customer-name" className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">
+                Nom Complet <span className="text-red-500">*</span>
+              </label>
               <div className="relative">
                 <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
                 <input 
@@ -157,12 +159,13 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSucces
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="customer-id" className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">ID / Carte d'Identité</label>
+              <label htmlFor="customer-id" className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">
+                ID / Carte d'Identité (Optionnel)
+              </label>
               <div className="relative">
                 <FileText className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
                 <input 
                   id="customer-id"
-                  required
                   type="text" 
                   placeholder="N° de Passeport / CNI"
                   className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-3 pl-12 pr-4 font-bold outline-none focus:border-amber-400 font-mono tracking-tighter"
@@ -173,7 +176,9 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSucces
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="customer-email" className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Email</label>
+              <label htmlFor="customer-email" className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">
+                Email (Optionnel)
+              </label>
               <div className="relative">
                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
                 <input 
@@ -188,7 +193,9 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSucces
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="customer-phone" className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Numéro de Téléphone</label>
+              <label htmlFor="customer-phone" className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">
+                Numéro de Téléphone (Optionnel)
+              </label>
               <div className="relative">
                 <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
                 <input 
@@ -220,7 +227,9 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSucces
             </div>
 
             <div className="space-y-2 md:col-span-2">
-              <label htmlFor="customer-address" className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Adresse Domiciliaire</label>
+              <label htmlFor="customer-address" className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">
+                Adresse Domiciliaire (Optionnel)
+              </label>
               <div className="relative">
                 <MapPin className="absolute left-4 top-4 text-slate-300" size={20} />
                 <textarea 
