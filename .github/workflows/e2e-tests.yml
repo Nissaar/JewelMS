@@ -46,7 +46,7 @@ jobs:
         cache: 'npm'
 
     - name: Install dependencies
-      run: npm ci || npm install
+      run: NODE_ENV=development npm ci || NODE_ENV=development npm install
 
     - name: Setup database schema
       run: npm run db:push
