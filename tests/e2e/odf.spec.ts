@@ -5,7 +5,7 @@ test.describe('Trade-In / ODF Module', () => {
     // Log in before every test
     await page.goto('/login');
     await page.locator('input[placeholder="Nom d\'utilisateur"]').fill('admin');
-    await page.locator('input[placeholder="Mot de passe"]').fill('admin');
+    await page.locator('input[placeholder="Mot de passe"]').fill('mysecret');
     await page.locator('button:has-text("Se Connecter")').click();
     await expect(page).toHaveURL('/');
   });

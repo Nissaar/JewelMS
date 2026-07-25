@@ -813,8 +813,10 @@ export async function generateDeclarationPDF(saleId: number): Promise<{ doc: PDF
   if (!customer) throw new Error('Customer not found for this sale');
 
   // 2. Fetch Receipt
-  const receiptArr = await db.select().from(receipts).where(eq(receipts.saleId, saleId)).limit(1);
-  if (receiptArr.length === 0) throw new Error('Receipt not found for this sale');
+  let receiptArr = await db.select().from(receipts).where(eq(receipts.saleId, saleId)).limit(1);
+  if (receiptArr.length === 0) {
+    receiptArr = await db.insert(receipts).values({ saleId }).returning();
+  }
   const receipt = receiptArr[0];
 
   // 3. Fetch ODF (Trade-In) record for this customer

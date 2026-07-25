@@ -171,4 +171,4 @@ ON CONFLICT (key) DO NOTHING;
 -- Default Administrator (Seed)
 -- INSERT INTO users (username, email, password_hash, role) VALUES ('admin', 'admin@haujee.com', '...', 'Admin');
 
-INSERT INTO users (username, email, password_hash, role) VALUES ('admin', 'admin@haujee.com', '$2b$10$HC4mocVNzdwGPHxu8J/HyeoWDglmA9NlTAXjcrz2MtMO5N3Ycw3LS', 'Admin');
+INSERT INTO users (username, email, password_hash, role) VALUES ('admin', 'admin@haujee.com', '$2b$10$HC4mocVNzdwGPHxu8J/HyeoWDglmA9NlTAXjcrz2MtMO5N3Ycw3LS', 'Admin') ON CONFLICT (username) DO NOTHING;

@@ -30,6 +30,9 @@ async function startServer() {
     // Make customers.id_number nullable for over-the-counter sales
     await db.execute(sql`ALTER TABLE customers ALTER COLUMN id_number DROP NOT NULL;`);
     
+    // Clean up brand field for Jewellery items
+    await db.execute(sql`UPDATE stock SET brand = NULL WHERE category = 'Jewellery' AND brand IS NOT NULL;`);
+    
     // Create odf_items table if not exists
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS odf_items (
@@ -38,9 +41,11 @@ async function startServer() {
         description TEXT NOT NULL,
         mass NUMERIC(10, 3) NOT NULL,
         fineness VARCHAR(20) NOT NULL,
+        price NUMERIC(15, 2) DEFAULT 0.00,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
       );
     `);
+    await db.execute(sql`ALTER TABLE odf_items ADD COLUMN IF NOT EXISTS price NUMERIC(15, 2) DEFAULT 0.00;`);
     console.log("Database migrations: stock_category_check dropped, category length increased, price added, gold_rate columns dropped, and odf_items table verified.");
   } catch (err) {
     console.error("Migration error (non-fatal):", err);
@@ -304,10 +309,22 @@ async function startServer() {
           .set({ status: 'Vendu', soldAt: new Date(), updatedAt: new Date() })
           .where(eq(stock.id, item.id));
 
-        return newSale[0];
+        // 5. Create associated receipt
+        const newReceipt = await tx.insert(receipts).values({
+          saleId: newSale[0].id
+        }).returning();
+
+        return {
+          ...newSale[0],
+          receipt: newReceipt[0]
+        };
       });
 
-      res.status(201).json({ sales_id: result.id, sale: result });
+      res.status(201).json({ 
+        sales_id: result.id, 
+        sale: result,
+        receipt: result.receipt
+      });
     } catch (error: any) {
       console.error("Sales Recording Error:", error);
       const status = error.message === "Item not found in stock or already sold" ? 404 : 500;
@@ -462,6 +479,10 @@ async function startServer() {
   app.post("/api/stock", authenticateToken, checkPermission('stock', 'create'), async (req, res) => {
     try {
       const payload = { ...req.body };
+      // Sanitize brand for Jewellery
+      if (payload.category === 'Jewellery') {
+        payload.brand = null;
+      }
       // Sanitize numeric fields that might be empty strings from frontend
       if (payload.weightGrams === "") payload.weightGrams = null;
       if (payload.yearsOfGuarantee === "") payload.yearsOfGuarantee = null;
@@ -492,6 +513,10 @@ async function startServer() {
   app.put("/api/stock/:id", authenticateToken, checkPermission('stock', 'edit'), async (req, res) => {
     try {
       const payload = { ...req.body };
+      // Sanitize brand for Jewellery
+      if (payload.category === 'Jewellery') {
+        payload.brand = null;
+      }
       // Sanitize numeric fields that might be empty strings from frontend
       if (payload.weightGrams === "") payload.weightGrams = null;
       if (payload.yearsOfGuarantee === "") payload.yearsOfGuarantee = null;
@@ -1842,15 +1867,13 @@ async function startServer() {
         return 3300; // Rs 3300 per gram of pure gold
       };
 
-      // Backend Calculation: Calculate mass and valuation dynamically
+      // Backend Calculation: Calculate mass and total amount based on manual prices
       let totalWeight = 0;
       let totalAmount = 0;
-      const baseRate = appliedRate ? parseFloat(appliedRate) : getMetalRatePerGram(metalType);
 
       parsedItems.forEach((item: any) => {
         const massVal = parseFloat(item.mass || "0");
-        const purity = getPurityFraction(item.fineness);
-        const itemValuation = parseFloat((massVal * purity * baseRate).toFixed(2));
+        const itemValuation = parseFloat(item.price || "0");
         
         totalWeight += massVal;
         totalAmount += itemValuation;
@@ -1881,7 +1904,8 @@ async function startServer() {
             odfId: createdOdf.id,
             description: item.description,
             mass: parseFloat(item.mass || "0").toFixed(3),
-            fineness: item.fineness
+            fineness: item.fineness,
+            price: parseFloat(item.price || "0").toFixed(2)
           });
         }));
       }

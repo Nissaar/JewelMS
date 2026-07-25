@@ -48,8 +48,10 @@ jobs:
     - name: Install dependencies
       run: NODE_ENV=development npm ci || NODE_ENV=development npm install
 
-    - name: Setup database schema
-      run: npm run db:push
+    - name: Setup database schema and seed
+      run: |
+        psql "postgresql://postgres:postgres@localhost:5432/haujee" -f init.sql
+        npm run db:push
 
     - name: Build fullstack application
       run: npm run build

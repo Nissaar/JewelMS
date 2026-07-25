@@ -7,7 +7,7 @@ test.describe('Authentication', () => {
 
     // Fill in username and password
     await page.locator('input[placeholder="Nom d\'utilisateur"]').fill('admin');
-    await page.locator('input[placeholder="Mot de passe"]').fill('admin');
+    await page.locator('input[placeholder="Mot de passe"]').fill('mysecret');
 
     // Click Se Connecter
     await page.locator('button:has-text("Se Connecter")').click();

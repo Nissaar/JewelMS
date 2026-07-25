@@ -147,7 +147,7 @@ const Stock = () => {
       metalType: val === 'Jewellery' ? (metadata.stock_metal_types?.[0] || '') : '',
       fineness: val === 'Jewellery' ? (metadata.stock_fineness_options?.[0] || '') : '',
       weightGrams: '',
-      brand: val === 'Sewing Machine' ? (metadata.stock_sewing_machine_brands?.[0] || '') : '',
+      brand: val === 'Jewellery' ? '' : (val === 'Sewing Machine' ? (metadata.stock_sewing_machine_brands?.[0] || '') : ''),
       yearsOfGuarantee: 0,
       serialNumber: ''
     }));
@@ -384,14 +384,17 @@ const Stock = () => {
                                   <p className="text-slate-700 font-medium">{formatItemDetails(item.metalType)} {formatItemDetails(item.fineness)}</p>
                                   <p className="text-amber-600 font-bold">{formatWeight(item.weightGrams)}</p>
                                 </>
-                              ) : (
-                                <p className="text-slate-400 font-medium">-</p>
-                              )}
+                              ) : null}
                               {item.category === 'Pen' && (
                                 <p className="text-slate-700 font-medium">{formatItemDetails(item.subCategory)}</p>
                               )}
                               {item.category === 'Sewing Machine' && (
                                 <p className="text-slate-700 font-medium">Garantie: {item.yearsOfGuarantee} ans</p>
+                              )}
+                              {item.category !== 'Jewellery' && item.brand && (
+                                <p className="text-xs text-slate-500 font-semibold bg-slate-100 rounded-md px-1.5 py-0.5 inline-block border border-slate-200 mt-1">
+                                  Marque: {item.brand}
+                                </p>
                               )}
                               {item.serialNumber && (
                                 <p className="text-xs text-slate-400 italic">S/N: {item.serialNumber}</p>

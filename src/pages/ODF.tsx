@@ -33,8 +33,8 @@ const ODF = () => {
     comments: '',
     createdAt: new Date().toISOString().split('T')[0]
   });
-  const [tradeInItems, setTradeInItems] = useState<Array<{ description: string, mass: string, fineness: string }>>([
-    { description: '', mass: '', fineness: '22K' }
+  const [tradeInItems, setTradeInItems] = useState<Array<{ description: string, mass: string, fineness: string, price: string }>>([
+    { description: '', mass: '', fineness: '22K', price: '' }
   ]);
   const [dailyGoldRate, setDailyGoldRate] = useState<number>(3300);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -109,21 +109,19 @@ const ODF = () => {
   }, [formData.metalType]);
 
   // Real-time Calculations
-  const baseRate = dailyGoldRate;
   let totalWeight = 0;
   let totalAmount = 0;
 
   tradeInItems.forEach((item) => {
     const massVal = parseFloat(item.mass || "0");
-    const purity = getPurityFraction(item.fineness);
-    const itemValuation = massVal * purity * baseRate;
+    const itemValuation = parseFloat(item.price || "0");
     
     totalWeight += massVal;
     totalAmount += itemValuation;
   });
 
   const handleAddItem = () => {
-    setTradeInItems([...tradeInItems, { description: '', mass: '', fineness: '22K' }]);
+    setTradeInItems([...tradeInItems, { description: '', mass: '', fineness: '22K', price: '' }]);
   };
 
   const handleRemoveItem = (index: number) => {
@@ -383,7 +381,7 @@ const ODF = () => {
                   <div className="space-y-4">
                     {tradeInItems.map((item, index) => (
                       <div key={index} className="grid grid-cols-12 gap-3 items-end bg-slate-50/50 p-4 rounded-2xl border-2 border-slate-100">
-                        <div className="col-span-12 sm:col-span-5">
+                        <div className="col-span-12 sm:col-span-4">
                           <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1.5">Description</label>
                           <input
                             type="text" required placeholder="Ex: Bracelet, Collier..."
@@ -393,7 +391,7 @@ const ODF = () => {
                           />
                         </div>
 
-                        <div className="col-span-6 sm:col-span-3">
+                        <div className="col-span-6 sm:col-span-2">
                           <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1.5">Masse (g)</label>
                           <input
                             type="number" step="0.001" required placeholder="0.000"
@@ -403,13 +401,23 @@ const ODF = () => {
                           />
                         </div>
 
-                        <div className="col-span-6 sm:col-span-3">
+                        <div className="col-span-6 sm:col-span-2">
                           <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1.5">Finesse / Karat</label>
                           <input
                             type="text" required placeholder="Ex: 22K, 750"
                             className="w-full bg-white border-2 border-slate-100 rounded-xl py-2 px-3 text-sm font-bold outline-none focus:border-amber-400"
                             value={item.fineness}
                             onChange={(e) => handleItemChange(index, 'fineness', e.target.value)}
+                          />
+                        </div>
+
+                        <div className="col-span-12 sm:col-span-3">
+                          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1.5">Prix / Valeur Agréée (Rs)</label>
+                          <input
+                            type="number" step="0.01" required placeholder="0.00"
+                            className="w-full bg-white border-2 border-slate-100 rounded-xl py-2 px-3 text-sm font-bold outline-none focus:border-amber-400 font-mono"
+                            value={item.price}
+                            onChange={(e) => handleItemChange(index, 'price', e.target.value)}
                           />
                         </div>
 
@@ -431,19 +439,8 @@ const ODF = () => {
                   {/* Calculations Live Summary */}
                   <div className="bg-amber-50/50 p-6 rounded-2xl border-2 border-amber-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 mt-6">
                     <div>
-                      <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-1.5">Base de calcul ({formData.metalType})</p>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold text-slate-700">Taux du jour (Rs/g) :</span>
-                        <input
-                          type="number"
-                          step="0.01"
-                          required
-                          className="w-28 bg-white border border-amber-200 rounded-xl px-2.5 py-1 text-sm font-black text-slate-900 outline-none focus:border-amber-400 font-mono shadow-sm"
-                          value={dailyGoldRate}
-                          onChange={(e) => setDailyGoldRate(Number(e.target.value) || 0)}
-                        />
-                        <span className="text-xs font-semibold text-slate-400">/ g de pur</span>
-                      </div>
+                      <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-1.5">Rachat / Échange</p>
+                      <p className="text-xs font-semibold text-slate-500">Valeur totale calculée d'après les prix manuels saisis pour chaque article.</p>
                     </div>
                     <div className="flex gap-6">
                       <div className="text-right">
@@ -451,7 +448,7 @@ const ODF = () => {
                         <p className="text-xl font-black text-slate-900">{formatWeight(totalWeight)}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Estimation Totale</p>
+                        <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Valeur Agréée Totale</p>
                         <p className="text-xl font-black text-emerald-600">{formatCurrency(totalAmount)}</p>
                       </div>
                     </div>

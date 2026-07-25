@@ -149,6 +149,7 @@ export const odfItems = pgTable('odf_items', {
   description: text('description').notNull(),
   mass: numeric('mass', { precision: 10, scale: 3 }).notNull(),
   fineness: varchar('fineness', { length: 20 }).notNull(),
+  price: numeric('price', { precision: 15, scale: 2 }).default('0.00'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
