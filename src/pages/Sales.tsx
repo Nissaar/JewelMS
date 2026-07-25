@@ -832,7 +832,7 @@ const Sales = () => {
                     <div className="pt-4 border-t border-slate-800 flex justify-between items-center">
                       <span className="text-slate-200 font-black uppercase text-sm tracking-widest">Net À Payer</span>
                       <span className="text-4xl font-black text-white tracking-tighter">
-                        {formatCurrency(Math.max(0, totalWithVat - (linkedOdf ? parseFloat(linkedOdf.amount || '0') : 0) - (linkedCommande ? parseFloat(linkedCommande.deposit || '0') : 0)))}
+                        {formatCurrency(totalWithVat - (linkedOdf ? parseFloat(linkedOdf.amount || '0') : 0) - (linkedCommande ? parseFloat(linkedCommande.deposit || '0') : 0))}
                       </span>
                     </div>
                   </div>
@@ -942,7 +942,7 @@ const Sales = () => {
                        ) : (
                          <FileText className="mx-auto text-slate-400 mb-4 group-hover:text-emerald-600" size={32} />
                        )}
-                       <p className="font-black text-slate-900">{isGeneratingDecl ? 'Génération...' : 'Imprimer Déclaration'}</p>
+                       <p className="font-black text-slate-900">{isGeneratingDecl ? 'Génération...' : 'Imprimer Déclaration (Trade-in)'}</p>
                        <p className="text-xs text-slate-500 font-medium">{isGeneratingDecl ? 'Veuillez patienter' : 'Trade-in PDF'}</p>
                     </div>
                     <div className="hidden" style={{display: 'none'}}>

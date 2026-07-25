@@ -254,8 +254,9 @@ async function startServer() {
             throw new Error("Le client associé à l'ODF lié est introuvable");
           }
           const cust = custRecords[0];
-          if (!cust.name || !cust.idNumber || !cust.phoneNumber || !cust.address) {
-            throw new Error("Le profil du client lié à l'ODF est incomplet. Veuillez renseigner le nom, le numéro de carte d'identité (NIC), le téléphone et l'adresse pour finaliser la déclaration de propriété.");
+          // KYC bypass: Allow sales without full KYC (e.g. NIC, phone, address are optional)
+          if (!cust.name) {
+            throw new Error("Le client associé à l'ODF doit avoir un nom.");
           }
         }
 
@@ -1416,8 +1417,8 @@ async function startServer() {
               description: item.description || `${record.metalType} ${item.fineness || record.fineness}`,
               weight: item.mass,
               fineness: item.fineness,
-              invNo: record.receiptNo ? `#FS-${record.receiptNo}` : `#ODF-${record.odfSerialNumber || record.id}`,
-              out: '-'
+              invNo: `#ODF-${record.odfSerialNumber || record.id}`,
+              out: record.receiptNo ? `#FS-${record.receiptNo}` : '-'
             });
           }
         } else {
@@ -1430,8 +1431,8 @@ async function startServer() {
             description: record.description || `${record.metalType} ${record.fineness}`,
             weight: record.weight,
             fineness: record.fineness,
-            invNo: record.receiptNo ? `#FS-${record.receiptNo}` : `#ODF-${record.odfSerialNumber || record.id}`,
-            out: '-'
+            invNo: `#ODF-${record.odfSerialNumber || record.id}`,
+            out: record.receiptNo ? `#FS-${record.receiptNo}` : '-'
           });
         }
       }
@@ -1457,6 +1458,28 @@ async function startServer() {
     } catch (error: any) {
       console.error("Trade-In PDF Generation Error:", error);
       res.status(500).json({ error: error.message || "Failed to generate Trade-In PDF report" });
+    }
+  });
+
+  app.get("/api/reports/sales-by-metal/pdf", authenticateToken, checkPermission('reports', 'view'), async (req: any, res) => {
+    const { startDate, endDate, metalType, fineness } = req.query;
+    try {
+      const { generateSalesByMetalReportPDF } = await import("./src/services/pdfService");
+      const doc = await generateSalesByMetalReportPDF(
+        startDate?.toString(),
+        endDate?.toString(),
+        metalType?.toString(),
+        fineness?.toString()
+      );
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename=rapport-ventes-metal-${metalType || 'all'}-${fineness || 'all'}.pdf`);
+
+      doc.pipe(res);
+      doc.end();
+    } catch (error: any) {
+      console.error("Sales by Metal PDF Generation Error:", error);
+      res.status(500).json({ error: error.message || "Failed to generate Sales by Metal PDF report" });
     }
   });
 
@@ -1749,7 +1772,7 @@ async function startServer() {
   });
 
   app.post("/api/odf", authenticateToken, checkPermission('odf', 'create'), upload.single('image'), async (req: any, res) => {
-    const { customerId, metalType, itemReservedRepair, description, comments, createdAt, fileUrl, tradeInItems } = req.body;
+    const { customerId, metalType, itemReservedRepair, description, comments, createdAt, fileUrl, tradeInItems, appliedRate } = req.body;
     let imageUrl = null;
 
     if (req.file) {
@@ -1822,7 +1845,7 @@ async function startServer() {
       // Backend Calculation: Calculate mass and valuation dynamically
       let totalWeight = 0;
       let totalAmount = 0;
-      const baseRate = getMetalRatePerGram(metalType);
+      const baseRate = appliedRate ? parseFloat(appliedRate) : getMetalRatePerGram(metalType);
 
       parsedItems.forEach((item: any) => {
         const massVal = parseFloat(item.mass || "0");

@@ -258,16 +258,17 @@ const Reports = () => {
         row.out || '-'
       ]);
 
-      const csvContent = "data:text/csv;charset=utf-8,\uFEFF" 
-        + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-      
-      const encodedUri = encodeURI(csvContent);
+      const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.setAttribute('href', encodedUri);
+      link.href = url;
       link.setAttribute('download', `registre_tradein_${tradeInFilters.startDate || 'all'}_to_${tradeInFilters.endDate || 'all'}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
       setMessage({ type: 'success', text: 'Registre Trade-In CSV (Excel) exporté avec succès' });
     } catch (err) {
       console.error(err);
@@ -298,20 +299,57 @@ const Reports = () => {
         row.totalWithVat ? parseFloat(row.totalWithVat).toFixed(2) : '0.00'
       ]);
 
-      const csvContent = "data:text/csv;charset=utf-8,\uFEFF" 
-        + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-      
-      const encodedUri = encodeURI(csvContent);
+      const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.setAttribute('href', encodedUri);
+      link.href = url;
       link.setAttribute('download', `rapport_ventes_metal_${metalFilters.metalType}_${metalFilters.fineness}_${metalFilters.startDate}_to_${metalFilters.endDate}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
       setMessage({ type: 'success', text: 'Rapport de ventes par métal CSV exporté avec succès' });
     } catch (err) {
       console.error(err);
       setMessage({ type: 'error', text: 'Échec de l\'exportation CSV' });
+    }
+    setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+  };
+
+  const handleExportSalesByMetalPDF = async () => {
+    try {
+      if (salesByMetalData.length === 0) {
+        setMessage({ type: 'error', text: 'Aucune donnée à exporter' });
+        setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+        return;
+      }
+
+      const params = new URLSearchParams();
+      if (metalFilters.startDate) params.append('startDate', metalFilters.startDate);
+      if (metalFilters.endDate) params.append('endDate', metalFilters.endDate);
+      if (metalFilters.metalType) params.append('metalType', metalFilters.metalType);
+      if (metalFilters.fineness) params.append('fineness', metalFilters.fineness);
+
+      const response = await axios.get(`/api/reports/sales-by-metal/pdf?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: 'blob'
+      });
+      
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `rapport_ventes_metal_${metalFilters.metalType}_${metalFilters.fineness}_${metalFilters.startDate || 'all'}_to_${metalFilters.endDate || 'all'}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode?.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      setMessage({ type: 'success', text: 'Rapport ventes par métal PDF exporté avec succès' });
+    } catch (err) {
+      console.error(err);
+      setMessage({ type: 'error', text: 'Échec de l\'exportation du PDF' });
     }
     setTimeout(() => setMessage({ type: '', text: '' }), 3000);
   };
@@ -418,14 +456,24 @@ const Reports = () => {
         )}
 
         {activeTab === 'metal' && (
-          <button
-            id="export-sales-metal-excel-btn"
-            onClick={handleExportSalesByMetalExcel}
-            className="bg-slate-900 hover:bg-slate-800 text-white font-black px-6 py-3 rounded-2xl shadow-lg transition-all flex items-center gap-2 text-sm select-none"
-          >
-            <Download size={18} />
-            Exporter en CSV (Excel)
-          </button>
+          <div className="flex gap-2">
+            <button
+              id="export-sales-metal-excel-btn"
+              onClick={handleExportSalesByMetalExcel}
+              className="bg-slate-900 hover:bg-slate-800 text-white font-black px-6 py-3 rounded-2xl shadow-lg transition-all flex items-center gap-2 text-sm select-none"
+            >
+              <Download size={18} />
+              Exporter en CSV (Excel)
+            </button>
+            <button
+              id="export-sales-metal-pdf-btn"
+              onClick={handleExportSalesByMetalPDF}
+              className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-black px-6 py-3 rounded-2xl shadow-lg transition-all flex items-center gap-2 text-sm select-none"
+            >
+              <Download size={18} />
+              Exporter en PDF
+            </button>
+          </div>
         )}
       </div>
 

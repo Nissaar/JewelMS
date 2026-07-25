@@ -36,7 +36,9 @@ const ODF = () => {
   const [tradeInItems, setTradeInItems] = useState<Array<{ description: string, mass: string, fineness: string }>>([
     { description: '', mass: '', fineness: '22K' }
   ]);
+  const [dailyGoldRate, setDailyGoldRate] = useState<number>(3300);
   const [imageFile, setImageFile] = useState<File | null>(null);
+
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -101,8 +103,13 @@ const ODF = () => {
     return 3300; // Rs 3300 per gram of pure gold
   };
 
+  // When metalType changes, update dailyGoldRate to default value
+  useEffect(() => {
+    setDailyGoldRate(getMetalRatePerGram(formData.metalType));
+  }, [formData.metalType]);
+
   // Real-time Calculations
-  const baseRate = getMetalRatePerGram(formData.metalType);
+  const baseRate = dailyGoldRate;
   let totalWeight = 0;
   let totalAmount = 0;
 
@@ -216,6 +223,7 @@ const ODF = () => {
       payload.append('comments', formData.comments);
       payload.append('createdAt', formData.createdAt);
       payload.append('tradeInItems', JSON.stringify(tradeInItems));
+      payload.append('appliedRate', dailyGoldRate.toString());
       if (imageFile) payload.append('image', imageFile);
 
       const res = await axios.post('/api/odf', payload, {
@@ -423,8 +431,19 @@ const ODF = () => {
                   {/* Calculations Live Summary */}
                   <div className="bg-amber-50/50 p-6 rounded-2xl border-2 border-amber-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 mt-6">
                     <div>
-                      <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest">Base de calcul ({formData.metalType})</p>
-                      <p className="text-sm font-bold text-slate-700">Taux appliqué: <span className="font-black text-slate-900">{formatCurrency(baseRate)}</span> / gramme de pur</p>
+                      <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-1.5">Base de calcul ({formData.metalType})</p>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold text-slate-700">Taux du jour (Rs/g) :</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          required
+                          className="w-28 bg-white border border-amber-200 rounded-xl px-2.5 py-1 text-sm font-black text-slate-900 outline-none focus:border-amber-400 font-mono shadow-sm"
+                          value={dailyGoldRate}
+                          onChange={(e) => setDailyGoldRate(Number(e.target.value) || 0)}
+                        />
+                        <span className="text-xs font-semibold text-slate-400">/ g de pur</span>
+                      </div>
                     </div>
                     <div className="flex gap-6">
                       <div className="text-right">

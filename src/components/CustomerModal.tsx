@@ -29,35 +29,37 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSucces
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
+  const [hasInitialized, setHasInitialized] = useState(false);
 
   // Use useEffect to reset state when modal opens or editing customer changes
   // This prevents the "overwrite" bug if props change while modal is open
   React.useEffect(() => {
     if (isOpen) {
-      if (customerToEdit) {
-        setNewCustomer({
-          name: customerToEdit.name || '',
-          email: customerToEdit.email || '',
-          address: customerToEdit.address || '',
-          phoneNumber: customerToEdit.phoneNumber || '',
-          idNumber: customerToEdit.idNumber || '',
-          riskRating: customerToEdit.riskRating || 'Low'
-        });
-      } else {
-        setNewCustomer(prev => ({
-          ...prev,
-          name: initialName || prev.name || '',
-          // Reset other fields only if it's the first time opening
-          email: prev.email || '',
-          address: prev.address || '',
-          phoneNumber: prev.phoneNumber || '',
-          idNumber: prev.idNumber || '',
-          riskRating: prev.riskRating || 'Low'
-        }));
+      if (!hasInitialized) {
+        if (customerToEdit) {
+          setNewCustomer({
+            name: customerToEdit.name || '',
+            email: customerToEdit.email || '',
+            address: customerToEdit.address || '',
+            phoneNumber: customerToEdit.phoneNumber || '',
+            idNumber: customerToEdit.idNumber || '',
+            riskRating: customerToEdit.riskRating || 'Low'
+          });
+        } else {
+          setNewCustomer({
+            name: initialName || '',
+            email: '',
+            address: '',
+            phoneNumber: '',
+            idNumber: '',
+            riskRating: 'Low'
+          });
+        }
+        setHasInitialized(true);
+        setMessage({ type: '', text: '' });
       }
-      setMessage({ type: '', text: '' });
     } else {
-      // Clear state when modal closes to ensure fresh start next time
+      setHasInitialized(false);
       setNewCustomer({
         name: '',
         email: '',
@@ -67,7 +69,7 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSucces
         riskRating: 'Low'
       });
     }
-  }, [isOpen, customerToEdit]); // Removed initialName to prevent reset while typing
+  }, [isOpen, customerToEdit, initialName, hasInitialized]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

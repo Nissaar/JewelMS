@@ -1,7 +1,7 @@
 import PDFDocument from 'pdfkit';
 import { db } from '../db';
 import { sales, customers, receipts, settings, odf, odfItems, stock, orders } from '../db/schema';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, sql, or, ilike } from 'drizzle-orm';
 import { formatCurrency, formatItemDetails } from '../lib/utils';
 
 export interface ReceiptData {
@@ -1055,8 +1055,8 @@ export async function generateTradeInReportPDF(startDate?: string, endDate?: str
           description: item.description || `${record.metalType} ${item.fineness || record.fineness}`,
           weight: item.mass,
           fineness: item.fineness,
-          invNo: record.receiptNo ? `#FS-${record.receiptNo}` : `#ODF-${record.odfSerialNumber || record.id}`,
-          out: '-'
+          invNo: `#ODF-${record.odfSerialNumber || record.id}`,
+          out: record.receiptNo ? `#FS-${record.receiptNo}` : '-'
         });
       }
     } else {
@@ -1069,8 +1069,8 @@ export async function generateTradeInReportPDF(startDate?: string, endDate?: str
         description: record.description || `${record.metalType} ${record.fineness}`,
         weight: record.weight,
         fineness: record.fineness,
-        invNo: record.receiptNo ? `#FS-${record.receiptNo}` : `#ODF-${record.odfSerialNumber || record.id}`,
-        out: '-'
+        invNo: `#ODF-${record.odfSerialNumber || record.id}`,
+        out: record.receiptNo ? `#FS-${record.receiptNo}` : '-'
       });
     }
   }
@@ -1180,6 +1180,186 @@ export async function generateTradeInReportPDF(startDate?: string, endDate?: str
   
   doc.text('PREPARED BY (NAME & SIGNATURE): ____________________________', 35, y + 15);
   doc.text('ASSAY OFFICE VERIFICATION STAMP / DATE: ____________________________', 430, y + 15);
+
+  return doc;
+}
+
+export async function generateSalesByMetalReportPDF(startDate?: string, endDate?: string, metalType?: string, fineness?: string): Promise<PDFKit.PDFDocument> {
+  let conditions = [];
+  
+  // Filter out cancelled sales
+  conditions.push(eq(sales.status, 'Completed'));
+
+  if (startDate) {
+    conditions.push(sql`${sales.createdAt} >= ${new Date(startDate)}`);
+  }
+  if (endDate) {
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
+    conditions.push(sql`${sales.createdAt} <= ${end}`);
+  }
+
+  if (metalType && metalType !== 'all') {
+    let mType = metalType.toLowerCase().trim();
+    if (mType === 'or' || mType === 'gold') {
+      conditions.push(or(ilike(sales.metalType, 'Gold'), ilike(sales.metalType, 'Or')));
+    } else if (mType === 'argent' || mType === 'silver') {
+      conditions.push(or(ilike(sales.metalType, 'Silver'), ilike(sales.metalType, 'Argent')));
+    } else if (mType === 'platine' || mType === 'platinum') {
+      conditions.push(or(ilike(sales.metalType, 'Platinum'), ilike(sales.metalType, 'Platine')));
+    } else {
+      conditions.push(ilike(sales.metalType, metalType));
+    }
+  }
+
+  if (fineness && fineness !== 'all') {
+    conditions.push(ilike(sales.fineness, fineness));
+  }
+
+  const matchingSales = await db.select({
+    id: sales.id,
+    createdAt: sales.createdAt,
+    customerName: customers.name,
+    itemDetails: sales.itemDetails,
+    barcode: stock.barcode,
+    metalType: sales.metalType,
+    fineness: sales.fineness,
+    weight: sales.weight,
+    amount: sales.amount,
+    vat15: sales.vat15,
+    receiptNo: receipts.receiptSerialNumber
+  })
+  .from(sales)
+  .leftJoin(customers, eq(sales.customerId, customers.id))
+  .leftJoin(stock, eq(sales.stockId, stock.id))
+  .leftJoin(receipts, eq(sales.id, receipts.saleId))
+  .where(conditions.length > 0 ? and(...conditions) : undefined)
+  .orderBy(sql`${sales.createdAt} DESC`);
+
+  const calculatedData = matchingSales.map(row => {
+    const w = parseFloat(row.weight || "0");
+    const amt = parseFloat(row.amount || "0");
+    const vat = parseFloat(row.vat15 || "0");
+    const totalWithVat = amt + vat;
+    
+    return {
+      ...row,
+      weight: w,
+      amount: amt,
+      totalWithVat: totalWithVat
+    };
+  });
+
+  const allSettings = await db.select().from(settings);
+  const heading = allSettings.find(s => s.key === 'receipt_heading')?.value || 'Haujee Jewellery';
+
+  // Create PDF in LANDSCAPE orientation
+  const doc = new PDFDocument({
+    size: 'A4',
+    layout: 'landscape',
+    margin: 30,
+    bufferPages: true,
+  });
+
+  // Header Title
+  doc.fontSize(16).font('Helvetica-Bold').text(heading, { align: 'center' });
+  doc.fontSize(13).text('RAPPORT DES VENTES PAR MÉTAL', { align: 'center' });
+  doc.fontSize(8).font('Helvetica-Oblique').text(`Généré le: ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}`, { align: 'center' });
+  doc.moveDown(0.5);
+
+  // Filter Details
+  doc.fontSize(8).font('Helvetica-Bold').text('FILTRES APPLIQUÉS:');
+  const periodText = `Période: ${(startDate && endDate) ? `Du ${new Date(startDate).toLocaleDateString('fr-FR')} au ${new Date(endDate).toLocaleDateString('fr-FR')}` : 'Toutes'} | Métal: ${metalType || 'Tous'} | Pureté: ${fineness || 'Toutes'}`;
+  doc.font('Helvetica').fontSize(8).text(periodText);
+  doc.moveDown(0.5);
+
+  const bottomThreshold = doc.page.height - 50;
+
+  const drawTableHeader = (startY: number) => {
+    doc.rect(30, startY, 782, 22).fill('#f1f5f9');
+    doc.fillColor('#334155');
+    doc.font('Helvetica-Bold').fontSize(8);
+    
+    doc.text('DATE', 35, startY + 7);
+    doc.text('FACTURE N°', 110, startY + 7);
+    doc.text('CLIENT', 180, startY + 7);
+    doc.text('DESCRIPTION', 310, startY + 7);
+    doc.text('MÉTAL', 460, startY + 7);
+    doc.text('PURETÉ', 530, startY + 7);
+    doc.text('POIDS (g)', 590, startY + 7, { width: 55, align: 'right' });
+    doc.text('REVENU HT (Rs)', 660, startY + 7, { width: 70, align: 'right' });
+    doc.text('TOTAL TTC (Rs)', 740, startY + 7, { width: 65, align: 'right' });
+    
+    doc.moveTo(30, startY + 22).lineTo(812, startY + 22).strokeColor('#cbd5e1').stroke();
+    doc.font('Helvetica').fontSize(8).fillColor('black');
+  };
+
+  let y = doc.y;
+  drawTableHeader(y);
+  y += 26;
+
+  let grandTotalWeight = 0;
+  let grandTotalHT = 0;
+  let grandTotalTTC = 0;
+
+  for (const row of calculatedData) {
+    const dateStr = row.createdAt ? new Date(row.createdAt).toLocaleDateString('fr-FR') : 'N/A';
+    const receiptStr = row.receiptNo ? `#FS-${row.receiptNo}` : `Ref #${row.id}`;
+    const clientStr = row.customerName || '-';
+    const descriptionStr = row.itemDetails || '-';
+    const metalStr = row.metalType || '-';
+    const finenessStr = row.fineness || '-';
+    const weightStr = row.weight.toFixed(3);
+    const amountStr = row.amount.toFixed(2);
+    const totalWithVatStr = row.totalWithVat.toFixed(2);
+
+    grandTotalWeight += row.weight;
+    grandTotalHT += row.amount;
+    grandTotalTTC += row.totalWithVat;
+
+    const descHeight = doc.heightOfString(descriptionStr, { width: 140 });
+    const clientHeight = doc.heightOfString(clientStr, { width: 120 });
+    const rowHeight = Math.max(20, descHeight + 6, clientHeight + 6);
+
+    if (y + rowHeight > bottomThreshold) {
+      doc.addPage();
+      drawTableHeader(doc.y);
+      y = doc.y + 26;
+    }
+
+    doc.font('Helvetica').fontSize(8);
+    
+    doc.text(dateStr, 35, y + 4);
+    doc.text(receiptStr, 110, y + 4);
+    doc.text(clientStr, 180, y + 4, { width: 120 });
+    doc.text(descriptionStr, 310, y + 4, { width: 140 });
+    doc.text(metalStr, 460, y + 4);
+    doc.text(finenessStr, 530, y + 4);
+    doc.text(weightStr, 590, y + 4, { width: 55, align: 'right' });
+    doc.text(amountStr, 660, y + 4, { width: 70, align: 'right' });
+    doc.text(totalWithVatStr, 740, y + 4, { width: 65, align: 'right' });
+
+    doc.moveTo(30, y + rowHeight).lineTo(812, y + rowHeight).strokeColor('#e2e8f0').stroke();
+    y += rowHeight;
+  }
+
+  // Draw Summary Row
+  if (y + 30 > bottomThreshold) {
+    doc.addPage();
+    drawTableHeader(doc.y);
+    y = doc.y + 26;
+  }
+
+  doc.rect(30, y, 782, 22).fill('#f8fafc');
+  doc.fillColor('#0f172a');
+  doc.font('Helvetica-Bold').fontSize(8);
+  
+  doc.text('TOTAL GENERAL', 35, y + 7);
+  doc.text(grandTotalWeight.toFixed(3), 590, y + 7, { width: 55, align: 'right' });
+  doc.text(grandTotalHT.toFixed(2), 660, y + 7, { width: 70, align: 'right' });
+  doc.text(grandTotalTTC.toFixed(2), 740, y + 7, { width: 65, align: 'right' });
+
+  doc.moveTo(30, y + 22).lineTo(812, y + 22).strokeColor('#0f172a').stroke();
 
   return doc;
 }

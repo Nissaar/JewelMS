@@ -412,7 +412,7 @@ const SalesHistory = () => {
                       ) : (
                         <FileText size={20} />
                       )}
-                      {isGeneratingDecl ? 'Génération...' : 'Imprimer Déclaration'}
+                      {isGeneratingDecl ? 'Génération...' : 'Imprimer Déclaration (Trade-in)'}
                     </button>
                   </div>
                   <button 
