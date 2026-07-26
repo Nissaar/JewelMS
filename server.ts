@@ -935,6 +935,26 @@ async function startServer() {
     }
   });
 
+  // --- Dedicated ODF Declaration PDF Generation ---
+  app.get(["/api/odfs/:id/declaration-pdf", "/api/odf/:id/declaration-pdf"], authenticateToken, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const odfId = parseInt(id);
+
+      const { generateOdfDeclarationPDF } = await import("./src/services/pdfService");
+      const { doc } = await generateOdfDeclarationPDF(odfId);
+      
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename=odf-declaration-${odfId}.pdf`);
+      
+      doc.pipe(res);
+      doc.end();
+    } catch (error: any) {
+      console.error("ODF Declaration PDF Generation Error:", error);
+      res.status(500).json({ error: error.message || "Failed to generate ODF declaration PDF" });
+    }
+  });
+
   app.post("/api/receipts/:saleId/upload", authenticateToken, async (req, res) => {
     try {
       const { saleId } = req.params;

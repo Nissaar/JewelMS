@@ -1366,3 +1366,195 @@ export async function generateSalesByMetalReportPDF(startDate?: string, endDate?
   return doc;
 }
 
+export async function generateOdfDeclarationPDF(odfId: number): Promise<{ doc: PDFKit.PDFDocument }> {
+  // 1. Fetch ODF
+  const odfRecords = await db.select({
+    odf: odf,
+    customer: customers
+  })
+  .from(odf)
+  .leftJoin(customers, eq(odf.customerId, customers.id))
+  .where(eq(odf.id, odfId))
+  .limit(1);
+
+  if (odfRecords.length === 0) throw new Error('ODF not found');
+  const record = odfRecords[0];
+  const odfRecord = record.odf;
+  const customer = record.customer;
+
+  if (!customer) throw new Error('Customer not found for this ODF');
+
+  // 2. Fetch ODF Items
+  const items = await db.select().from(odfItems).where(eq(odfItems.odfId, odfId));
+
+  // 3. Create PDF
+  const doc = new PDFDocument({
+    size: 'A4',
+    margin: 40,
+  });
+
+  const heading = 'SOCIETE MOHAMMUD HAUJEE & SONS';
+  const addressLine = '33, SIR SEEWOOSAGUR RAMGOOLAM STREET';
+  const cityLine = 'PORT LOUIS';
+
+  // Format Dates
+  const odfDateObj = new Date(odfRecord.date || odfRecord.createdAt);
+  const startDateStr = odfDateObj.toLocaleDateString('en-GB'); // DD/MM/YYYY
+  const endDateObj = new Date(odfDateObj.getTime() + 10 * 24 * 60 * 60 * 1000);
+  const endDateStr = endDateObj.toLocaleDateString('en-GB');
+
+  // Top Serial No.
+  doc.font('Times-Bold').fontSize(10);
+  doc.text(`Serial No.: ${odfRecord.odfSerialNumber}`, { align: 'right' });
+  doc.moveDown(1.5);
+
+  // Header
+  doc.fontSize(12).text('DECLARATION OF OWNERSHIP IN CASE OF TRADE-IN OF JEWELLERY', { align: 'center' });
+  doc.text(heading, { align: 'center' });
+  doc.text(addressLine, { align: 'center' });
+  doc.text(cityLine, { align: 'center' });
+  doc.moveDown(2);
+
+  // PART I Header
+  doc.text('PART I', { align: 'center', underline: true });
+  doc.font('Times-Roman').fontSize(10).text('(To be filled by the customer)', { align: 'center' });
+  doc.moveDown(1.5);
+
+  // Customer Section
+  doc.font('Times-Roman').fontSize(11);
+  doc.text('I, ', { continued: true });
+  doc.font('Times-Bold').text(customer.name || '', { continued: true });
+  doc.font('Times-Roman').text(', of ', { continued: true });
+  doc.font('Times-Bold').text(customer.address || 'N/A', { continued: true });
+  doc.font('Times-Roman').text(', certify that the jewellery specified below belongs to me and I have obtained it through legal means.');
+  doc.moveDown(1.5);
+
+  // Trade-in Jewellery Label
+  doc.font('Times-Bold').fontSize(11).text('Trade-in jewellery');
+  doc.moveDown(0.5);
+
+  // Items Table Header
+  const tableTop = doc.y;
+  doc.font('Times-Bold').fontSize(10);
+  doc.text('SN', 40, tableTop, { width: 30, align: 'center' });
+  doc.text('Description', 80, tableTop, { width: 230, align: 'left' });
+  doc.text('Mass (grams)', 320, tableTop, { width: 100, align: 'center' });
+  doc.text('Declared fineness', 430, tableTop, { width: 100, align: 'center' });
+
+  // Draw line below header
+  doc.moveTo(40, tableTop + 15).lineTo(540, tableTop + 15).strokeColor('#000000').stroke();
+
+  let currentY = tableTop + 20;
+  doc.font('Times-Roman');
+
+  if (items && items.length > 0) {
+    items.forEach((item, index) => {
+      doc.text((index + 1).toString(), 40, currentY, { width: 30, align: 'center' });
+      doc.text(item.description || '', 80, currentY, { width: 230, align: 'left' });
+      doc.text(item.mass ? parseFloat(item.mass).toFixed(3) : '0.000', 320, currentY, { width: 100, align: 'center' });
+      doc.text(item.fineness || '', 430, currentY, { width: 100, align: 'center' });
+      currentY += 20;
+    });
+  } else {
+    // Fallback if no items
+    const fallbackDesc = odfRecord.description || 'Article';
+    const fallbackWeight = odfRecord.weight ? parseFloat(odfRecord.weight).toFixed(3) : '0.000';
+    const fallbackFineness = odfRecord.fineness || '';
+    doc.text('1', 40, currentY, { width: 30, align: 'center' });
+    doc.text(fallbackDesc, 80, currentY, { width: 230, align: 'left' });
+    doc.text(fallbackWeight, 320, currentY, { width: 100, align: 'center' });
+    doc.text(fallbackFineness, 430, currentY, { width: 100, align: 'center' });
+    currentY += 20;
+  }
+
+  doc.moveTo(40, currentY).lineTo(540, currentY).stroke();
+  doc.y = currentY + 15;
+
+  // Signature Section PART I
+  const sigY = doc.y;
+  doc.font('Times-Roman').fontSize(10);
+  
+  // Left side: Signature
+  doc.moveTo(40, sigY + 40).lineTo(220, sigY + 40).stroke();
+  doc.text('Signature', 40, sigY + 45, { width: 180, align: 'center' });
+
+  // Right side: Date & Phone
+  doc.font('Times-Bold').text(startDateStr, 340, sigY);
+  doc.moveTo(340, sigY + 15).lineTo(520, sigY + 15).stroke();
+  doc.font('Times-Roman').text('Date', 340, sigY + 20, { width: 180, align: 'center' });
+
+  doc.font('Times-Bold').text(customer.phoneNumber || '', 340, sigY + 45);
+  doc.moveTo(340, sigY + 60).lineTo(520, sigY + 60).stroke();
+  doc.font('Times-Roman').text('Telephone number', 340, sigY + 65, { width: 180, align: 'center' });
+
+  doc.y = sigY + 90;
+
+  // PART II Header
+  doc.font('Times-Bold').fontSize(11).text('PART II', { align: 'center', underline: true });
+  doc.font('Times-Roman').fontSize(10).text('(To be completed by the dealer/person on behalf of dealer)', { align: 'center' });
+  doc.moveDown(1.5);
+
+  const startX = 40;
+  doc.font('Times-Roman').fontSize(11);
+  doc.text('1. I certify having verified the name of the person referred to in Part I and found it to be correct.', startX);
+  doc.moveDown(0.5);
+
+  doc.text('2. Proof of identity produced:', startX);
+  doc.text(`   *NIC number/identification number* of approved document: `, { continued: true });
+  doc.font('Times-Bold').text(customer.idNumber || 'N/A');
+  doc.font('Times-Roman');
+  doc.moveDown(0.5);
+
+  doc.text('3. ODF number issued at time of trade-in: ', startX, doc.y, { continued: true });
+  doc.font('Times-Bold').text(odfRecord.odfSerialNumber.toString());
+  doc.font('Times-Roman');
+  doc.moveDown(0.5);
+
+  // Holding period checklist
+  const checklistY = doc.y;
+  doc.text('4. Holding period   YES ', startX, checklistY, { continued: true });
+  
+  // Draw checkbox for YES
+  const checkboxSize = 10;
+  const yesCheckboxX = doc.x + 5;
+  doc.rect(yesCheckboxX, checklistY + 1, checkboxSize, checkboxSize).stroke();
+  doc.text(`        (from ${startDateStr} to ${endDateStr})`, { continued: false });
+
+  const noChecklistY = doc.y + 5;
+  doc.text('                    NO  ', startX, noChecklistY, { continued: true });
+  const noCheckboxX = doc.x + 5;
+  doc.rect(noCheckboxX, noChecklistY + 1, checkboxSize, checkboxSize).stroke();
+  doc.text('         (attach original receipt of jewellery)', { continued: false });
+
+  doc.y = noChecklistY + 25;
+
+  // Dealer Signature Row
+  doc.moveDown(1.5);
+  const dealerSigY = doc.y;
+
+  // Left side: Name & Time
+  doc.moveTo(40, dealerSigY + 30).lineTo(220, dealerSigY + 30).stroke();
+  doc.text('Name', 40, dealerSigY + 35, { width: 180, align: 'center' });
+
+  doc.moveTo(40, dealerSigY + 75).lineTo(220, dealerSigY + 75).stroke();
+  doc.text('Time', 40, dealerSigY + 80, { width: 180, align: 'center' });
+
+  // Right side: Signature & Date
+  doc.moveTo(340, dealerSigY + 30).lineTo(520, dealerSigY + 30).stroke();
+  doc.text('Signature', 340, dealerSigY + 35, { width: 180, align: 'center' });
+
+  doc.font('Times-Bold').text(startDateStr, 340, dealerSigY + 55);
+  doc.moveTo(340, dealerSigY + 70).lineTo(520, dealerSigY + 70).stroke();
+  doc.font('Times-Roman').text('Date', 340, dealerSigY + 75, { width: 180, align: 'center' });
+
+  // Footer Note
+  doc.y = dealerSigY + 100;
+  doc.moveDown(2);
+  doc.moveTo(40, doc.y).lineTo(540, doc.y).stroke();
+  doc.moveDown(0.5);
+  doc.font('Times-Bold').fontSize(10).text('Holding Period');
+  doc.font('Times-Roman').fontSize(9).text('A holding period of 10 days shall apply from the date of transaction, in case original receipt of the jewellery is not available.');
+
+  return { doc };
+}
+

@@ -13,7 +13,7 @@ import CustomerModal from '../components/CustomerModal';
 
 const ODF = () => {
   const { token } = useAuth();
-  const [view, setView] = useState<'list' | 'create'>('list');
+  const [view, setView] = useState<'list' | 'create' | 'success'>('list');
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
 
@@ -45,6 +45,23 @@ const ODF = () => {
   // Success View State
   const [successData, setSuccessData] = useState<any>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  const handleResetForm = () => {
+    setSelectedCustomer(null);
+    setFormData({
+      metalType: 'Gold',
+      itemReservedRepair: '',
+      description: '',
+      comments: '',
+      createdAt: new Date().toISOString().split('T')[0]
+    });
+    setTradeInItems([
+      { description: '', mass: '', fineness: '22K', price: '' }
+    ]);
+    setImageFile(null);
+    setImagePreview(null);
+    setSuccessData(null);
+  };
 
   useEffect(() => {
     if (view === 'list') fetchODFRecords();
@@ -150,6 +167,20 @@ const ODF = () => {
     }
   };
 
+  const handlePrintDeclaration = async (id: number) => {
+    try {
+      const res = await axios.get(`/api/odfs/${id}/declaration-pdf`, {
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: 'blob'
+      });
+      const blobUrl = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      window.open(blobUrl, '_blank');
+    } catch (err) {
+      console.error("Declaration PDF Export Error:", err);
+      alert("Erreur lors de l'export de la déclaration de propriété");
+    }
+  };
+
   const handleSendFull = async (id: number, method: 'whatsapp' | 'email' | 'both') => {
     setIsProcessing(true);
     try {
@@ -232,7 +263,7 @@ const ODF = () => {
       });
       
       setSuccessData(res.data);
-      // Removed the view='list' timeout to show modal instead
+      setView('success');
     } catch (err) {
       setMessage({ type: 'error', text: 'Erreur lors de l’enregistrement ODF' });
     } finally {
@@ -251,8 +282,15 @@ const ODF = () => {
           </h1>
           <p className="text-slate-500 font-bold">Gestion des rachats et échanges de métaux</p>
         </div>
-        <button 
-          onClick={() => setView(view === 'list' ? 'create' : 'list')}
+         <button 
+          onClick={() => {
+            if (view !== 'list') {
+              handleResetForm();
+              setView('list');
+            } else {
+              setView('create');
+            }
+          }}
           className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-black transition-all ${
             view === 'list' ? 'bg-slate-900 text-white hover:bg-slate-800' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
           }`}
@@ -515,6 +553,80 @@ const ODF = () => {
               </button>
             </form>
           </motion.div>
+        ) : view === 'success' ? (
+          <motion.div 
+            key="success" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+            className="max-w-2xl mx-auto bg-white p-8 sm:p-12 rounded-[2.5rem] shadow-xl border border-slate-100 text-center space-y-8"
+          >
+            <div className="h-24 w-24 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto shadow-inner">
+              <Check size={48} strokeWidth={3} />
+            </div>
+            
+            <div>
+              <h2 className="text-3xl font-black text-slate-900 mb-2">ODF Créé avec Succès!</h2>
+              <p className="text-slate-500 font-bold">L'enregistrement de rachat a été validé et enregistré.</p>
+            </div>
+            
+            {successData && (
+              <div className="bg-slate-50 rounded-2xl p-6 text-left space-y-3 border border-slate-100">
+                <div className="flex justify-between border-b border-slate-200 pb-2">
+                  <span className="text-slate-400 font-bold text-sm uppercase">N° de Série ODF</span>
+                  <span className="font-mono font-black text-slate-900 text-sm">{successData.odfSerialNumber}</span>
+                </div>
+                <div className="flex justify-between border-b border-slate-200 pb-2">
+                  <span className="text-slate-400 font-bold text-sm uppercase">Client</span>
+                  <span className="font-bold text-slate-900 text-sm">{selectedCustomer?.name || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between border-b border-slate-200 pb-2">
+                  <span className="text-slate-400 font-bold text-sm uppercase">Métal</span>
+                  <span className="font-bold text-slate-900 text-sm">{successData.metalType}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400 font-bold text-sm uppercase">Valeur Agréée Totale</span>
+                  <span className="font-black text-emerald-600 text-sm">{formatCurrency(successData.amount || totalAmount)}</span>
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-4">
+              <button 
+                onClick={() => handlePrintDeclaration(successData?.id)}
+                className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-amber-500 hover:bg-amber-600 text-white rounded-2xl font-black shadow-lg transition-all text-base animate-pulse"
+              >
+                <Printer size={20} /> Imprimer Déclaration de Propriété
+              </button>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <button 
+                  onClick={() => handleExportPDF(successData?.id)}
+                  className="flex items-center justify-center gap-2 py-3.5 px-4 bg-slate-100 text-slate-700 rounded-xl hover:bg-slate-200 font-bold transition-all text-sm"
+                >
+                  <FileText size={18} /> Exporter Fiche PDF
+                </button>
+                <button 
+                  onClick={() => handleSendFull(successData?.id, 'whatsapp')}
+                  disabled={isProcessing}
+                  className="flex items-center justify-center gap-2 py-3.5 px-4 bg-emerald-50 text-emerald-700 rounded-xl hover:bg-emerald-100 font-bold transition-all text-sm disabled:opacity-50"
+                >
+                  {isProcessing ? <Loader2 className="animate-spin" size={18} /> : <Smartphone size={18} />} WhatsApp
+                </button>
+                <button 
+                  onClick={() => handleSendFull(successData?.id, 'email')}
+                  disabled={isProcessing}
+                  className="flex items-center justify-center gap-2 py-3.5 px-4 bg-blue-50 text-blue-700 rounded-xl hover:bg-blue-100 font-bold transition-all text-sm disabled:opacity-50"
+                >
+                  {isProcessing ? <Loader2 className="animate-spin" size={18} /> : <Mail size={18} />} Email
+                </button>
+              </div>
+            </div>
+
+            <button 
+              onClick={() => { handleResetForm(); setView('list'); }}
+              className="w-full py-4 text-slate-400 font-black uppercase tracking-widest hover:text-slate-600 transition-colors"
+            >
+              Retour à l'historique
+            </button>
+          </motion.div>
         ) : (
           <motion.div 
             key="list" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
@@ -573,6 +685,13 @@ const ODF = () => {
                               <FileText size={18} />
                             </button>
                             <button 
+                              onClick={() => handlePrintDeclaration(record.id)}
+                              className="p-2 bg-slate-50 text-slate-400 hover:text-amber-500 rounded-lg transition-colors"
+                              title="Imprimer Déclaration de Propriété"
+                            >
+                              <Printer size={18} strokeWidth={2.5} />
+                            </button>
+                            <button 
                               onClick={() => handleSendFull(record.id, 'whatsapp')}
                               className="p-2 bg-slate-50 text-slate-400 hover:text-emerald-600 rounded-lg transition-colors"
                               title="Envoyer via WhatsApp"
@@ -611,77 +730,6 @@ const ODF = () => {
         onSuccess={(customer) => setSelectedCustomer(customer)}
         initialName={customerSearch}
       />
-
-      <AnimatePresence>
-        {successData && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div 
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              onClick={() => { setSuccessData(null); setView('list'); }}
-              className="absolute inset-0 bg-slate-900/60 backdrop-blur-md"
-            />
-            <motion.div 
-              initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
-              className="relative bg-white w-full max-w-lg rounded-[3rem] shadow-2xl p-10 text-center"
-            >
-              <div className="h-24 w-24 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-8 shadow-inner">
-                <Check size={48} strokeWidth={3} />
-              </div>
-              
-              <h2 className="text-3xl font-black text-slate-900 mb-2">Rachat Enregistré!</h2>
-              <p className="text-slate-400 font-bold mb-8 italic">ODF N°: {successData.odfSerialNumber}</p>
-              
-              <div className="space-y-4 mb-8">
-                <div className="grid grid-cols-2 gap-4">
-                  <button 
-                    onClick={() => handleExportPDF(successData.id)}
-                    className="flex flex-col items-center gap-3 p-6 bg-slate-50 rounded-3xl hover:bg-slate-100 transition-colors group"
-                  >
-                    <div className="p-3 bg-white rounded-xl shadow-sm text-indigo-500 group-hover:scale-110 transition-transform">
-                      <FileText size={24} />
-                    </div>
-                    <span className="text-xs font-black uppercase text-slate-600">Export PDF</span>
-                  </button>
-                  <button 
-                    onClick={() => handleSendFull(successData.id, 'both')}
-                    disabled={isProcessing}
-                    className="flex flex-col items-center gap-3 p-6 bg-slate-50 rounded-3xl hover:bg-slate-100 transition-colors group"
-                  >
-                    <div className="p-3 bg-white rounded-xl shadow-sm text-indigo-500 group-hover:scale-110 transition-transform">
-                      {isProcessing ? <Loader2 className="animate-spin" size={24} /> : <Send size={24} />}
-                    </div>
-                    <span className="text-xs font-black uppercase text-slate-600">Envoyer les Deux</span>
-                  </button>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <button 
-                    onClick={() => handleSendFull(successData.id, 'whatsapp')}
-                    disabled={isProcessing}
-                    className="flex items-center justify-center gap-2 py-3.5 px-4 bg-emerald-50 text-emerald-700 rounded-2xl hover:bg-emerald-100 font-bold transition-all text-sm"
-                  >
-                    <Smartphone size={18} /> WhatsApp
-                  </button>
-                  <button 
-                    onClick={() => handleSendFull(successData.id, 'email')}
-                    disabled={isProcessing}
-                    className="flex items-center justify-center gap-2 py-3.5 px-4 bg-blue-50 text-blue-700 rounded-2xl hover:bg-blue-100 font-bold transition-all text-sm"
-                  >
-                    <Mail size={18} /> Email
-                  </button>
-                </div>
-              </div>
-
-              <button 
-                onClick={() => { setSuccessData(null); setView('list'); }}
-                className="w-full py-4 text-slate-400 font-black uppercase tracking-widest hover:text-slate-600 transition-colors"
-              >
-                Retour à l'historique
-              </button>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
     </div>
   );
 };
