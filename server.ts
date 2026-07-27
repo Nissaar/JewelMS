@@ -4,7 +4,7 @@ import helmet from "helmet";
 import cors from "cors";
 import multer from "multer";
 import { createServer as createViteServer } from "vite";
-import { db } from "./src/db/index";
+import { db, isPglite } from "./src/db/index";
 import { settings, stock, customers, receipts, orders, sales, odf, odfItems, users, rolesPermissions, auditLogs } from "./src/db/schema";
 import { eq, or, ilike, and, sql } from "drizzle-orm";
 import { authenticateToken, checkPermission } from "./src/middleware/auth";
@@ -13,6 +13,12 @@ import { auditLogger } from "./src/middleware/audit";
 async function startServer() {
   // Run one-time database migrations/fixes
   try {
+    if (isPglite) {
+      const { migrate } = await import("drizzle-orm/pglite/migrator");
+      await migrate(db, { migrationsFolder: "./drizzle" });
+      console.log("PGlite schema migrated successfully.");
+    }
+
     await db.execute(sql`ALTER TABLE stock DROP CONSTRAINT IF EXISTS stock_category_check;`);
     await db.execute(sql`ALTER TABLE stock ALTER COLUMN category TYPE VARCHAR(100);`);
     await db.execute(sql`ALTER TABLE stock ADD COLUMN IF NOT EXISTS price NUMERIC(15, 2) DEFAULT 0.00;`);
@@ -24,6 +30,8 @@ async function startServer() {
     await db.execute(sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS discount_percentage NUMERIC(5, 2);`);
     await db.execute(sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS linked_odf_id INTEGER REFERENCES odf(id) ON DELETE SET NULL;`);
     await db.execute(sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS linked_commande_id INTEGER REFERENCES orders(id) ON DELETE SET NULL;`);
+    await db.execute(sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'Completed' NOT NULL;`);
+    await db.execute(sql`ALTER TABLE orders ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'Pending' NOT NULL;`);
     await db.execute(sql`ALTER TABLE sales DROP COLUMN IF EXISTS gold_rate;`);
     await db.execute(sql`ALTER TABLE orders DROP COLUMN IF EXISTS gold_rate;`);
     
@@ -47,6 +55,34 @@ async function startServer() {
     `);
     await db.execute(sql`ALTER TABLE odf_items ADD COLUMN IF NOT EXISTS price NUMERIC(15, 2) DEFAULT 0.00;`);
     console.log("Database migrations: stock_category_check dropped, category length increased, price added, gold_rate columns dropped, and odf_items table verified.");
+
+    // Seed default data if users/settings don't exist yet
+    const existingUsers = await db.select().from(users).limit(1);
+    if (existingUsers.length === 0) {
+      await db.insert(users).values({
+        username: "admin",
+        email: "admin@haujee.com",
+        passwordHash: "$2b$10$HC4mocVNzdwGPHxu8J/HyeoWDglmA9NlTAXjcrz2MtMO5N3Ycw3LS",
+        role: "Admin"
+      });
+      console.log("Default admin user seeded.");
+    }
+
+    const existingSettings = await db.select().from(settings).limit(1);
+    if (existingSettings.length === 0) {
+      await db.insert(settings).values([
+        { key: 'receipt_heading', value: 'Haujee Jewellery - Official Pharmacy of Gold & Silver' },
+        { key: 'receipt_policy_wording', value: 'All sales are final. No returns on customized jewellery.' },
+        { key: 'stock_categories', value: '["Jewellery", "Pen", "Sewing Machine", "Parts"]' },
+        { key: 'stock_metal_types', value: '["Or", "Argent", "Platine"]' },
+        { key: 'stock_fineness_options', value: '["18K", "22K", "24K", "925", "950"]' },
+        { key: 'stock_pen_brands', value: '["Parker", "Cross", "Waterman", "Montblanc"]' },
+        { key: 'stock_sewing_machine_brands', value: '["Singer", "Bernina", "Brother", "Janome"]' },
+        { key: 'stock_sub_categories', value: '["Bague", "Collier", "Bracelet", "Boucles d\'oreilles", "Pendentif"]' },
+        { key: 'guarantee_options', value: '["0", "1", "2", "3", "5", "10"]' }
+      ]);
+      console.log("Default settings seeded.");
+    }
   } catch (err) {
     console.error("Migration error (non-fatal):", err);
   }
@@ -328,7 +364,7 @@ async function startServer() {
     } catch (error: any) {
       console.error("Sales Recording Error:", error);
       const status = error.message === "Item not found in stock or already sold" ? 404 : 500;
-      res.status(status).json({ error: error.message || "Failed to record sale" });
+      res.status(status).json({ error: error.message || "Failed to record sale", cause: error.cause?.message || error.cause });
     }
   });
 

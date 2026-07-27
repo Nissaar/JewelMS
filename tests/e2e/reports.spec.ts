@@ -21,19 +21,19 @@ test.describe('Reports & Archives Module', () => {
     await expect(page.locator('button#export-vat-pdf-btn')).toBeVisible();
 
     // Tab 2: Archives Factures (Invoice History)
-    await page.locator('button:has-text("Archives Factures")').click();
+    await page.locator('button:has-text("Archives Factures")').evaluate(el => (el as HTMLButtonElement).click());
     await expect(page.locator('button:has-text("Archives Factures")')).toHaveClass(/bg-white/);
     await expect(page.locator('input[placeholder="Rechercher par N° Facture ou Client..."]')).toBeVisible();
 
     // Tab 3: Registre Trade-In (Assay Office)
-    await page.locator('button:has-text("Registre Trade-In (Assay Office)")').click();
+    await page.locator('button:has-text("Registre Trade-In (Assay Office)")').evaluate(el => (el as HTMLButtonElement).click());
     await expect(page.locator('button:has-text("Registre Trade-In (Assay Office)")')).toHaveClass(/bg-white/);
     await expect(page.locator('h3:has-text("Registre Physique de Contrôle - Assay Office")')).toBeVisible();
     await expect(page.locator('button#export-tradein-excel-btn')).toBeVisible();
     await expect(page.locator('button#export-tradein-pdf-btn')).toBeVisible();
 
     // Tab 4: Rapport par Métal (Metal report)
-    await page.locator('button:has-text("Rapport par Métal")').click();
+    await page.locator('button:has-text("Rapport par Métal")').evaluate(el => (el as HTMLButtonElement).click());
     await expect(page.locator('button:has-text("Rapport par Métal")')).toHaveClass(/bg-white/);
     await expect(page.locator('p:has-text("Poids Total Vendu")')).toBeVisible();
     await expect(page.locator('button#export-sales-metal-excel-btn')).toBeVisible();

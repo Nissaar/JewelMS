@@ -918,20 +918,26 @@ export async function generateDeclarationPDF(saleId: number): Promise<{ doc: PDF
   const sigY = doc.y;
   doc.font('Times-Roman').fontSize(10);
   
-  // Left side: Signature
-  doc.moveTo(40, sigY + 40).lineTo(220, sigY + 40).stroke();
-  doc.text('Signature', 40, sigY + 45, { width: 180, align: 'center' });
+  // Left side Signature line (align with Telephone number line below)
+  doc.moveTo(50, sigY + 52).lineTo(230, sigY + 52).stroke();
+  // Left side Signature label (align with Telephone number label below)
+  doc.font('Times-Roman').fontSize(9).text('Signature', 40, sigY + 56, { width: 200, align: 'center' });
 
-  // Right side: Date & Phone
-  doc.font('Times-Bold').text(startDateStr, 340, sigY);
-  doc.moveTo(340, sigY + 15).lineTo(520, sigY + 15).stroke();
-  doc.font('Times-Roman').text('Date', 340, sigY + 20, { width: 180, align: 'center' });
+  // Right side Date (top item of the right side)
+  doc.font('Times-Bold').fontSize(10).text(startDateStr, 310, sigY, { width: 200, align: 'center' });
+  // Right side Date line
+  doc.moveTo(320, sigY + 12).lineTo(500, sigY + 12).stroke();
+  // Right side Date label
+  doc.font('Times-Roman').fontSize(9).text('Date', 310, sigY + 16, { width: 200, align: 'center' });
 
-  doc.font('Times-Bold').text(customer.phoneNumber || '', 340, sigY + 45);
-  doc.moveTo(340, sigY + 60).lineTo(520, sigY + 60).stroke();
-  doc.font('Times-Roman').text('Telephone number', 340, sigY + 65, { width: 180, align: 'center' });
+  // Right side Telephone number (align with Signature line)
+  doc.font('Times-Bold').fontSize(10).text(customer.phoneNumber || 'N/A', 310, sigY + 40, { width: 200, align: 'center' });
+  // Right side Telephone line
+  doc.moveTo(320, sigY + 52).lineTo(500, sigY + 52).stroke();
+  // Right side Telephone label
+  doc.font('Times-Roman').fontSize(9).text('Telephone number', 310, sigY + 56, { width: 200, align: 'center' });
 
-  doc.y = sigY + 90;
+  doc.y = sigY + 80;
 
   // PART II Header
   doc.font('Times-Bold').fontSize(11).text('PART II', { align: 'center', underline: true });
@@ -954,45 +960,55 @@ export async function generateDeclarationPDF(saleId: number): Promise<{ doc: PDF
   doc.font('Times-Roman');
   doc.moveDown(0.5);
 
-  // Holding period checklist
-  const checklistY = doc.y;
-  doc.text('4. Holding period   YES ', startX, checklistY, { continued: true });
-  
-  // Draw checkbox for YES
-  const checkboxSize = 10;
-  const yesCheckboxX = doc.x + 5;
-  doc.rect(yesCheckboxX, checklistY + 1, checkboxSize, checkboxSize).stroke();
-  doc.text(`        (from ${startDateStr} to ${endDateStr})`, { continued: false });
+  // Holding period checklist using absolute block alignment
+  const checklistY = doc.y + 10;
+  doc.text('4. Holding period    YES', startX, checklistY);
 
-  const noChecklistY = doc.y + 5;
-  doc.text('                    NO  ', startX, noChecklistY, { continued: true });
-  const noCheckboxX = doc.x + 5;
-  doc.rect(noCheckboxX, noChecklistY + 1, checkboxSize, checkboxSize).stroke();
-  doc.text('         (attach original receipt of jewellery)', { continued: false });
+  const boxSize = 10;
+  const yesCheckboxX = 185;
+  const isHoldingPeriod = true; // By default holding period is yes unless receipt attached
+  doc.rect(yesCheckboxX, checklistY + 1, boxSize, boxSize).stroke();
+  if (isHoldingPeriod) {
+    doc.font('Times-Bold').fontSize(9).text('X', yesCheckboxX, checklistY + 1.5, { width: boxSize, align: 'center' });
+  }
 
-  doc.y = noChecklistY + 25;
+  doc.font('Times-Roman').fontSize(11).text(`(from ${startDateStr} to ${endDateStr})`, 205, checklistY);
 
-  // Dealer Signature Row
-  doc.moveDown(1.5);
-  const dealerSigY = doc.y;
+  const noChecklistY = checklistY + 20;
+  doc.text('NO', 158, noChecklistY);
+
+  const noCheckboxX = 185;
+  doc.rect(noCheckboxX, noChecklistY + 1, boxSize, boxSize).stroke();
+  if (!isHoldingPeriod) {
+    doc.font('Times-Bold').fontSize(9).text('X', noCheckboxX, noChecklistY + 1.5, { width: boxSize, align: 'center' });
+  }
+
+  doc.font('Times-Roman').fontSize(11).text('(attach original receipt of jewellery)', 205, noChecklistY);
+
+  const dealerSigY = noChecklistY + 30;
 
   // Left side: Name & Time
-  doc.moveTo(40, dealerSigY + 30).lineTo(220, dealerSigY + 30).stroke();
-  doc.text('Name', 40, dealerSigY + 35, { width: 180, align: 'center' });
+  // Name (Row 1 Left)
+  doc.moveTo(50, dealerSigY + 30).lineTo(230, dealerSigY + 30).stroke();
+  doc.font('Times-Roman').fontSize(9).text('Name', 40, dealerSigY + 34, { width: 200, align: 'center' });
 
-  doc.moveTo(40, dealerSigY + 75).lineTo(220, dealerSigY + 75).stroke();
-  doc.text('Time', 40, dealerSigY + 80, { width: 180, align: 'center' });
+  // Time (Row 2 Left)
+  doc.moveTo(50, dealerSigY + 80).lineTo(230, dealerSigY + 80).stroke();
+  doc.font('Times-Roman').fontSize(9).text('Time', 40, dealerSigY + 84, { width: 200, align: 'center' });
 
   // Right side: Signature & Date
-  doc.moveTo(340, dealerSigY + 30).lineTo(520, dealerSigY + 30).stroke();
-  doc.text('Signature', 340, dealerSigY + 35, { width: 180, align: 'center' });
+  // Signature (Row 1 Right)
+  doc.moveTo(320, dealerSigY + 30).lineTo(500, dealerSigY + 30).stroke();
+  doc.font('Times-Roman').fontSize(9).text('Signature', 310, dealerSigY + 34, { width: 200, align: 'center' });
 
-  doc.font('Times-Bold').text(startDateStr, 340, dealerSigY + 55);
-  doc.moveTo(340, dealerSigY + 70).lineTo(520, dealerSigY + 70).stroke();
-  doc.font('Times-Roman').text('Date', 340, dealerSigY + 75, { width: 180, align: 'center' });
+  // Date Value (Row 2 Right)
+  doc.font('Times-Bold').fontSize(10).text(startDateStr, 310, dealerSigY + 68, { width: 200, align: 'center' });
+  // Date Line (Row 2 Right)
+  doc.moveTo(320, dealerSigY + 80).lineTo(500, dealerSigY + 80).stroke();
+  doc.font('Times-Roman').fontSize(9).text('Date', 310, dealerSigY + 84, { width: 200, align: 'center' });
 
   // Footer Note
-  doc.y = dealerSigY + 100;
+  doc.y = dealerSigY + 105;
   doc.moveDown(2);
   doc.moveTo(40, doc.y).lineTo(540, doc.y).stroke();
   doc.moveDown(0.5);
@@ -1474,20 +1490,26 @@ export async function generateOdfDeclarationPDF(odfId: number): Promise<{ doc: P
   const sigY = doc.y;
   doc.font('Times-Roman').fontSize(10);
   
-  // Left side: Signature
-  doc.moveTo(40, sigY + 40).lineTo(220, sigY + 40).stroke();
-  doc.text('Signature', 40, sigY + 45, { width: 180, align: 'center' });
+  // Left side Signature line (align with Telephone number line below)
+  doc.moveTo(50, sigY + 52).lineTo(230, sigY + 52).stroke();
+  // Left side Signature label (align with Telephone number label below)
+  doc.font('Times-Roman').fontSize(9).text('Signature', 40, sigY + 56, { width: 200, align: 'center' });
 
-  // Right side: Date & Phone
-  doc.font('Times-Bold').text(startDateStr, 340, sigY);
-  doc.moveTo(340, sigY + 15).lineTo(520, sigY + 15).stroke();
-  doc.font('Times-Roman').text('Date', 340, sigY + 20, { width: 180, align: 'center' });
+  // Right side Date (top item of the right side)
+  doc.font('Times-Bold').fontSize(10).text(startDateStr, 310, sigY, { width: 200, align: 'center' });
+  // Right side Date line
+  doc.moveTo(320, sigY + 12).lineTo(500, sigY + 12).stroke();
+  // Right side Date label
+  doc.font('Times-Roman').fontSize(9).text('Date', 310, sigY + 16, { width: 200, align: 'center' });
 
-  doc.font('Times-Bold').text(customer.phoneNumber || '', 340, sigY + 45);
-  doc.moveTo(340, sigY + 60).lineTo(520, sigY + 60).stroke();
-  doc.font('Times-Roman').text('Telephone number', 340, sigY + 65, { width: 180, align: 'center' });
+  // Right side Telephone number (align with Signature line)
+  doc.font('Times-Bold').fontSize(10).text(customer.phoneNumber || 'N/A', 310, sigY + 40, { width: 200, align: 'center' });
+  // Right side Telephone line
+  doc.moveTo(320, sigY + 52).lineTo(500, sigY + 52).stroke();
+  // Right side Telephone label
+  doc.font('Times-Roman').fontSize(9).text('Telephone number', 310, sigY + 56, { width: 200, align: 'center' });
 
-  doc.y = sigY + 90;
+  doc.y = sigY + 80;
 
   // PART II Header
   doc.font('Times-Bold').fontSize(11).text('PART II', { align: 'center', underline: true });
@@ -1510,45 +1532,55 @@ export async function generateOdfDeclarationPDF(odfId: number): Promise<{ doc: P
   doc.font('Times-Roman');
   doc.moveDown(0.5);
 
-  // Holding period checklist
-  const checklistY = doc.y;
-  doc.text('4. Holding period   YES ', startX, checklistY, { continued: true });
-  
-  // Draw checkbox for YES
-  const checkboxSize = 10;
-  const yesCheckboxX = doc.x + 5;
-  doc.rect(yesCheckboxX, checklistY + 1, checkboxSize, checkboxSize).stroke();
-  doc.text(`        (from ${startDateStr} to ${endDateStr})`, { continued: false });
+  // Holding period checklist using absolute block alignment
+  const checklistY = doc.y + 10;
+  doc.text('4. Holding period    YES', startX, checklistY);
 
-  const noChecklistY = doc.y + 5;
-  doc.text('                    NO  ', startX, noChecklistY, { continued: true });
-  const noCheckboxX = doc.x + 5;
-  doc.rect(noCheckboxX, noChecklistY + 1, checkboxSize, checkboxSize).stroke();
-  doc.text('         (attach original receipt of jewellery)', { continued: false });
+  const boxSize = 10;
+  const yesCheckboxX = 185;
+  const isHoldingPeriod = true; // By default holding period is yes unless receipt attached
+  doc.rect(yesCheckboxX, checklistY + 1, boxSize, boxSize).stroke();
+  if (isHoldingPeriod) {
+    doc.font('Times-Bold').fontSize(9).text('X', yesCheckboxX, checklistY + 1.5, { width: boxSize, align: 'center' });
+  }
 
-  doc.y = noChecklistY + 25;
+  doc.font('Times-Roman').fontSize(11).text(`(from ${startDateStr} to ${endDateStr})`, 205, checklistY);
 
-  // Dealer Signature Row
-  doc.moveDown(1.5);
-  const dealerSigY = doc.y;
+  const noChecklistY = checklistY + 20;
+  doc.text('NO', 158, noChecklistY);
+
+  const noCheckboxX = 185;
+  doc.rect(noCheckboxX, noChecklistY + 1, boxSize, boxSize).stroke();
+  if (!isHoldingPeriod) {
+    doc.font('Times-Bold').fontSize(9).text('X', noCheckboxX, noChecklistY + 1.5, { width: boxSize, align: 'center' });
+  }
+
+  doc.font('Times-Roman').fontSize(11).text('(attach original receipt of jewellery)', 205, noChecklistY);
+
+  const dealerSigY = noChecklistY + 30;
 
   // Left side: Name & Time
-  doc.moveTo(40, dealerSigY + 30).lineTo(220, dealerSigY + 30).stroke();
-  doc.text('Name', 40, dealerSigY + 35, { width: 180, align: 'center' });
+  // Name (Row 1 Left)
+  doc.moveTo(50, dealerSigY + 30).lineTo(230, dealerSigY + 30).stroke();
+  doc.font('Times-Roman').fontSize(9).text('Name', 40, dealerSigY + 34, { width: 200, align: 'center' });
 
-  doc.moveTo(40, dealerSigY + 75).lineTo(220, dealerSigY + 75).stroke();
-  doc.text('Time', 40, dealerSigY + 80, { width: 180, align: 'center' });
+  // Time (Row 2 Left)
+  doc.moveTo(50, dealerSigY + 80).lineTo(230, dealerSigY + 80).stroke();
+  doc.font('Times-Roman').fontSize(9).text('Time', 40, dealerSigY + 84, { width: 200, align: 'center' });
 
   // Right side: Signature & Date
-  doc.moveTo(340, dealerSigY + 30).lineTo(520, dealerSigY + 30).stroke();
-  doc.text('Signature', 340, dealerSigY + 35, { width: 180, align: 'center' });
+  // Signature (Row 1 Right)
+  doc.moveTo(320, dealerSigY + 30).lineTo(500, dealerSigY + 30).stroke();
+  doc.font('Times-Roman').fontSize(9).text('Signature', 310, dealerSigY + 34, { width: 200, align: 'center' });
 
-  doc.font('Times-Bold').text(startDateStr, 340, dealerSigY + 55);
-  doc.moveTo(340, dealerSigY + 70).lineTo(520, dealerSigY + 70).stroke();
-  doc.font('Times-Roman').text('Date', 340, dealerSigY + 75, { width: 180, align: 'center' });
+  // Date Value (Row 2 Right)
+  doc.font('Times-Bold').fontSize(10).text(startDateStr, 310, dealerSigY + 68, { width: 200, align: 'center' });
+  // Date Line (Row 2 Right)
+  doc.moveTo(320, dealerSigY + 80).lineTo(500, dealerSigY + 80).stroke();
+  doc.font('Times-Roman').fontSize(9).text('Date', 310, dealerSigY + 84, { width: 200, align: 'center' });
 
   // Footer Note
-  doc.y = dealerSigY + 100;
+  doc.y = dealerSigY + 105;
   doc.moveDown(2);
   doc.moveTo(40, doc.y).lineTo(540, doc.y).stroke();
   doc.moveDown(0.5);

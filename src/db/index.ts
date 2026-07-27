@@ -1,9 +1,19 @@
-import { drizzle } from 'drizzle-orm/node-postgres';
+import { drizzle as drizzlePg } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
+import { drizzle as drizzlePglite } from 'drizzle-orm/pglite';
+import { PGlite } from '@electric-sql/pglite';
 import * as schema from './schema';
 
-const pool = new pg.Pool({
-  connectionString: process.env.DATABASE_URL,
-});
+export let db: any;
+export let isPglite = false;
 
-export const db = drizzle(pool, { schema });
+if (process.env.DATABASE_URL) {
+  const pool = new pg.Pool({
+    connectionString: process.env.DATABASE_URL,
+  });
+  db = drizzlePg(pool, { schema });
+} else {
+  const client = new PGlite();
+  db = drizzlePglite(client, { schema });
+  isPglite = true;
+}

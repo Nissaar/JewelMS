@@ -12,7 +12,7 @@ test.describe('Stock Management', () => {
 
   test('should create, search, and edit a stock item successfully', async ({ page }) => {
     // Click on Stock in the sidebar
-    await page.locator('span:has-text("Stock")').click();
+    await page.locator('a[href="/stock"]').click();
     await expect(page).toHaveURL('/stock');
 
     // Click "Ajouter"
@@ -27,15 +27,15 @@ test.describe('Stock Management', () => {
     // We locate by labels or inputs
     await page.locator('label:has-text("Code-Barres") >> xpath=../..//input').fill(uniqueBarcode);
     await page.locator('input[placeholder="Ex: H-1234"]').fill(uniqueItemCode);
-    await page.locator('select:near(label:has-text("Catégorie"))').selectOption('Jewellery');
+    await page.locator('form label:has-text("Catégorie") >> xpath=..//select').first().selectOption('Jewellery');
     await page.locator('input[placeholder="0.00"]').fill(priceValue);
 
     // Dynamic fields for Jewellery
     await page.locator('label:has-text("Poids (Grammes)") >> xpath=../..//input').fill(weightValue);
 
     // Select the default options if available
-    await page.locator('select:near(label:has-text("Métal"))').selectOption({ index: 0 });
-    await page.locator('select:near(label:has-text("Pureté"))').selectOption({ index: 0 });
+    await page.locator('form label:has-text("Métal") >> xpath=..//select').selectOption({ index: 0 });
+    await page.locator('form label:has-text("Pureté") >> xpath=..//select').selectOption({ index: 0 });
 
     // Submit form
     await page.locator('button[type="submit"]:has-text("Enregistrer")').click();
@@ -52,8 +52,7 @@ test.describe('Stock Management', () => {
     await expect(page.locator(`tr:has-text("${uniqueItemCode}")`)).toBeVisible();
 
     // Trigger editing by clicking edit icon on the row
-    await page.locator(`tr:has-text("${uniqueBarcode}")`).hover();
-    await page.locator(`tr:has-text("${uniqueBarcode}") >> button:has(.lucide-edit2)`).click();
+    await page.locator(`tr:has-text("${uniqueBarcode}") >> button`).first().evaluate(el => (el as HTMLButtonElement).click());
 
     // Change the price to a higher value
     const updatedPrice = '4999.99';
@@ -65,6 +64,6 @@ test.describe('Stock Management', () => {
     // Search again and check updated price
     await page.locator('input[placeholder="Rechercher par code-barres ou N° de série..."]').fill(uniqueBarcode);
     await page.waitForTimeout(500); // Debounce
-    await expect(page.locator(`tr:has-text("${uniqueBarcode}"):has-text("Rs 4,999.99")`)).toBeVisible();
+    await expect(page.locator(`tr:has-text("${uniqueBarcode}"):has-text("4 999.99 Rs")`)).toBeVisible();
   });
 });

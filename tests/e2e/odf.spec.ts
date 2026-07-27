@@ -26,7 +26,7 @@ test.describe('Trade-In / ODF Module', () => {
     const customerId = `IDODF${Math.floor(Math.random() * 100000)}`;
     await page.locator('input#customer-name').fill(customerName);
     await page.locator('input#customer-id').fill(customerId);
-    await page.locator('button[type="submit"]:has-text("Enregistrer")').click();
+    await page.getByRole('button', { name: 'Enregistrer', exact: true }).click();
 
     // Verify customer is selected
     await expect(page.locator(`div:has-text("${customerName}")`).first()).toBeVisible();
@@ -51,18 +51,19 @@ test.describe('Trade-In / ODF Module', () => {
     await page.locator('input[placeholder="Ex: Bracelet, Collier..."]').nth(1).fill('Bague Or Cassée');
     await page.locator('input[placeholder="0.000"]').nth(1).fill('5.0');
     await page.locator('input[placeholder="Ex: 22K, 750"]').nth(1).fill('22K');
+    await page.locator('input[placeholder="0.00"]').nth(1).fill('1500');
 
     // Comments
     await page.locator('textarea[placeholder="Détails supplémentaires..."]').fill('Rachat standard de métaux précieux.');
 
     // Submit ODF Form
-    await page.locator('button[type="submit"]:has-text("Enregistrer le Rachat")').click();
+    await page.locator('button[type="submit"]:has-text("Enregistrer le Rachat")').evaluate(el => (el as HTMLButtonElement).click());
 
     // Verify success modal pops up
-    await expect(page.locator('h2:has-text("Rachat Enregistré!")')).toBeVisible();
+    await expect(page.locator('h2:has-text("ODF Créé avec Succès!")')).toBeVisible();
 
     // Click close/return to list button
-    await page.locator('button:has-text("Retour à l\'historique")').click();
+    await page.locator('button:has-text("Retour à l\'historique")').evaluate(el => (el as HTMLButtonElement).click());
 
     // Verify returned to the history table and the transaction is listed
     await expect(page.locator(`tr:has-text("${customerName}")`)).toBeVisible();

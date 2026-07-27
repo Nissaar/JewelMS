@@ -48,7 +48,9 @@ test.describe('Client Management (KYC)', () => {
 
     // Click edit button on the customer card
     // Hover or target the card button
-    await page.locator('button:has(.lucide-edit2)').click();
+    const customerCard = page.locator(`div.group:has(h3:has-text("${testName}"))`);
+    await customerCard.hover();
+    await customerCard.locator('button:has(svg)').click();
 
     // Check that values are populated correctly in the form
     await expect(page.locator('input#customer-name')).toHaveValue(testName);
