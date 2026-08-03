@@ -1,8 +1,87 @@
 import PDFDocument from 'pdfkit';
+import fs from 'fs';
+import path from 'path';
+import { chromium } from '@playwright/test';
 import { db } from '../db';
 import { sales, customers, receipts, settings, odf, odfItems, stock, orders } from '../db/schema';
 import { eq, and, sql, or, ilike } from 'drizzle-orm';
 import { formatCurrency, formatItemDetails } from '../lib/utils';
+
+interface DeclarationTemplateData {
+  odf_serial: string;
+  customer_name: string;
+  customer_address: string;
+  trade_in_items: Array<{
+    index: number;
+    description: string;
+    mass: string;
+    fineness: string;
+  }>;
+  date: string;
+  customer_phone: string;
+  customer_nic: string;
+  start_date: string;
+  end_date: string;
+}
+
+function renderDeclarationTemplate(data: DeclarationTemplateData): string {
+  const templatePath = path.join(process.cwd(), 'src/templates/declaration_pdf_fixed.html');
+  let html = fs.readFileSync(templatePath, 'utf8');
+
+  // Replace item loop
+  const itemBlockRegex = /\{\{#trade_in_items\}\}([\s\S]*?)\{\{\/trade_in_items\}\}/;
+  const match = html.match(itemBlockRegex);
+  if (match) {
+    const itemTemplate = match[1];
+    let itemsHtml = '';
+    if (data.trade_in_items && data.trade_in_items.length > 0) {
+      itemsHtml = data.trade_in_items.map(item => {
+        return itemTemplate
+          .replace(/\{\{index\}\}/g, String(item.index))
+          .replace(/\{\{description\}\}/g, item.description || '')
+          .replace(/\{\{mass\}\}/g, item.mass || '0.000')
+          .replace(/\{\{fineness\}\}/g, item.fineness || '');
+      }).join('');
+    } else {
+      itemsHtml = '<tr><td>1</td><td>Article</td><td>0.000</td><td>-</td></tr>';
+    }
+    html = html.replace(itemBlockRegex, itemsHtml);
+  }
+
+  // Replace simple variables
+  html = html
+    .replace(/\{\{odf_serial\}\}/g, data.odf_serial || '')
+    .replace(/\{\{customer_name\}\}/g, data.customer_name || '')
+    .replace(/\{\{customer_address\}\}/g, data.customer_address || 'N/A')
+    .replace(/\{\{date\}\}/g, data.date || '')
+    .replace(/\{\{customer_phone\}\}/g, data.customer_phone || 'N/A')
+    .replace(/\{\{customer_nic\}\}/g, data.customer_nic || 'N/A')
+    .replace(/\{\{start_date\}\}/g, data.start_date || '')
+    .replace(/\{\{end_date\}\}/g, data.end_date || '');
+
+  return html;
+}
+
+export async function htmlToPdfBuffer(html: string): Promise<Buffer> {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: 'load' });
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: {
+        top: '20px',
+        bottom: '20px',
+        left: '20px',
+        right: '20px'
+      }
+    });
+    return pdfBuffer;
+  } finally {
+    await browser.close();
+  }
+}
 
 export interface ReceiptData {
   saleId: number;
@@ -794,7 +873,7 @@ export async function generateVatReportPDF(day?: string, month?: string, year?: 
   return doc;
 }
 
-export async function generateDeclarationPDF(saleId: number): Promise<{ doc: PDFKit.PDFDocument }> {
+export async function generateDeclarationPDF(saleId: number): Promise<{ buffer: Buffer; doc?: any }> {
   // 1. Fetch Sale
   const saleRecords = await db.select({
     sale: sales,
@@ -821,7 +900,6 @@ export async function generateDeclarationPDF(saleId: number): Promise<{ doc: PDF
 
   // 3. Fetch ODF (Trade-In) record for this customer
   const customerOdfs = await db.select().from(odf).where(eq(odf.customerId, customer.id));
-  // Sort in JS to find the latest ODF
   const sortedOdfs = customerOdfs.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   const odfRecord = sortedOdfs[0];
 
@@ -831,191 +909,52 @@ export async function generateDeclarationPDF(saleId: number): Promise<{ doc: PDF
     items = await db.select().from(odfItems).where(eq(odfItems.odfId, odfRecord.id));
   }
 
-  // 5. Create PDF
-  const doc = new PDFDocument({
-    size: 'A4',
-    margin: 40,
-  });
-
-  const heading = 'SOCIETE MOHAMMUD HAUJEE & SONS';
-  const addressLine = '33, SIR SEEWOOSAGUR RAMGOOLAM STREET';
-  const cityLine = 'PORT LOUIS';
-
   // Format Dates
   const saleDateObj = new Date(sale.datetime);
   const startDateStr = saleDateObj.toLocaleDateString('en-GB'); // DD/MM/YYYY
   const endDateObj = new Date(saleDateObj.getTime() + 10 * 24 * 60 * 60 * 1000);
   const endDateStr = endDateObj.toLocaleDateString('en-GB');
 
-  // Top Serial No.
-  doc.font('Times-Bold').fontSize(10);
-  doc.text(`Serial No.: ${receipt.receiptSerialNumber}`, { align: 'right' });
-  doc.moveDown(1.5);
+  const serialNo = receipt.receiptSerialNumber ? String(receipt.receiptSerialNumber) : (odfRecord?.odfSerialNumber || String(saleId));
 
-  // Header
-  doc.fontSize(12).text('DECLARATION OF OWNERSHIP IN CASE OF TRADE-IN OF JEWELLERY', { align: 'center' });
-  doc.text(heading, { align: 'center' });
-  doc.text(addressLine, { align: 'center' });
-  doc.text(cityLine, { align: 'center' });
-  doc.moveDown(2);
-
-  // PART I Header
-  doc.text('PART I', { align: 'center', underline: true });
-  doc.font('Times-Roman').fontSize(10).text('(To be filled by the customer)', { align: 'center' });
-  doc.moveDown(1.5);
-
-  // Customer Section
-  doc.font('Times-Roman').fontSize(11);
-  doc.text('I, ', { continued: true });
-  doc.font('Times-Bold').text(customer.name || '', { continued: true });
-  doc.font('Times-Roman').text(', of ', { continued: true });
-  doc.font('Times-Bold').text(customer.address || 'N/A', { continued: true });
-  doc.font('Times-Roman').text(', certify that the jewellery specified below belongs to me and I have obtained it through legal means.');
-  doc.moveDown(1.5);
-
-  // Trade-in Jewellery Label
-  doc.font('Times-Bold').fontSize(11).text('Trade-in jewellery');
-  doc.moveDown(0.5);
-
-  // Items Table Header
-  const tableTop = doc.y;
-  doc.font('Times-Bold').fontSize(10);
-  doc.text('SN', 40, tableTop, { width: 30, align: 'center' });
-  doc.text('Description', 80, tableTop, { width: 230, align: 'left' });
-  doc.text('Mass (grams)', 320, tableTop, { width: 100, align: 'center' });
-  doc.text('Declared fineness', 430, tableTop, { width: 100, align: 'center' });
-
-  // Draw line below header
-  doc.moveTo(40, tableTop + 15).lineTo(540, tableTop + 15).strokeColor('#000000').stroke();
-
-  let currentY = tableTop + 20;
-  doc.font('Times-Roman');
-
+  let tradeInItems: Array<{ index: number; description: string; mass: string; fineness: string }> = [];
   if (items && items.length > 0) {
-    items.forEach((item, index) => {
-      doc.text((index + 1).toString(), 40, currentY, { width: 30, align: 'center' });
-      doc.text(item.description || '', 80, currentY, { width: 230, align: 'left' });
-      doc.text(item.mass ? parseFloat(item.mass).toFixed(3) : '0.000', 320, currentY, { width: 100, align: 'center' });
-      doc.text(item.fineness || '', 430, currentY, { width: 100, align: 'center' });
-      currentY += 20;
-    });
+    tradeInItems = items.map((item, index) => ({
+      index: index + 1,
+      description: item.description || '',
+      mass: item.mass ? parseFloat(item.mass).toFixed(3) : '0.000',
+      fineness: item.fineness || ''
+    }));
+  } else if (odfRecord) {
+    tradeInItems = [{
+      index: 1,
+      description: odfRecord.description || 'Article',
+      mass: odfRecord.weight ? parseFloat(odfRecord.weight).toFixed(3) : '0.000',
+      fineness: odfRecord.fineness || ''
+    }];
   } else {
-    // Fallback if no items or ODF
-    const fallbackDesc = odfRecord ? (odfRecord.description || 'Article') : 'Article';
-    const fallbackWeight = odfRecord ? parseFloat(odfRecord.weight || '0').toFixed(3) : '0.000';
-    const fallbackFineness = odfRecord ? (odfRecord.fineness || '') : '';
-    doc.text('1', 40, currentY, { width: 30, align: 'center' });
-    doc.text(fallbackDesc, 80, currentY, { width: 230, align: 'left' });
-    doc.text(fallbackWeight, 320, currentY, { width: 100, align: 'center' });
-    doc.text(fallbackFineness, 430, currentY, { width: 100, align: 'center' });
-    currentY += 20;
+    tradeInItems = [{
+      index: 1,
+      description: 'Article',
+      mass: '0.000',
+      fineness: ''
+    }];
   }
 
-  doc.moveTo(40, currentY).lineTo(540, currentY).stroke();
-  doc.y = currentY + 15;
+  const html = renderDeclarationTemplate({
+    odf_serial: serialNo,
+    customer_name: customer.name || '',
+    customer_address: customer.address || 'N/A',
+    trade_in_items: tradeInItems,
+    date: startDateStr,
+    customer_phone: customer.phoneNumber || 'N/A',
+    customer_nic: customer.idNumber || 'N/A',
+    start_date: startDateStr,
+    end_date: endDateStr
+  });
 
-  // Signature Section PART I
-  const sigY = doc.y;
-  doc.font('Times-Roman').fontSize(10);
-  
-  // Left side Signature line (align with Telephone number line below)
-  doc.moveTo(50, sigY + 52).lineTo(230, sigY + 52).stroke();
-  // Left side Signature label (align with Telephone number label below)
-  doc.font('Times-Roman').fontSize(9).text('Signature', 40, sigY + 56, { width: 200, align: 'center' });
-
-  // Right side Date (top item of the right side)
-  doc.font('Times-Bold').fontSize(10).text(startDateStr, 310, sigY, { width: 200, align: 'center' });
-  // Right side Date line
-  doc.moveTo(320, sigY + 12).lineTo(500, sigY + 12).stroke();
-  // Right side Date label
-  doc.font('Times-Roman').fontSize(9).text('Date', 310, sigY + 16, { width: 200, align: 'center' });
-
-  // Right side Telephone number (align with Signature line)
-  doc.font('Times-Bold').fontSize(10).text(customer.phoneNumber || 'N/A', 310, sigY + 40, { width: 200, align: 'center' });
-  // Right side Telephone line
-  doc.moveTo(320, sigY + 52).lineTo(500, sigY + 52).stroke();
-  // Right side Telephone label
-  doc.font('Times-Roman').fontSize(9).text('Telephone number', 310, sigY + 56, { width: 200, align: 'center' });
-
-  doc.y = sigY + 80;
-
-  // PART II Header
-  doc.font('Times-Bold').fontSize(11).text('PART II', { align: 'center', underline: true });
-  doc.font('Times-Roman').fontSize(10).text('(To be completed by the dealer/person on behalf of dealer)', { align: 'center' });
-  doc.moveDown(1.5);
-
-  const startX = 40;
-  doc.font('Times-Roman').fontSize(11);
-  doc.text('1. I certify having verified the name of the person referred to in Part I and found it to be correct.', startX);
-  doc.moveDown(0.5);
-
-  doc.text('2. Proof of identity produced:', startX);
-  doc.text(`   *NIC number/identification number* of approved document: `, { continued: true });
-  doc.font('Times-Bold').text(customer.idNumber || 'N/A');
-  doc.font('Times-Roman');
-  doc.moveDown(0.5);
-
-  doc.text('3. Receipt issued at time of trade-in: ', startX, doc.y, { continued: true });
-  doc.font('Times-Bold').text(receipt.receiptSerialNumber.toString());
-  doc.font('Times-Roman');
-  doc.moveDown(0.5);
-
-  // Holding period checklist using absolute block alignment
-  const checklistY = doc.y + 10;
-  doc.text('4. Holding period    YES', startX, checklistY);
-
-  const boxSize = 10;
-  const yesCheckboxX = 185;
-  const isHoldingPeriod = true; // By default holding period is yes unless receipt attached
-  doc.rect(yesCheckboxX, checklistY + 1, boxSize, boxSize).stroke();
-  if (isHoldingPeriod) {
-    doc.font('Times-Bold').fontSize(9).text('X', yesCheckboxX, checklistY + 1.5, { width: boxSize, align: 'center' });
-  }
-
-  doc.font('Times-Roman').fontSize(11).text(`(from ${startDateStr} to ${endDateStr})`, 205, checklistY);
-
-  const noChecklistY = checklistY + 20;
-  doc.text('NO', 158, noChecklistY);
-
-  const noCheckboxX = 185;
-  doc.rect(noCheckboxX, noChecklistY + 1, boxSize, boxSize).stroke();
-  if (!isHoldingPeriod) {
-    doc.font('Times-Bold').fontSize(9).text('X', noCheckboxX, noChecklistY + 1.5, { width: boxSize, align: 'center' });
-  }
-
-  doc.font('Times-Roman').fontSize(11).text('(attach original receipt of jewellery)', 205, noChecklistY);
-
-  const dealerSigY = noChecklistY + 30;
-
-  // Left side: Name & Time
-  // Name (Row 1 Left)
-  doc.moveTo(50, dealerSigY + 30).lineTo(230, dealerSigY + 30).stroke();
-  doc.font('Times-Roman').fontSize(9).text('Name', 40, dealerSigY + 34, { width: 200, align: 'center' });
-
-  // Time (Row 2 Left)
-  doc.moveTo(50, dealerSigY + 80).lineTo(230, dealerSigY + 80).stroke();
-  doc.font('Times-Roman').fontSize(9).text('Time', 40, dealerSigY + 84, { width: 200, align: 'center' });
-
-  // Right side: Signature & Date
-  // Signature (Row 1 Right)
-  doc.moveTo(320, dealerSigY + 30).lineTo(500, dealerSigY + 30).stroke();
-  doc.font('Times-Roman').fontSize(9).text('Signature', 310, dealerSigY + 34, { width: 200, align: 'center' });
-
-  // Date Value (Row 2 Right)
-  doc.font('Times-Bold').fontSize(10).text(startDateStr, 310, dealerSigY + 68, { width: 200, align: 'center' });
-  // Date Line (Row 2 Right)
-  doc.moveTo(320, dealerSigY + 80).lineTo(500, dealerSigY + 80).stroke();
-  doc.font('Times-Roman').fontSize(9).text('Date', 310, dealerSigY + 84, { width: 200, align: 'center' });
-
-  // Footer Note
-  doc.y = dealerSigY + 105;
-  doc.moveDown(2);
-  doc.moveTo(40, doc.y).lineTo(540, doc.y).stroke();
-  doc.moveDown(0.5);
-  doc.font('Times-Bold').fontSize(10).text('Holding Period');
-  doc.font('Times-Roman').fontSize(9).text('A holding period of 10 days shall apply from the date of transaction, in case original receipt of the jewellery is not available.');
-
-  return { doc };
+  const buffer = await htmlToPdfBuffer(html);
+  return { buffer };
 }
 
 export async function generateTradeInReportPDF(startDate?: string, endDate?: string): Promise<PDFKit.PDFDocument> {
@@ -1382,7 +1321,7 @@ export async function generateSalesByMetalReportPDF(startDate?: string, endDate?
   return doc;
 }
 
-export async function generateOdfDeclarationPDF(odfId: number): Promise<{ doc: PDFKit.PDFDocument }> {
+export async function generateOdfDeclarationPDF(odfId: number): Promise<{ buffer: Buffer; doc?: any }> {
   // 1. Fetch ODF
   const odfRecords = await db.select({
     odf: odf,
@@ -1403,190 +1342,44 @@ export async function generateOdfDeclarationPDF(odfId: number): Promise<{ doc: P
   // 2. Fetch ODF Items
   const items = await db.select().from(odfItems).where(eq(odfItems.odfId, odfId));
 
-  // 3. Create PDF
-  const doc = new PDFDocument({
-    size: 'A4',
-    margin: 40,
-  });
-
-  const heading = 'SOCIETE MOHAMMUD HAUJEE & SONS';
-  const addressLine = '33, SIR SEEWOOSAGUR RAMGOOLAM STREET';
-  const cityLine = 'PORT LOUIS';
-
   // Format Dates
   const odfDateObj = new Date(odfRecord.date || odfRecord.createdAt);
   const startDateStr = odfDateObj.toLocaleDateString('en-GB'); // DD/MM/YYYY
   const endDateObj = new Date(odfDateObj.getTime() + 10 * 24 * 60 * 60 * 1000);
   const endDateStr = endDateObj.toLocaleDateString('en-GB');
 
-  // Top Serial No.
-  doc.font('Times-Bold').fontSize(10);
-  doc.text(`Serial No.: ${odfRecord.odfSerialNumber}`, { align: 'right' });
-  doc.moveDown(1.5);
+  const serialNo = odfRecord.odfSerialNumber ? String(odfRecord.odfSerialNumber) : String(odfRecord.id);
 
-  // Header
-  doc.fontSize(12).text('DECLARATION OF OWNERSHIP IN CASE OF TRADE-IN OF JEWELLERY', { align: 'center' });
-  doc.text(heading, { align: 'center' });
-  doc.text(addressLine, { align: 'center' });
-  doc.text(cityLine, { align: 'center' });
-  doc.moveDown(2);
-
-  // PART I Header
-  doc.text('PART I', { align: 'center', underline: true });
-  doc.font('Times-Roman').fontSize(10).text('(To be filled by the customer)', { align: 'center' });
-  doc.moveDown(1.5);
-
-  // Customer Section
-  doc.font('Times-Roman').fontSize(11);
-  doc.text('I, ', { continued: true });
-  doc.font('Times-Bold').text(customer.name || '', { continued: true });
-  doc.font('Times-Roman').text(', of ', { continued: true });
-  doc.font('Times-Bold').text(customer.address || 'N/A', { continued: true });
-  doc.font('Times-Roman').text(', certify that the jewellery specified below belongs to me and I have obtained it through legal means.');
-  doc.moveDown(1.5);
-
-  // Trade-in Jewellery Label
-  doc.font('Times-Bold').fontSize(11).text('Trade-in jewellery');
-  doc.moveDown(0.5);
-
-  // Items Table Header
-  const tableTop = doc.y;
-  doc.font('Times-Bold').fontSize(10);
-  doc.text('SN', 40, tableTop, { width: 30, align: 'center' });
-  doc.text('Description', 80, tableTop, { width: 230, align: 'left' });
-  doc.text('Mass (grams)', 320, tableTop, { width: 100, align: 'center' });
-  doc.text('Declared fineness', 430, tableTop, { width: 100, align: 'center' });
-
-  // Draw line below header
-  doc.moveTo(40, tableTop + 15).lineTo(540, tableTop + 15).strokeColor('#000000').stroke();
-
-  let currentY = tableTop + 20;
-  doc.font('Times-Roman');
-
+  let tradeInItems: Array<{ index: number; description: string; mass: string; fineness: string }> = [];
   if (items && items.length > 0) {
-    items.forEach((item, index) => {
-      doc.text((index + 1).toString(), 40, currentY, { width: 30, align: 'center' });
-      doc.text(item.description || '', 80, currentY, { width: 230, align: 'left' });
-      doc.text(item.mass ? parseFloat(item.mass).toFixed(3) : '0.000', 320, currentY, { width: 100, align: 'center' });
-      doc.text(item.fineness || '', 430, currentY, { width: 100, align: 'center' });
-      currentY += 20;
-    });
+    tradeInItems = items.map((item, index) => ({
+      index: index + 1,
+      description: item.description || '',
+      mass: item.mass ? parseFloat(item.mass).toFixed(3) : '0.000',
+      fineness: item.fineness || ''
+    }));
   } else {
-    // Fallback if no items
-    const fallbackDesc = odfRecord.description || 'Article';
-    const fallbackWeight = odfRecord.weight ? parseFloat(odfRecord.weight).toFixed(3) : '0.000';
-    const fallbackFineness = odfRecord.fineness || '';
-    doc.text('1', 40, currentY, { width: 30, align: 'center' });
-    doc.text(fallbackDesc, 80, currentY, { width: 230, align: 'left' });
-    doc.text(fallbackWeight, 320, currentY, { width: 100, align: 'center' });
-    doc.text(fallbackFineness, 430, currentY, { width: 100, align: 'center' });
-    currentY += 20;
+    tradeInItems = [{
+      index: 1,
+      description: odfRecord.description || 'Article',
+      mass: odfRecord.weight ? parseFloat(odfRecord.weight).toFixed(3) : '0.000',
+      fineness: odfRecord.fineness || ''
+    }];
   }
 
-  doc.moveTo(40, currentY).lineTo(540, currentY).stroke();
-  doc.y = currentY + 15;
+  const html = renderDeclarationTemplate({
+    odf_serial: serialNo,
+    customer_name: customer.name || '',
+    customer_address: customer.address || 'N/A',
+    trade_in_items: tradeInItems,
+    date: startDateStr,
+    customer_phone: customer.phoneNumber || 'N/A',
+    customer_nic: customer.idNumber || 'N/A',
+    start_date: startDateStr,
+    end_date: endDateStr
+  });
 
-  // Signature Section PART I
-  const sigY = doc.y;
-  doc.font('Times-Roman').fontSize(10);
-  
-  // Left side Signature line (align with Telephone number line below)
-  doc.moveTo(50, sigY + 52).lineTo(230, sigY + 52).stroke();
-  // Left side Signature label (align with Telephone number label below)
-  doc.font('Times-Roman').fontSize(9).text('Signature', 40, sigY + 56, { width: 200, align: 'center' });
-
-  // Right side Date (top item of the right side)
-  doc.font('Times-Bold').fontSize(10).text(startDateStr, 310, sigY, { width: 200, align: 'center' });
-  // Right side Date line
-  doc.moveTo(320, sigY + 12).lineTo(500, sigY + 12).stroke();
-  // Right side Date label
-  doc.font('Times-Roman').fontSize(9).text('Date', 310, sigY + 16, { width: 200, align: 'center' });
-
-  // Right side Telephone number (align with Signature line)
-  doc.font('Times-Bold').fontSize(10).text(customer.phoneNumber || 'N/A', 310, sigY + 40, { width: 200, align: 'center' });
-  // Right side Telephone line
-  doc.moveTo(320, sigY + 52).lineTo(500, sigY + 52).stroke();
-  // Right side Telephone label
-  doc.font('Times-Roman').fontSize(9).text('Telephone number', 310, sigY + 56, { width: 200, align: 'center' });
-
-  doc.y = sigY + 80;
-
-  // PART II Header
-  doc.font('Times-Bold').fontSize(11).text('PART II', { align: 'center', underline: true });
-  doc.font('Times-Roman').fontSize(10).text('(To be completed by the dealer/person on behalf of dealer)', { align: 'center' });
-  doc.moveDown(1.5);
-
-  const startX = 40;
-  doc.font('Times-Roman').fontSize(11);
-  doc.text('1. I certify having verified the name of the person referred to in Part I and found it to be correct.', startX);
-  doc.moveDown(0.5);
-
-  doc.text('2. Proof of identity produced:', startX);
-  doc.text(`   *NIC number/identification number* of approved document: `, { continued: true });
-  doc.font('Times-Bold').text(customer.idNumber || 'N/A');
-  doc.font('Times-Roman');
-  doc.moveDown(0.5);
-
-  doc.text('3. ODF number issued at time of trade-in: ', startX, doc.y, { continued: true });
-  doc.font('Times-Bold').text(odfRecord.odfSerialNumber.toString());
-  doc.font('Times-Roman');
-  doc.moveDown(0.5);
-
-  // Holding period checklist using absolute block alignment
-  const checklistY = doc.y + 10;
-  doc.text('4. Holding period    YES', startX, checklistY);
-
-  const boxSize = 10;
-  const yesCheckboxX = 185;
-  const isHoldingPeriod = true; // By default holding period is yes unless receipt attached
-  doc.rect(yesCheckboxX, checklistY + 1, boxSize, boxSize).stroke();
-  if (isHoldingPeriod) {
-    doc.font('Times-Bold').fontSize(9).text('X', yesCheckboxX, checklistY + 1.5, { width: boxSize, align: 'center' });
-  }
-
-  doc.font('Times-Roman').fontSize(11).text(`(from ${startDateStr} to ${endDateStr})`, 205, checklistY);
-
-  const noChecklistY = checklistY + 20;
-  doc.text('NO', 158, noChecklistY);
-
-  const noCheckboxX = 185;
-  doc.rect(noCheckboxX, noChecklistY + 1, boxSize, boxSize).stroke();
-  if (!isHoldingPeriod) {
-    doc.font('Times-Bold').fontSize(9).text('X', noCheckboxX, noChecklistY + 1.5, { width: boxSize, align: 'center' });
-  }
-
-  doc.font('Times-Roman').fontSize(11).text('(attach original receipt of jewellery)', 205, noChecklistY);
-
-  const dealerSigY = noChecklistY + 30;
-
-  // Left side: Name & Time
-  // Name (Row 1 Left)
-  doc.moveTo(50, dealerSigY + 30).lineTo(230, dealerSigY + 30).stroke();
-  doc.font('Times-Roman').fontSize(9).text('Name', 40, dealerSigY + 34, { width: 200, align: 'center' });
-
-  // Time (Row 2 Left)
-  doc.moveTo(50, dealerSigY + 80).lineTo(230, dealerSigY + 80).stroke();
-  doc.font('Times-Roman').fontSize(9).text('Time', 40, dealerSigY + 84, { width: 200, align: 'center' });
-
-  // Right side: Signature & Date
-  // Signature (Row 1 Right)
-  doc.moveTo(320, dealerSigY + 30).lineTo(500, dealerSigY + 30).stroke();
-  doc.font('Times-Roman').fontSize(9).text('Signature', 310, dealerSigY + 34, { width: 200, align: 'center' });
-
-  // Date Value (Row 2 Right)
-  doc.font('Times-Bold').fontSize(10).text(startDateStr, 310, dealerSigY + 68, { width: 200, align: 'center' });
-  // Date Line (Row 2 Right)
-  doc.moveTo(320, dealerSigY + 80).lineTo(500, dealerSigY + 80).stroke();
-  doc.font('Times-Roman').fontSize(9).text('Date', 310, dealerSigY + 84, { width: 200, align: 'center' });
-
-  // Footer Note
-  doc.y = dealerSigY + 105;
-  doc.moveDown(2);
-  doc.moveTo(40, doc.y).lineTo(540, doc.y).stroke();
-  doc.moveDown(0.5);
-  doc.font('Times-Bold').fontSize(10).text('Holding Period');
-  doc.font('Times-Roman').fontSize(9).text('A holding period of 10 days shall apply from the date of transaction, in case original receipt of the jewellery is not available.');
-
-  return { doc };
+  const buffer = await htmlToPdfBuffer(html);
+  return { buffer };
 }
 

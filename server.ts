@@ -129,7 +129,7 @@ async function startServer() {
   });
 
   // --- Auth Endpoints ---
-  app.post("/api/login", async (req, res) => {
+  app.post(["/api/login", "/api/auth/login"], async (req, res) => {
     const { username, password, rememberMe } = req.body;
     const { default: bcrypt } = await import("bcryptjs");
     const { default: jwt } = await import("jsonwebtoken");
@@ -143,7 +143,7 @@ async function startServer() {
       const isMatch = await bcrypt.compare(password, user.passwordHash);
       if (!isMatch) return res.status(401).json({ error: "Invalid username or password" });
 
-      const expiresIn = rememberMe ? "7d" : "24h";
+      const expiresIn = rememberMe ? "30d" : "8h";
 
       const token = jwt.sign(
         { id: user.id, username: user.username, role: user.role },

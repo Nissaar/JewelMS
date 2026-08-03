@@ -22,7 +22,7 @@ const Login = () => {
     setIsLoading(true);
     setError('');
     try {
-      const response = await axios.post('/api/login', { username, password, rememberMe });
+      const response = await axios.post('/api/auth/login', { username, password, rememberMe: Boolean(rememberMe) });
       login(response.data.token, response.data.user, rememberMe);
       navigate(from, { replace: true });
     } catch (err: any) {
