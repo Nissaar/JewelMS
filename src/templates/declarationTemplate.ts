@@ -1,0 +1,146 @@
+export const declarationPdfFixedHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: 'Times New Roman', Times, serif; color: #000; margin: 0; padding: 40px; line-height: 1.3; font-size: 14px; }
+        .text-center { text-align: center; }
+        .text-right { text-align: right; }
+        .bold { font-weight: bold; }
+        .title { text-decoration: underline; margin: 15px 0; font-weight: bold; }
+        
+        /* Table for main trade-in items */
+        table.items { width: 100%; border-collapse: collapse; margin-top: 10px; margin-bottom: 20px; }
+        table.items th, table.items td { border: 1px solid #000; padding: 6px; text-align: center; }
+        table.items th { font-weight: bold; background-color: #f9f9f9; }
+        
+        /* Bulletproof structural tables for signatures and layout */
+        table.layout { width: 100%; border-collapse: collapse; border: none; margin-top: 10px; margin-bottom: 10px; }
+        table.layout td { border: none; vertical-align: bottom; padding: 5px; }
+        
+        .sig-line { border-bottom: 1px dotted #000; width: 80%; display: block; margin-bottom: 3px; }
+        .sig-space { height: 40px; }
+        
+        .footer { font-size: 12px; margin-top: 30px; border-top: 1px solid #000; padding-top: 10px; }
+    </style>
+</head>
+<body>
+
+    <div class="text-right bold">Serial No.: {{odf_serial}}</div>
+
+    <div class="text-center bold" style="margin-bottom: 20px;">
+        DECLARATION OF OWNERSHIP IN CASE OF TRADE-IN OF JEWELLERY<br>
+        SOCIETE MOHAMMUD HAUJEE & SONS<br>
+        33, SIR SEEWOOSAGUR RAMGOOLAM STREET<br>
+        PORT LOUIS
+    </div>
+
+    <div class="text-center title">PART I<br><span style="font-weight: normal; text-decoration: none;">(To be filled by the customer)</span></div>
+
+    <div style="text-align: justify; margin-bottom: 15px;">
+        I, <strong>{{customer_name}}</strong>, of <strong>{{customer_address}}</strong>, certify that the jewellery specified below belongs to me and I have obtained it through legal means.
+    </div>
+
+    <div class="bold">Trade-in jewellery</div>
+    <table class="items">
+        <thead>
+            <tr>
+                <th style="width: 10%;">SN</th>
+                <th style="width: 50%;">Description</th>
+                <th style="width: 20%;">Mass (grams)</th>
+                <th style="width: 20%;">Declared fineness</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{#trade_in_items}}
+            <tr>
+                <td>{{index}}</td>
+                <td>{{description}}</td>
+                <td>{{mass}}</td>
+                <td>{{fineness}}</td>
+            </tr>
+            {{/trade_in_items}}
+        </tbody>
+    </table>
+
+    <!-- PART I SIGNATURES -->
+    <table class="layout text-center">
+        <tr>
+            <td style="width: 50%;">
+                <div class="sig-space"></div>
+                <div class="sig-line" style="margin: 0 auto;"></div>
+                <div>Signature</div>
+            </td>
+            <td style="width: 50%;">
+                <div style="font-weight: bold; margin-bottom: 2px;">{{date}}</div>
+                <div class="sig-line" style="margin: 0 auto;"></div>
+                <div style="margin-bottom: 15px;">Date</div>
+                
+                <div style="font-weight: bold; margin-bottom: 2px;">{{customer_phone}}</div>
+                <div class="sig-line" style="margin: 0 auto;"></div>
+                <div>Telephone number</div>
+            </td>
+        </tr>
+    </table>
+
+    <div class="text-center title" style="margin-top: 30px;">PART II<br><span style="font-weight: normal; text-decoration: none;">(To be completed by the dealer/person on behalf of dealer)</span></div>
+
+    <div style="margin-bottom: 8px;">1. I certify having verified the name of the person referred to in Part I and found it to be correct.</div>
+    <div style="margin-bottom: 8px;">2. Proof of identity produced:<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;*NIC number/identification number* of approved document: <strong>{{customer_nic}}</strong>
+    </div>
+    <div style="margin-bottom: 8px;">3. ODF number issued at time of trade-in: <strong>{{odf_serial}}</strong></div>
+    
+    <!-- CHECKBOX SECTION USING TABLES -->
+    <table class="layout" style="margin-bottom: 20px;">
+        <tr>
+            <td style="width: 5%;">4.</td>
+            <td style="width: 95%;">
+                Holding period &nbsp;&nbsp;
+                <strong>YES <span style="font-size: 16px;">&#9745;</span></strong> 
+                (from <strong>{{start_date}}</strong> to <strong>{{end_date}}</strong>)
+            </td>
+        </tr>
+        <tr>
+            <td></td>
+            <td>
+                <span style="margin-left: 90px;">
+                    <strong>NO <span style="font-size: 16px;">&#9744;</span></strong> 
+                    (attach original receipt of jewellery)
+                </span>
+            </td>
+        </tr>
+    </table>
+
+    <!-- PART II SIGNATURES -->
+    <table class="layout text-center">
+        <tr>
+            <td style="width: 50%;">
+                <div class="sig-space"></div>
+                <div class="sig-line" style="margin: 0 auto;"></div>
+                <div style="margin-bottom: 15px;">Name</div>
+                
+                <div class="sig-space" style="height: 20px;"></div>
+                <div class="sig-line" style="margin: 0 auto;"></div>
+                <div>Time</div>
+            </td>
+            <td style="width: 50%;">
+                <div class="sig-space"></div>
+                <div class="sig-line" style="margin: 0 auto;"></div>
+                <div style="margin-bottom: 15px;">Signature</div>
+                
+                <div style="font-weight: bold; margin-bottom: 2px;">{{date}}</div>
+                <div class="sig-line" style="margin: 0 auto;"></div>
+                <div>Date</div>
+            </td>
+        </tr>
+    </table>
+
+    <div class="footer">
+        <span class="bold">Holding Period</span><br>
+        A holding period of 10 days shall apply from the date of transaction, in case original receipt of the jewellery is not available.
+    </div>
+
+</body>
+</html>
+`;

@@ -3,9 +3,10 @@ import fs from 'fs';
 import path from 'path';
 import { chromium } from '@playwright/test';
 import { db } from '../db';
-import { sales, customers, receipts, settings, odf, odfItems, stock, orders } from '../db/schema';
+import { sales, saleItems, customers, receipts, settings, odf, odfItems, stock, orders } from '../db/schema';
 import { eq, and, sql, or, ilike } from 'drizzle-orm';
 import { formatCurrency, formatItemDetails } from '../lib/utils';
+import { declarationPdfFixedHtml } from '../templates/declarationTemplate';
 
 interface DeclarationTemplateData {
   odf_serial: string;
@@ -25,8 +26,7 @@ interface DeclarationTemplateData {
 }
 
 function renderDeclarationTemplate(data: DeclarationTemplateData): string {
-  const templatePath = path.join(process.cwd(), 'src/templates/declaration_pdf_fixed.html');
-  let html = fs.readFileSync(templatePath, 'utf8');
+  let html = declarationPdfFixedHtml;
 
   // Replace item loop
   const itemBlockRegex = /\{\{#trade_in_items\}\}([\s\S]*?)\{\{\/trade_in_items\}\}/;
@@ -278,53 +278,81 @@ export async function generateReceiptPDF(saleId: number): Promise<{ doc: PDFKit.
     }
   });
 
-  // Row Data Construction
-  const itemNo = '1';
-  const itemStockCode = record.stock?.itemCode || record.stock?.barcode || 'N/A';
-  
-  let itemDescription = formatItemDetails(sale.itemDetails) || 'Article Bijouterie';
-  if (record.stock) {
-    const s = record.stock;
-    itemDescription = `${s.category} ${s.subCategory || ''} ${s.metalType ? `(${s.metalType})` : ''}`.trim().replace(/\s+/g, ' ');
-    if (s.fineness) {
-      itemDescription += ` - ${s.fineness}`;
+  // Fetch items list
+  const itemsList = await db.select({
+    item: saleItems,
+    stock: stock
+  })
+  .from(saleItems)
+  .leftJoin(stock, eq(saleItems.stockId, stock.id))
+  .where(eq(saleItems.saleId, saleId));
+
+  // Determine rows to render (fallback to record for legacy sales)
+  const renderedRows = itemsList.length > 0 ? itemsList.map((row, index) => {
+    const s = row.stock;
+    const stockCode = row.item.barcode || s?.itemCode || s?.barcode || 'N/A';
+    let description = row.item.itemDetails || formatItemDetails(sale.itemDetails) || 'Article Bijouterie';
+    if (s) {
+      description = `${s.category} ${s.subCategory || ''} ${s.metalType ? `(${s.metalType})` : ''}`.trim().replace(/\s+/g, ' ');
+      if (s.fineness) {
+        description += ` - ${s.fineness}`;
+      }
     }
+    const pcs = row.item.qty || 1;
+    const qtyGrams = s?.weightGrams ? parseFloat(String(s.weightGrams)).toFixed(3) : (sale.weight ? parseFloat(String(sale.weight)).toFixed(3) : '-');
+    const netAmount = Number(row.item.amount || 0);
+    const taxAmount = netAmount * 0.15;
+    const grossAmount = netAmount + taxAmount;
+    return { index: index + 1, stockCode, description, pcs, qtyGrams, netAmount, taxAmount, grossAmount };
+  }) : [{
+    index: 1,
+    stockCode: record.stock?.itemCode || record.stock?.barcode || 'N/A',
+    description: record.stock 
+      ? `${record.stock.category} ${record.stock.subCategory || ''} ${record.stock.metalType ? `(${record.stock.metalType})` : ''}`.trim().replace(/\s+/g, ' ')
+      : (formatItemDetails(sale.itemDetails) || 'Article Bijouterie'),
+    pcs: sale.qty || 1,
+    qtyGrams: sale.weight ? parseFloat(String(sale.weight)).toFixed(3) : '-',
+    netAmount: Number(sale.amount || 0),
+    taxAmount: Number(sale.vat15 || 0),
+    grossAmount: Number(sale.amount || 0) + Number(sale.vat15 || 0)
+  }];
+
+  let currentRowY = tableHeaderY + headerHeight;
+  let totalNetSum = 0;
+  let totalTaxSum = 0;
+  let totalGrossSum = 0;
+  let totalPcsSum = 0;
+
+  for (const rowData of renderedRows) {
+    const descHeight = doc.heightOfString(rowData.description, { width: 155 });
+    const rowHeight = Math.max(25, descHeight + 10);
+
+    doc.font('Helvetica').fontSize(8).fillColor('#000000');
+    doc.text(String(rowData.index), columns[0].x, currentRowY + (rowHeight - 8) / 2, { width: columns[0].w, align: 'center' });
+    doc.text(rowData.stockCode, columns[1].x, currentRowY + (rowHeight - 8) / 2, { width: columns[1].w, align: 'center' });
+    doc.text(rowData.description, columns[2].x, currentRowY + 5, { width: columns[2].w, align: 'left' });
+    doc.text(String(rowData.pcs), columns[3].x, currentRowY + (rowHeight - 8) / 2, { width: columns[3].w, align: 'center' });
+    doc.text(String(rowData.qtyGrams), columns[4].x, currentRowY + (rowHeight - 8) / 2, { width: columns[4].w, align: 'right' });
+    doc.text(formatCurrency(rowData.netAmount), columns[5].x, currentRowY + (rowHeight - 8) / 2, { width: columns[5].w, align: 'right' });
+    doc.text('15.00', columns[6].x, currentRowY + (rowHeight - 8) / 2, { width: columns[6].w, align: 'center' });
+    doc.text(formatCurrency(rowData.taxAmount), columns[7].x, currentRowY + (rowHeight - 8) / 2, { width: columns[7].w, align: 'right' });
+    doc.text(formatCurrency(rowData.grossAmount), columns[8].x, currentRowY + (rowHeight - 8) / 2, { width: columns[8].w, align: 'right' });
+
+    doc.rect(40, currentRowY, 515, rowHeight).strokeColor('#000000').lineWidth(1).stroke();
+    columns.forEach((col, idx) => {
+      if (idx > 0) {
+        doc.moveTo(col.x, currentRowY).lineTo(col.x, currentRowY + rowHeight).stroke();
+      }
+    });
+
+    currentRowY += rowHeight;
+    totalNetSum += rowData.netAmount;
+    totalTaxSum += rowData.taxAmount;
+    totalGrossSum += rowData.grossAmount;
+    totalPcsSum += Number(rowData.pcs);
   }
 
-  const itemPcs = String(sale.qty || 1);
-  const itemQty = sale.weight ? parseFloat(String(sale.weight)).toFixed(3) : '-';
-  const itemNetAmount = Number(sale.amount || 0);
-  const itemVatPct = '15.00';
-  const itemTaxAmount = Number(sale.vat15 || 0);
-  const itemGrossAmount = itemNetAmount + itemTaxAmount;
-
-  doc.fontSize(8);
-  const descHeight = doc.heightOfString(itemDescription, { width: 155 });
-  const rowHeight = Math.max(30, descHeight + 10);
-  const rowY = tableHeaderY + headerHeight;
-
-  // Draw cells
-  doc.font('Helvetica').fontSize(8).fillColor('#000000');
-  
-  doc.text(itemNo, columns[0].x, rowY + (rowHeight - 8) / 2, { width: columns[0].w, align: 'center' });
-  doc.text(itemStockCode, columns[1].x, rowY + (rowHeight - 8) / 2, { width: columns[1].w, align: 'center' });
-  doc.text(itemDescription, columns[2].x, rowY + 5, { width: columns[2].w, align: 'left' });
-  doc.text(itemPcs, columns[3].x, rowY + (rowHeight - 8) / 2, { width: columns[3].w, align: 'center' });
-  doc.text(itemQty, columns[4].x, rowY + (rowHeight - 8) / 2, { width: columns[4].w, align: 'right' });
-  doc.text(formatCurrency(itemNetAmount), columns[5].x, rowY + (rowHeight - 8) / 2, { width: columns[5].w, align: 'right' });
-  doc.text(itemVatPct, columns[6].x, rowY + (rowHeight - 8) / 2, { width: columns[6].w, align: 'center' });
-  doc.text(formatCurrency(itemTaxAmount), columns[7].x, rowY + (rowHeight - 8) / 2, { width: columns[7].w, align: 'right' });
-  doc.text(formatCurrency(itemGrossAmount), columns[8].x, rowY + (rowHeight - 8) / 2, { width: columns[8].w, align: 'right' });
-
-  // Draw borders
-  doc.rect(40, rowY, 515, rowHeight).strokeColor('#000000').lineWidth(1).stroke();
-  columns.forEach((col, idx) => {
-    if (idx > 0) {
-      doc.moveTo(col.x, rowY).lineTo(col.x, rowY + rowHeight).stroke();
-    }
-  });
-
-  currentY = rowY + rowHeight;
+  currentY = currentRowY;
 
   // Row 1: Sub-totals align row
   let totalRowY = currentY;
@@ -333,10 +361,10 @@ export async function generateReceiptPDF(saleId: number): Promise<{ doc: PDFKit.
   doc.rect(40, totalRowY, 515, totalRowHeight).strokeColor('#000000').lineWidth(1).stroke();
   doc.font('Helvetica-Bold').fontSize(8);
 
-  doc.text(`Total (${itemPcs} Items)`, 45, totalRowY + 6, { width: columns[5].x - 45, align: 'right' });
-  doc.text(formatCurrency(itemNetAmount), columns[5].x, totalRowY + 6, { width: columns[5].w, align: 'right' });
-  doc.text(formatCurrency(itemTaxAmount), columns[7].x, totalRowY + 6, { width: columns[7].w, align: 'right' });
-  doc.text(formatCurrency(itemGrossAmount), columns[8].x, totalRowY + 6, { width: columns[8].w, align: 'right' });
+  doc.text(`Total (${totalPcsSum} Items)`, 45, totalRowY + 6, { width: columns[5].x - 45, align: 'right' });
+  doc.text(formatCurrency(totalNetSum), columns[5].x, totalRowY + 6, { width: columns[5].w, align: 'right' });
+  doc.text(formatCurrency(totalTaxSum), columns[7].x, totalRowY + 6, { width: columns[7].w, align: 'right' });
+  doc.text(formatCurrency(totalGrossSum), columns[8].x, totalRowY + 6, { width: columns[8].w, align: 'right' });
 
   doc.moveTo(columns[5].x, totalRowY).lineTo(columns[5].x, totalRowY + totalRowHeight).stroke();
   doc.moveTo(columns[6].x, totalRowY).lineTo(columns[6].x, totalRowY + totalRowHeight).stroke();
@@ -349,7 +377,7 @@ export async function generateReceiptPDF(saleId: number): Promise<{ doc: PDFKit.
   const scrapExchangeValue = linkedOdf ? Number(linkedOdf.amount || 0) : 0;
   const depositValue = Number(order?.deposit || 0) + Number(linkedCommande?.deposit || 0);
   
-  const finalNetAmount = Math.max(0, itemGrossAmount - scrapExchangeValue - depositValue);
+  const finalNetAmount = Math.max(0, totalGrossSum - scrapExchangeValue - depositValue);
   const totalBeforeVat = finalNetAmount / 1.15;
   const totalVatFinal = finalNetAmount - totalBeforeVat;
 

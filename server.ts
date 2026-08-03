@@ -5,7 +5,7 @@ import cors from "cors";
 import multer from "multer";
 import { createServer as createViteServer } from "vite";
 import { db, isPglite } from "./src/db/index";
-import { settings, stock, customers, receipts, orders, sales, odf, odfItems, users, rolesPermissions, auditLogs } from "./src/db/schema";
+import { settings, stock, customers, receipts, orders, sales, saleItems, odf, odfItems, users, rolesPermissions, auditLogs } from "./src/db/schema";
 import { eq, or, ilike, and, sql } from "drizzle-orm";
 import { authenticateToken, checkPermission } from "./src/middleware/auth";
 import { auditLogger } from "./src/middleware/audit";
@@ -54,7 +54,25 @@ async function startServer() {
       );
     `);
     await db.execute(sql`ALTER TABLE odf_items ADD COLUMN IF NOT EXISTS price NUMERIC(15, 2) DEFAULT 0.00;`);
-    console.log("Database migrations: stock_category_check dropped, category length increased, price added, gold_rate columns dropped, and odf_items table verified.");
+
+    // Create sale_items table if not exists
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS sale_items (
+        id SERIAL PRIMARY KEY,
+        sale_id INTEGER REFERENCES sales(id) ON DELETE CASCADE NOT NULL,
+        stock_id INTEGER REFERENCES stock(id) ON DELETE SET NULL,
+        barcode VARCHAR(100),
+        item_details TEXT,
+        qty INTEGER DEFAULT 1 NOT NULL,
+        unit_sales_price NUMERIC(15, 2),
+        amount NUMERIC(15, 2),
+        weight NUMERIC(10, 3),
+        fineness VARCHAR(20),
+        metal_type VARCHAR(50),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
+      );
+    `);
+    console.log("Database migrations: stock_category_check dropped, category length increased, price added, gold_rate columns dropped, odf_items, and sale_items tables verified.");
 
     // Seed default data if users/settings don't exist yet
     const existingUsers = await db.select().from(users).limit(1);
@@ -273,7 +291,24 @@ async function startServer() {
 
   // --- Sales Recording Endpoint ---
   app.post("/api/sales", authenticateToken, checkPermission('sales', 'create'), async (req, res) => {
-    const { customerId, barcode, paymentMode, chequeNumber, qty, amount, unitSalesPrice, itemDetails, orderId, discountAmount, discountPercentage, linkedOdfId, linkedCommandeId } = req.body;
+    const { 
+      customerId, 
+      paymentMode, 
+      chequeNumber, 
+      orderId, 
+      linkedOdfId, 
+      linkedCommandeId,
+      items: inputItems,
+      stock_ids,
+      // fallback single item fields:
+      barcode,
+      qty,
+      amount,
+      unitSalesPrice,
+      discountAmount,
+      discountPercentage,
+      itemDetails
+    } = req.body;
 
     try {
       const result = await db.transaction(async (tx) => {
@@ -295,7 +330,6 @@ async function startServer() {
             throw new Error("Le client associé à l'ODF lié est introuvable");
           }
           const cust = custRecords[0];
-          // KYC bypass: Allow sales without full KYC (e.g. NIC, phone, address are optional)
           if (!cust.name) {
             throw new Error("Le client associé à l'ODF doit avoir un nom.");
           }
@@ -309,45 +343,121 @@ async function startServer() {
           }
         }
 
-        // 1. Fetch item from stock to verify and get details
-        const stockItems = await tx.select().from(stock).where(and(eq(stock.barcode, barcode), eq(stock.status, 'Disponible'))).limit(1);
-        if (stockItems.length === 0) {
-          throw new Error("Item not found in stock or already sold");
+        // Standardize items list
+        let rawItemsList: any[] = [];
+        if (Array.isArray(inputItems) && inputItems.length > 0) {
+          rawItemsList = inputItems;
+        } else if (Array.isArray(stock_ids) && stock_ids.length > 0) {
+          rawItemsList = stock_ids.map((sId: any) => ({ stockId: typeof sId === 'object' ? sId.id || sId.stockId : sId }));
+        } else if (barcode) {
+          rawItemsList = [{
+            barcode,
+            qty: qty || 1,
+            amount,
+            unitSalesPrice,
+            discountAmount,
+            discountPercentage,
+            itemDetails
+          }];
         }
-        const item = stockItems[0];
 
-        // 2. Calculate VAT (15%)
-        const vat = Number(amount) * 0.15;
+        if (rawItemsList.length === 0) {
+          throw new Error("Aucun article spécifié pour la vente.");
+        }
 
-        // 3. Record the sale
+        // Process each item in cart
+        const processedItems: any[] = [];
+        let totalAmountNum = 0;
+        let totalDiscountNum = 0;
+
+        for (const rawItem of rawItemsList) {
+          let stockItem: any = null;
+
+          if (rawItem.stockId) {
+            const items = await tx.select().from(stock).where(and(eq(stock.id, rawItem.stockId), eq(stock.status, 'Disponible'))).limit(1);
+            if (items.length > 0) stockItem = items[0];
+          } else if (rawItem.barcode) {
+            const items = await tx.select().from(stock).where(and(eq(stock.barcode, rawItem.barcode), eq(stock.status, 'Disponible'))).limit(1);
+            if (items.length > 0) stockItem = items[0];
+          }
+
+          if (!stockItem) {
+            throw new Error(`Un article du panier (Code-barres: ${rawItem.barcode || rawItem.stockId || 'Inconnu'}) n'est plus disponible en stock.`);
+          }
+
+          const itemQty = Number(rawItem.qty || 1);
+          const itemNetPrice = rawItem.amount ? parseFloat(String(rawItem.amount)) : (stockItem.price ? parseFloat(stockItem.price) / 1.15 : 0);
+          const itemUnitPrice = rawItem.unitSalesPrice ? parseFloat(String(rawItem.unitSalesPrice)) : itemNetPrice;
+          const itemDisc = rawItem.discountAmount ? parseFloat(String(rawItem.discountAmount)) : 0;
+
+          totalAmountNum += itemNetPrice;
+          totalDiscountNum += itemDisc;
+
+          const desc = rawItem.itemDetails || `${stockItem.barcode || ''} - ${stockItem.category || ''} ${stockItem.subCategory || ''} ${stockItem.metalType ? `(${stockItem.metalType})` : ''}`.trim().replace(/\s+/g, ' ');
+
+          processedItems.push({
+            stockItem,
+            stockId: stockItem.id,
+            barcode: stockItem.barcode,
+            qty: itemQty,
+            itemDetails: desc,
+            unitSalesPrice: itemUnitPrice.toFixed(2),
+            amount: itemNetPrice.toFixed(2),
+            weight: stockItem.weightGrams,
+            fineness: stockItem.fineness,
+            metalType: stockItem.metalType
+          });
+        }
+
+        const totalVatNum = totalAmountNum * 0.15;
+        const mainStockItem = processedItems[0]?.stockItem;
+
+        // 1. Insert parent sale
         const newSale = await tx.insert(sales).values({
           customerId,
-          stockId: item.id,
+          stockId: mainStockItem ? mainStockItem.id : null,
           paymentMode,
           chequeNumber,
-          qty,
-          itemDetails: itemDetails || `${item.barcode || ''} - ${item.category || ''} ${item.subCategory || ''} ${item.metalType ? `(${item.metalType})` : ''}`.trim().replace(/\s+/g, ' '),
-          weight: item.weightGrams,
-          fineness: item.fineness,
-          unitSalesPrice: (unitSalesPrice && unitSalesPrice !== "") ? unitSalesPrice.toString() : null,
-          amount: (amount && amount !== "") ? amount.toString() : null,
-          discountAmount: (discountAmount !== undefined && discountAmount !== null && discountAmount !== "") ? discountAmount.toString() : null,
-          discountPercentage: (discountPercentage !== undefined && discountPercentage !== null && discountPercentage !== "") ? discountPercentage.toString() : null,
-          vat15: vat.toFixed(2),
-          metalType: item.metalType,
+          qty: processedItems.reduce((acc, curr) => acc + curr.qty, 0),
+          itemDetails: processedItems.length === 1 ? processedItems[0].itemDetails : `${processedItems.length} articles en panier`,
+          weight: mainStockItem ? mainStockItem.weightGrams : null,
+          fineness: mainStockItem ? mainStockItem.fineness : null,
+          unitSalesPrice: totalAmountNum.toFixed(2),
+          amount: totalAmountNum.toFixed(2),
+          discountAmount: totalDiscountNum.toFixed(2),
+          discountPercentage: (discountPercentage !== undefined && discountPercentage !== null) ? discountPercentage.toString() : '0.00',
+          vat15: totalVatNum.toFixed(2),
+          metalType: mainStockItem ? mainStockItem.metalType : null,
           orderId: orderId || lCommandeId || null,
           linkedOdfId: lOdfId,
           linkedCommandeId: lCommandeId,
         }).returning();
 
-        // 4. Mark as sold in stock
-        await tx.update(stock)
-          .set({ status: 'Vendu', soldAt: new Date(), updatedAt: new Date() })
-          .where(eq(stock.id, item.id));
+        const saleId = newSale[0].id;
 
-        // 5. Create associated receipt
+        // 2. Insert into sale_items table & mark stock items as sold
+        for (const pItem of processedItems) {
+          await tx.insert(saleItems).values({
+            saleId,
+            stockId: pItem.stockId,
+            barcode: pItem.barcode,
+            itemDetails: pItem.itemDetails,
+            qty: pItem.qty,
+            unitSalesPrice: pItem.unitSalesPrice,
+            amount: pItem.amount,
+            weight: pItem.weight,
+            fineness: pItem.fineness,
+            metalType: pItem.metalType,
+          });
+
+          await tx.update(stock)
+            .set({ status: 'Vendu', soldAt: new Date(), updatedAt: new Date() })
+            .where(eq(stock.id, pItem.stockId));
+        }
+
+        // 3. Create associated receipt
         const newReceipt = await tx.insert(receipts).values({
-          saleId: newSale[0].id
+          saleId
         }).returning();
 
         return {
@@ -363,53 +473,61 @@ async function startServer() {
       });
     } catch (error: any) {
       console.error("Sales Recording Error:", error);
-      const status = error.message === "Item not found in stock or already sold" ? 404 : 500;
-      res.status(status).json({ error: error.message || "Failed to record sale", cause: error.cause?.message || error.cause });
+      res.status(500).json({ error: error.message || "Failed to record sale" });
     }
   });
 
   app.post("/api/sales/:id/cancel", authenticateToken, async (req: any, res) => {
-    // Visible only to Admin accounts
     if (req.user?.role !== 'Admin') return res.status(403).json({ error: "Admin access required" });
     
     const saleId = parseInt(req.params.id);
 
     try {
       await db.transaction(async (tx) => {
-        // 1. Get sale record
         const saleRecords = await tx.select().from(sales).where(eq(sales.id, saleId)).limit(1);
         if (saleRecords.length === 0) throw new Error("Vente non trouvée");
         const sale = saleRecords[0];
 
         if (sale.status === 'Cancelled') throw new Error("La vente est déjà annulée");
 
-        // 2. Update item in stock to 'Disponible'
+        // Get all items in sale_items
+        const items = await tx.select().from(saleItems).where(eq(saleItems.saleId, saleId));
+        const stockIdsToRestore = new Set<number>();
+
+        if (items.length > 0) {
+          items.forEach(it => { if (it.stockId) stockIdsToRestore.add(it.stockId); });
+        }
         if (sale.stockId) {
+          stockIdsToRestore.add(sale.stockId);
+        }
+
+        // Restore all stock items
+        for (const sId of stockIdsToRestore) {
           await tx.update(stock)
             .set({ 
               status: 'Disponible', 
               soldAt: null, 
               updatedAt: new Date() 
             })
-            .where(eq(stock.id, sale.stockId));
+            .where(eq(stock.id, sId));
         }
 
-        // 3. Update sale status to 'Cancelled'
+        // Update sale status to 'Cancelled'
         await tx.update(sales)
           .set({ status: 'Cancelled' })
           .where(eq(sales.id, saleId));
 
-        // 4. Log to audit trail
+        // Log to audit trail
         await tx.insert(auditLogs).values({
           userId: req.user.id,
           actionType: 'CANCEL_SALE',
-          details: { saleId, stockId: sale.stockId },
+          details: { saleId, restoredStockIds: Array.from(stockIdsToRestore) },
           ipAddress: req.ip,
           userAgent: req.get('user-agent')
         });
       });
 
-      res.json({ message: "Vente annulée avec succès. L'article est de nouveau en stock." });
+      res.json({ message: "Vente annulée avec succès. Les articles sont de nouveau en stock." });
     } catch (error: any) {
       console.error("Sale Cancellation Error:", error);
       res.status(500).json({ error: error.message || "Erreur lors de l'annulation de la vente" });
@@ -958,13 +1076,17 @@ async function startServer() {
       const sId = parseInt(saleId);
 
       const { generateDeclarationPDF } = await import("./src/services/pdfService");
-      const { doc } = await generateDeclarationPDF(sId);
+      const result = await generateDeclarationPDF(sId);
       
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `inline; filename=tradein-declaration-${saleId}.pdf`);
       
-      doc.pipe(res);
-      doc.end();
+      if (result.buffer) {
+        res.send(result.buffer);
+      } else if (result.doc) {
+        result.doc.pipe(res);
+        result.doc.end();
+      }
     } catch (error: any) {
       console.error("Declaration PDF Generation Error:", error);
       res.status(500).json({ error: error.message || "Failed to generate trade-in declaration PDF" });
@@ -978,13 +1100,17 @@ async function startServer() {
       const odfId = parseInt(id);
 
       const { generateOdfDeclarationPDF } = await import("./src/services/pdfService");
-      const { doc } = await generateOdfDeclarationPDF(odfId);
+      const result = await generateOdfDeclarationPDF(odfId);
       
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `inline; filename=odf-declaration-${odfId}.pdf`);
       
-      doc.pipe(res);
-      doc.end();
+      if (result.buffer) {
+        res.send(result.buffer);
+      } else if (result.doc) {
+        result.doc.pipe(res);
+        result.doc.end();
+      }
     } catch (error: any) {
       console.error("ODF Declaration PDF Generation Error:", error);
       res.status(500).json({ error: error.message || "Failed to generate ODF declaration PDF" });

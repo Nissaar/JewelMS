@@ -6,7 +6,7 @@ import {
   ShoppingCart, Barcode, User, CreditCard, Search, 
   Plus, Check, AlertCircle, Loader2, Banknote,
   Smartphone, Mail, Download, History, X, UserPlus,
-  Scale, Tag, Info, Camera, ArrowLeft, FileText
+  Scale, Tag, Info, Camera, ArrowLeft, FileText, Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import BarcodeScanner from '../components/BarcodeScanner';
@@ -20,10 +20,20 @@ const Sales = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
   
-  // Scanned Item State
+  // Scanned Item & Cart State
   const [barcode, setBarcode] = useState('');
   const [scannedItem, setScannedItem] = useState<any>(null);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [cartItems, setCartItems] = useState<Array<{
+    id: string | number;
+    stockItem: any;
+    barcode: string;
+    qty: number;
+    editedInclusivePrice: string;
+    netPrice: number;
+    computedDiscountAmount: number;
+    computedDiscountPercentage: number;
+  }>>([]);
   
   // Stock Search State
   const [stockSearchResults, setStockSearchResults] = useState<any[]>([]);
@@ -44,6 +54,82 @@ const Sales = () => {
   const [odfsList, setOdfsList] = useState<any[]>([]);
   const [commandesList, setCommandesList] = useState<any[]>([]);
   const [customersList, setCustomersList] = useState<any[]>([]);
+
+  // Sale Details
+  const [paymentMode, setPaymentMode] = useState('Cash');
+  const [chequeNumber, setChequeNumber] = useState('');
+  const [finalPrice, setFinalPrice] = useState('');
+  const [editedInclusivePrice, setEditedInclusivePrice] = useState('');
+
+  // Cart Calculations using .reduce()
+  const totalNetHT = cartItems.reduce((sum, item) => sum + (item.netPrice * item.qty), 0);
+  const vatAmount = totalNetHT * 0.15;
+  const totalWithVat = totalNetHT * 1.15;
+  const totalDiscount = cartItems.reduce((sum, item) => sum + (item.computedDiscountAmount * item.qty), 0);
+
+  const handleAddToCart = (itemToAdd: any, customPriceTtc?: string) => {
+    const exists = cartItems.some(ci => ci.stockItem.id === itemToAdd.id || (ci.barcode && ci.barcode === itemToAdd.barcode));
+    if (exists) {
+      setMessage({ type: 'error', text: 'Cet article est déjà dans le panier.' });
+      return;
+    }
+
+    const rawPriceTtc = customPriceTtc !== undefined ? customPriceTtc : (itemToAdd.price ? Number(itemToAdd.price).toString() : '0');
+    const priceTtcNum = parseFloat(rawPriceTtc);
+    const net = !isNaN(priceTtcNum) && priceTtcNum > 0 ? priceTtcNum / 1.15 : 0;
+    
+    const originalPrice = parseFloat(itemToAdd.price || '0');
+    let discAmt = 0;
+    let discPct = 0;
+    if (originalPrice > 0 && priceTtcNum < originalPrice) {
+      discAmt = originalPrice - priceTtcNum;
+      discPct = (discAmt / originalPrice) * 100;
+    }
+
+    const newItem = {
+      id: itemToAdd.id || itemToAdd.barcode || Date.now(),
+      stockItem: itemToAdd,
+      barcode: itemToAdd.barcode || '',
+      qty: 1,
+      editedInclusivePrice: rawPriceTtc,
+      netPrice: net,
+      computedDiscountAmount: discAmt,
+      computedDiscountPercentage: discPct,
+    };
+
+    setCartItems(prev => [...prev, newItem]);
+    setScannedItem(null);
+    setBarcode('');
+    setEditedInclusivePrice('');
+    setFinalPrice('');
+    setMessage({ type: '', text: '' });
+  };
+
+  const handleRemoveFromCart = (index: number) => {
+    setCartItems(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleUpdateCartItemPrice = (index: number, newPriceTtc: string) => {
+    setCartItems(prev => prev.map((item, i) => {
+      if (i !== index) return item;
+      const priceNum = parseFloat(newPriceTtc);
+      const net = !isNaN(priceNum) && priceNum > 0 ? priceNum / 1.15 : 0;
+      const origPrice = parseFloat(item.stockItem.price || '0');
+      let discAmt = 0;
+      let discPct = 0;
+      if (origPrice > 0 && priceNum < origPrice) {
+        discAmt = origPrice - priceNum;
+        discPct = (discAmt / origPrice) * 100;
+      }
+      return {
+        ...item,
+        editedInclusivePrice: newPriceTtc,
+        netPrice: net,
+        computedDiscountAmount: discAmt,
+        computedDiscountPercentage: discPct
+      };
+    }));
+  };
 
   useEffect(() => {
     if (saleStep === 'customer' && token) {
@@ -105,14 +191,6 @@ const Sales = () => {
     }
   };
   
-  // Sale Details
-  const [paymentMode, setPaymentMode] = useState('Cash');
-  const [chequeNumber, setChequeNumber] = useState('');
-  const [finalPrice, setFinalPrice] = useState('');
-  const [editedInclusivePrice, setEditedInclusivePrice] = useState('');
-  const [vatAmount, setVatAmount] = useState(0);
-  const [totalWithVat, setTotalWithVat] = useState(0);
-  
   // Post-Sale State
   const [completedSale, setCompletedSale] = useState<any>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -128,30 +206,16 @@ const Sales = () => {
     }
   }, [saleStep]);
 
-  useEffect(() => {
-    if (finalPrice) {
-      const price = parseFloat(finalPrice);
-      if (!isNaN(price)) {
-        const vat = price * 0.15;
-        setVatAmount(vat);
-        setTotalWithVat(price + vat);
-      }
-    } else {
-      setVatAmount(0);
-      setTotalWithVat(0);
-    }
-  }, [finalPrice]);
-
   // Debounce Stock Search
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (!scannedItem && saleStep === 'item') {
+      if (saleStep === 'item' && barcode) {
         handleStockSearch();
       }
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [barcode, scannedItem, saleStep]);
+  }, [barcode, saleStep]);
 
   const handleStockSearch = async () => {
     try {
@@ -165,54 +229,22 @@ const Sales = () => {
   };
 
   const handleSelectStockItem = (item: any) => {
-    setScannedItem(item);
-    setBarcode(item.barcode);
+    handleAddToCart(item);
     setStockSearchResults([]);
-    if (item.price && Number(item.price) > 0) {
-      setEditedInclusivePrice(Number(item.price).toString());
-      const net = Number(item.price) / 1.15;
-      setFinalPrice(net.toFixed(2));
-    } else {
-      setEditedInclusivePrice('');
-      setFinalPrice(''); 
-    }
-    setMessage({ type: '', text: '' });
   };
 
   const fetchItemByBarcode = async (codeToFetch: string) => {
     if (!codeToFetch) return;
     
     setIsLoading(true);
-    setBarcode(codeToFetch);
     try {
       const res = await axios.get(`/api/stock/${codeToFetch}`, { headers: { Authorization: `Bearer ${token}` } });
-      setScannedItem(res.data);
-      if (res.data.price && Number(res.data.price) > 0) {
-        setEditedInclusivePrice(Number(res.data.price).toString());
-        const net = Number(res.data.price) / 1.15;
-        setFinalPrice(net.toFixed(2));
-      } else {
-        setEditedInclusivePrice('');
-        setFinalPrice(''); // Reset price for new item
-      }
-      setMessage({ type: '', text: '' });
+      handleAddToCart(res.data);
       setIsScannerOpen(false);
     } catch (err: any) {
       setMessage({ type: 'error', text: 'Article non trouvé dans le stock.' });
-      setScannedItem(null);
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handlePriceOverride = (val: string) => {
-    setEditedInclusivePrice(val);
-    const newPrice = parseFloat(val);
-    if (!isNaN(newPrice) && newPrice > 0) {
-      const net = newPrice / 1.15;
-      setFinalPrice(net.toFixed(2));
-    } else {
-      setFinalPrice('');
     }
   };
 
@@ -231,32 +263,25 @@ const Sales = () => {
     }
   };
 
-  const originalPrice = scannedItem ? parseFloat(scannedItem.price || '0') : 0;
-  const currentPrice = parseFloat(editedInclusivePrice || '0');
-  
-  let computedDiscountAmount = 0;
-  let computedDiscountPercentage = 0;
-  if (originalPrice > 0 && currentPrice < originalPrice && currentPrice > 0) {
-    computedDiscountAmount = originalPrice - currentPrice;
-    computedDiscountPercentage = (computedDiscountAmount / originalPrice) * 100;
-  }
-
   const handleFinalizeSale = async () => {
-    if (!finalPrice || !selectedCustomer || !scannedItem) return;
+    if (cartItems.length === 0 || !selectedCustomer) return;
     
     setIsLoading(true);
     try {
       const salePayload = {
         customerId: selectedCustomer.id,
-        barcode: scannedItem.barcode,
         paymentMode,
         chequeNumber: paymentMode === 'Cheque' ? chequeNumber : null,
-        qty: 1,
-        amount: finalPrice,
-        unitSalesPrice: finalPrice,
-        discountAmount: computedDiscountAmount > 0 ? computedDiscountAmount.toFixed(2) : '0.00',
-        discountPercentage: computedDiscountPercentage > 0 ? computedDiscountPercentage.toFixed(2) : '0.00',
-        itemDetails: `${scannedItem.subCategory} (${scannedItem.metalType} ${scannedItem.fineness})`,
+        items: cartItems.map(item => ({
+          stockId: item.stockItem.id,
+          barcode: item.barcode,
+          qty: item.qty,
+          amount: item.netPrice.toFixed(2),
+          unitSalesPrice: item.netPrice.toFixed(2),
+          discountAmount: item.computedDiscountAmount > 0 ? item.computedDiscountAmount.toFixed(2) : '0.00',
+          discountPercentage: item.computedDiscountPercentage > 0 ? item.computedDiscountPercentage.toFixed(2) : '0.00',
+          itemDetails: `${item.stockItem.subCategory || item.stockItem.category || ''} (${item.stockItem.metalType || ''} ${item.stockItem.fineness || ''})`.trim()
+        })),
         linkedOdfId: linkedOdf?.id || null,
         linkedCommandeId: linkedCommande?.id || null,
       };
@@ -477,35 +502,75 @@ const Sales = () => {
                  </button>
                </form>
 
-               {scannedItem ? (
-                 <div className="bg-slate-50 p-6 rounded-2xl border-2 border-amber-100 flex items-start gap-6">
-                    <div className="h-24 w-24 bg-white rounded-xl shadow-sm flex items-center justify-center text-amber-500">
-                      <ShoppingCart size={48} />
-                    </div>
-                    <div className="flex-1 grid grid-cols-2 gap-4">
-                      <div>
-                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Détails</p>
-                        <p className="text-lg font-black text-slate-900">{getItemFullDescription(scannedItem)}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Code-Barres</p>
-                        <p className="text-md font-bold text-slate-900 font-mono">{scannedItem.barcode}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Poids</p>
-                        <p className="text-2xl font-black text-amber-600 italic tracking-tighter">
-                          {scannedItem.category === 'Jewellery' ? `${scannedItem.weightGrams}g` : '-'}
-                        </p>
-                      </div>
-                      <div className="flex items-end justify-end">
-                        <button 
-                          onClick={() => setSaleStep('customer')}
-                          className="bg-amber-500 text-slate-900 px-6 py-3 rounded-xl font-bold hover:bg-amber-400 transition-all flex items-center gap-2"
-                        >
-                          Continuer <Plus size={18} />
-                        </button>
-                      </div>
-                    </div>
+               {cartItems.length > 0 ? (
+                 <div className="space-y-4 border-t border-slate-100 pt-6">
+                   <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                     <ShoppingCart className="text-amber-500" size={20} /> Panier d'Achat ({cartItems.length} article{cartItems.length > 1 ? 's' : ''})
+                   </h3>
+                   <div className="overflow-x-auto">
+                     <table className="w-full text-left border-collapse">
+                       <thead>
+                         <tr className="border-b border-slate-100 text-slate-400 text-xs uppercase font-extrabold pb-3 font-bold">
+                           <th className="pb-3 pr-2">Article / Barcode</th>
+                           <th className="pb-3 px-2 text-center text-xs">Poids</th>
+                           <th className="pb-3 px-2 text-right text-xs">Prix TTC (Rs)</th>
+                           <th className="pb-3 pl-2 text-center text-xs">Action</th>
+                         </tr>
+                       </thead>
+                       <tbody className="divide-y divide-slate-50">
+                         {cartItems.map((item, idx) => (
+                           <tr key={item.id} className="text-sm">
+                             <td className="py-4 pr-2 font-bold text-slate-900">
+                               <div>{getItemFullDescription(item.stockItem)}</div>
+                               <div className="text-xs text-slate-400 font-mono">{item.barcode}</div>
+                             </td>
+                             <td className="py-4 px-2 text-center font-bold text-amber-600 italic">
+                               {item.stockItem.category === 'Jewellery' && item.stockItem.weightGrams ? `${item.stockItem.weightGrams}g` : '-'}
+                             </td>
+                             <td className="py-4 px-2 text-right">
+                               <input 
+                                 type="number"
+                                 step="0.01"
+                                 className="w-28 bg-slate-50 border border-slate-200 rounded-xl py-1 px-2 font-extrabold text-right focus:border-amber-400 outline-none text-slate-900 transition-all font-mono"
+                                 value={item.editedInclusivePrice}
+                                 onChange={(e) => handleUpdateCartItemPrice(idx, e.target.value)}
+                               />
+                             </td>
+                             <td className="py-4 pl-2 text-center">
+                               <button 
+                                 onClick={() => handleRemoveFromCart(idx)}
+                                 className="text-slate-400 hover:text-red-500 p-2 rounded-lg transition-colors"
+                                 title="Supprimer du panier"
+                               >
+                                 <Trash2 size={18} />
+                               </button>
+                             </td>
+                           </tr>
+                         ))}
+                       </tbody>
+                     </table>
+                   </div>
+
+                   <div className="flex justify-between items-center bg-slate-50 p-4 rounded-2xl border border-slate-100 flex-wrap gap-4">
+                     <div>
+                       <p className="text-xs font-bold text-slate-400 uppercase">Total Net HT</p>
+                       <p className="text-lg font-black text-slate-900">{formatCurrency(totalNetHT)}</p>
+                     </div>
+                     <div>
+                       <p className="text-xs font-bold text-slate-400 uppercase">TVA (15%)</p>
+                       <p className="text-lg font-black text-amber-600">{formatCurrency(vatAmount)}</p>
+                     </div>
+                     <div>
+                       <p className="text-xs font-bold text-slate-400 uppercase">Total TTC</p>
+                       <p className="text-2xl font-black text-slate-900">{formatCurrency(totalWithVat)}</p>
+                     </div>
+                     <button 
+                       onClick={() => setSaleStep('customer')}
+                       className="bg-amber-500 text-slate-900 px-6 py-3 rounded-xl font-bold hover:bg-amber-400 transition-all flex items-center gap-2"
+                     >
+                       Continuer <Plus size={18} />
+                     </button>
+                   </div>
                  </div>
                ) : message.text ? (
                  <div className="p-10 text-center space-y-4 border-2 border-dashed border-slate-100 rounded-3xl">
@@ -518,7 +583,7 @@ const Sales = () => {
                ) : (
                  <div className="p-20 text-center space-y-4 border-2 border-dashed border-slate-100 rounded-3xl">
                     <Barcode className="mx-auto text-slate-200" size={64} />
-                    <p className="text-slate-400 font-medium">En attente d'un scan ou d'une saisie...</p>
+                    <p className="text-slate-400 font-medium">En attente d'un scan ou d'une saisie pour ajouter au panier...</p>
                  </div>
                )}
             </div>
@@ -741,54 +806,47 @@ const Sales = () => {
             <div className="space-y-6">
                <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100">
                  <h3 className="text-xl font-bold text-slate-900 mb-6 flex items-center gap-2">
-                   <ShoppingCart className="text-amber-500" size={20} /> Panier d'Achat (POS Cart Table)
+                   <ShoppingCart className="text-amber-500" size={20} /> Panier d'Achat ({cartItems.length} article{cartItems.length > 1 ? 's' : ''})
                  </h3>
                  <div className="overflow-x-auto">
                    <table className="w-full text-left border-collapse">
                      <thead>
                        <tr className="border-b border-slate-100 text-slate-400 text-xs uppercase font-extrabold pb-3 font-bold">
-                         <th className="pb-3 pr-2">Article</th>
-                         <th className="pb-3 px-2 text-center text-xs">Qté</th>
+                         <th className="pb-3 pr-2">Article / Barcode</th>
                          <th className="pb-3 px-2 text-center text-xs">Poids</th>
-                         <th className="pb-3 pl-2 text-right text-xs">Prix Unit. (Rs TTC)</th>
+                         <th className="pb-3 px-2 text-right text-xs">Prix TTC (Rs)</th>
+                         <th className="pb-3 pl-2 text-center text-xs">Action</th>
                        </tr>
                      </thead>
                      <tbody className="divide-y divide-slate-50">
-                       <tr className="text-sm">
-                         <td className="py-4 pr-2 font-black text-slate-900">
-                           <div>{getItemFullDescription(scannedItem)}</div>
-
-                         </td>
-                         <td className="py-4 px-2 text-center font-bold text-slate-700">1</td>
-                         <td className="py-4 px-2 text-center font-bold text-amber-600 italic">
-                           {scannedItem.category === 'Jewellery' && scannedItem.weightGrams ? `${scannedItem.weightGrams}g` : '-'}
-                         </td>
-                         <td className="py-4 pl-2 text-right">
-                           <div className="flex flex-col items-end gap-1">
-                             <div className="flex items-center gap-2 justify-end">
-                               {computedDiscountPercentage > 0 && (
-                                 <span className="bg-red-50 text-red-600 text-xs font-black px-2 py-1 rounded-full animate-pulse whitespace-nowrap">
-                                   -{computedDiscountPercentage.toFixed(0)}%
-                                 </span>
-                               )}
-                               <div className="relative w-32">
-                                 <input 
-                                   type="number"
-                                   step="0.01"
-                                   className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-1 px-2 font-extrabold text-right focus:border-amber-400 outline-none text-slate-900 transition-all font-mono"
-                                   value={editedInclusivePrice}
-                                   onChange={(e) => handlePriceOverride(e.target.value)}
-                                 />
-                               </div>
-                             </div>
-                             {computedDiscountAmount > 0 && (
-                               <span className="text-[10px] text-red-500 font-bold whitespace-nowrap">
-                                 Économie: {formatCurrency(computedDiscountAmount)}
-                                </span>
-                             )}
-                           </div>
-                         </td>
-                       </tr>
+                       {cartItems.map((item, idx) => (
+                         <tr key={item.id} className="text-sm">
+                           <td className="py-4 pr-2 font-bold text-slate-900">
+                             <div>{getItemFullDescription(item.stockItem)}</div>
+                             <div className="text-xs text-slate-400 font-mono">{item.barcode}</div>
+                           </td>
+                           <td className="py-4 px-2 text-center font-bold text-amber-600 italic">
+                             {item.stockItem.category === 'Jewellery' && item.stockItem.weightGrams ? `${item.stockItem.weightGrams}g` : '-'}
+                           </td>
+                           <td className="py-4 px-2 text-right">
+                             <input 
+                               type="number"
+                               step="0.01"
+                               className="w-28 bg-slate-50 border border-slate-200 rounded-xl py-1 px-2 font-extrabold text-right focus:border-amber-400 outline-none text-slate-900 transition-all font-mono"
+                               value={item.editedInclusivePrice}
+                               onChange={(e) => handleUpdateCartItemPrice(idx, e.target.value)}
+                             />
+                           </td>
+                           <td className="py-4 pl-2 text-center">
+                             <button 
+                               onClick={() => handleRemoveFromCart(idx)}
+                               className="text-slate-400 hover:text-red-500 p-2 rounded-lg transition-colors"
+                             >
+                               <Trash2 size={18} />
+                             </button>
+                           </td>
+                         </tr>
+                       ))}
                      </tbody>
                    </table>
                  </div>
@@ -796,7 +854,7 @@ const Sales = () => {
                  {/* Client display */}
                  <div className="mt-6 pt-4 border-t border-slate-100 flex justify-between items-center text-sm font-medium">
                    <span className="text-slate-500">Client Facturé:</span>
-                   <span className="font-extrabold text-slate-900">{selectedCustomer.name}</span>
+                   <span className="font-extrabold text-slate-900">{selectedCustomer?.name}</span>
                  </div>
                </div>
 
@@ -804,7 +862,7 @@ const Sales = () => {
                   <div className="space-y-3">
                     <div className="flex justify-between items-center">
                       <span className="text-slate-400 font-bold uppercase text-xs tracking-widest">Sous-Total (Excl. TVA)</span>
-                      <span className="text-xl font-bold">{finalPrice || '0'}</span>
+                      <span className="text-xl font-bold">{formatCurrency(totalNetHT)}</span>
                     </div>
                     <div className="flex justify-between items-center text-amber-400">
                       <span className="font-bold uppercase text-xs tracking-widest">TVA (15%)</span>
@@ -844,15 +902,14 @@ const Sales = () => {
                <h2 className="text-2xl font-black text-slate-900 mb-8">Détails du Paiement</h2>
                <div className="space-y-6">
                   <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-2">Prix de Vente (Sans TVA)</label>
+                    <label className="block text-sm font-bold text-slate-700 mb-2">Montant HT Total</label>
                     <div className="relative">
                       <Banknote className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={24} />
                       <input 
-                        type="number"
-                        placeholder="Ex: 5000"
-                        className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-4 pl-14 pr-4 text-2xl font-black text-slate-900 outline-none focus:border-amber-400 transition-all font-mono"
-                        value={finalPrice}
-                        onChange={(e) => setFinalPrice(e.target.value)}
+                        type="text"
+                        disabled
+                        className="w-full bg-slate-100 border-2 border-slate-100 rounded-2xl py-4 pl-14 pr-4 text-2xl font-black text-slate-900 outline-none font-mono"
+                        value={formatCurrency(totalNetHT)}
                       />
                     </div>
                   </div>
@@ -890,7 +947,7 @@ const Sales = () => {
                   <div className="pt-8 flex flex-col gap-3">
                     <button 
                       onClick={handleFinalizeSale}
-                      disabled={isLoading || !finalPrice}
+                      disabled={isLoading || cartItems.length === 0}
                       className="w-full bg-emerald-600 text-white py-5 rounded-2xl font-black text-xl shadow-2xl flex items-center justify-center gap-3 hover:bg-emerald-700 transition-all disabled:opacity-50"
                     >
                       {isLoading ? <Loader2 className="animate-spin" /> : <>Finaliser & Facturer <PlusCircle size={24}/></>}

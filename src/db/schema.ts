@@ -102,6 +102,21 @@ export const sales = pgTable('sales', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
+export const saleItems = pgTable('sale_items', {
+  id: serial('id').primaryKey(),
+  saleId: integer('sale_id').references(() => sales.id, { onDelete: 'cascade' }).notNull(),
+  stockId: integer('stock_id').references(() => stock.id, { onDelete: 'set null' }),
+  barcode: varchar('barcode', { length: 100 }),
+  itemDetails: text('item_details'),
+  qty: integer('qty').default(1).notNull(),
+  unitSalesPrice: numeric('unit_sales_price', { precision: 15, scale: 2 }),
+  amount: numeric('amount', { precision: 15, scale: 2 }),
+  weight: numeric('weight', { precision: 10, scale: 3 }),
+  fineness: varchar('fineness', { length: 20 }),
+  metalType: varchar('metal_type', { length: 50 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
 export const receipts = pgTable('receipts', {
   id: serial('id').primaryKey(),
   receiptSerialNumber: serial('receipt_serial_number'),

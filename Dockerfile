@@ -31,6 +31,7 @@ RUN npm install --omit=dev
 
 # Copy the built application from the builder stage
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/src/templates ./src/templates
 
 # The backend bundle uses --packages=external, so we need the production node_modules
 # which we just installed in this stage.
