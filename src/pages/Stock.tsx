@@ -8,7 +8,7 @@ import {
   Package, Plus, Search, Filter, Edit2, Trash2, Save, X, 
   Settings as SettingsIcon, Check, AlertCircle, Loader2,
   ChevronDown, Barcode, Scale, Info, Tag, History, Camera,
-  Coins
+  Coins, Copy, Hash
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -38,6 +38,7 @@ const Stock = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [view, setView] = useState<'list' | 'add' | 'config'>('list');
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [bulkEditBaseCode, setBulkEditBaseCode] = useState<string | null>(null);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState('All');
@@ -56,7 +57,8 @@ const Stock = () => {
     metalType: '',
     fineness: '',
     weightGrams: '',
-    price: ''
+    price: '',
+    quantity: 1
   });
 
   const [allSubCategories, setAllSubCategories] = useState<any[]>([]);
@@ -172,16 +174,67 @@ const Stock = () => {
     setView('add');
   };
 
+  // Helper to extract base item code from a suffixed code like "HJ01-3" -> "HJ01"
+  const getBaseItemCode = (itemCode?: string): string | null => {
+    if (!itemCode) return null;
+    const match = itemCode.match(/^(.+)-\d+$/);
+    return match ? match[1] : null;
+  };
+
+  // Check if an item belongs to a bulk group
+  const isBulkItem = (item: StockItem): boolean => {
+    return getBaseItemCode(item.itemCode) !== null;
+  };
+
+  // Count remaining items in a bulk group
+  const getBulkGroupCount = (baseCode: string): number => {
+    return stockItems.filter(i => i.itemCode && i.itemCode.startsWith(`${baseCode}-`)).length;
+  };
+
+  const handleBulkEdit = (item: StockItem) => {
+    const baseCode = getBaseItemCode(item.itemCode);
+    if (!baseCode) return;
+    setBulkEditBaseCode(baseCode);
+    setEditingId(null);
+    setFormData({
+      barcode: '',
+      itemCode: '',
+      category: item.category,
+      subCategory: item.subCategory,
+      stockType: item.stockType,
+      brand: item.brand || '',
+      yearsOfGuarantee: item.yearsOfGuarantee || 0,
+      serialNumber: item.serialNumber || '',
+      metalType: item.metalType || '',
+      fineness: item.fineness || '',
+      weightGrams: item.weightGrams || '',
+      price: item.price || '',
+      quantity: 1
+    });
+    setView('add');
+  };
+
   const handleSubmitStock = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
     try {
-      if (editingId) {
-        await axios.put(`/api/stock/${editingId}`, formData, { headers: { Authorization: `Bearer ${token}` } });
+      if (bulkEditBaseCode) {
+        // Bulk edit mode — update all remaining items in the group
+        const { barcode, itemCode, quantity, ...updateFields } = formData;
+        await axios.put('/api/stock/bulk-edit', 
+          { baseItemCode: bulkEditBaseCode, ...updateFields }, 
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const count = getBulkGroupCount(bulkEditBaseCode);
+        setMessage({ type: 'success', text: `${count} articles du groupe mis à jour` });
+      } else if (editingId) {
+        const { quantity, ...updateData } = formData;
+        await axios.put(`/api/stock/${editingId}`, updateData, { headers: { Authorization: `Bearer ${token}` } });
         setMessage({ type: 'success', text: 'Article mis à jour' });
       } else {
+        const qty = parseInt(formData.quantity) || 1;
         await axios.post('/api/stock', formData, { headers: { Authorization: `Bearer ${token}` } });
-        setMessage({ type: 'success', text: 'Article ajouté au stock' });
+        setMessage({ type: 'success', text: qty > 1 ? `${qty} articles ajoutés au stock` : 'Article ajouté au stock' });
       }
       
       setFormData({
@@ -196,9 +249,11 @@ const Stock = () => {
         metalType: metadata.stock_metal_types?.[0] || '',
         fineness: metadata.stock_fineness_options?.[0] || '',
         weightGrams: '',
-        price: ''
+        price: '',
+        quantity: 1
       });
       setEditingId(null);
+      setBulkEditBaseCode(null);
       fetchStock();
       setView('list');
     } catch (err: any) {
@@ -266,6 +321,7 @@ const Stock = () => {
               <button 
                 onClick={() => {
                   setEditingId(null);
+                  setBulkEditBaseCode(null);
                   setView('add');
                 }}
                 className="p-3 bg-amber-500 text-slate-900 rounded-xl hover:bg-amber-400 transition-all shadow-lg flex items-center gap-2 font-bold"
@@ -418,9 +474,19 @@ const Stock = () => {
                               <button 
                                 onClick={() => handleEdit(item)}
                                 className="p-2 text-slate-400 hover:text-amber-500 transition-colors"
+                                title="Modifier cet article"
                               >
                                 <Edit2 size={18} />
                               </button>
+                              {isBulkItem(item) && (
+                                <button 
+                                  onClick={() => handleBulkEdit(item)}
+                                  className="p-2 text-slate-400 hover:text-indigo-500 transition-colors"
+                                  title={`Modifier tout le groupe ${getBaseItemCode(item.itemCode)}`}
+                                >
+                                  <Copy size={18} />
+                                </button>
+                              )}
                               <button 
                                 onClick={() => handleDelete(item.id)}
                                 className="p-2 text-slate-400 hover:text-red-500 transition-colors"
@@ -449,70 +515,123 @@ const Stock = () => {
             {/* Form */}
             <div className="w-full bg-white rounded-3xl shadow-xl border border-slate-100 overflow-hidden">
               <div className="p-8 bg-slate-900 text-white">
-                <h3 className="text-2xl font-bold">{editingId ? 'Modifier l\'Article' : 'Nouvel Article'}</h3>
-                <p className="text-slate-400 font-medium">{editingId ? 'Mettez à jour les informations de l\'article' : 'Remplissez les informations de l\'article'}</p>
+                <h3 className="text-2xl font-bold">
+                  {bulkEditBaseCode 
+                    ? `Modifier le Groupe — ${bulkEditBaseCode}` 
+                    : editingId ? 'Modifier l\'Article' : 'Nouvel Article'}
+                </h3>
+                <p className="text-slate-400 font-medium">
+                  {bulkEditBaseCode 
+                    ? `${getBulkGroupCount(bulkEditBaseCode)} articles disponibles seront modifiés`
+                    : editingId ? 'Mettez à jour les informations de l\'article' : 'Remplissez les informations de l\'article'}
+                </p>
+                {bulkEditBaseCode && (
+                  <div className="mt-3 px-4 py-2 bg-indigo-600/30 border border-indigo-400/30 rounded-xl text-indigo-200 text-sm font-medium flex items-center gap-2">
+                    <Info size={16} />
+                    Les codes-barres et codes articles resteront inchangés (uniques par article)
+                  </div>
+                )}
               </div>
               
               <form onSubmit={handleSubmitStock} className="p-8 space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <label className="block text-sm font-bold text-slate-700">Code-Barres / SKU</label>
-                      <button 
-                        type="button"
-                        onClick={() => setIsScannerOpen(!isScannerOpen)}
-                        className={`flex items-center gap-1 text-xs font-black px-2 py-1 rounded-lg transition-all ${
-                          isScannerOpen ? 'bg-red-50 text-red-600' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
-                        }`}
-                      >
-                        {isScannerOpen ? <X size={14} /> : <Camera size={14} />}
-                        {isScannerOpen ? 'Fermer Caméra' : 'Scan avec Caméra'}
-                      </button>
-                    </div>
-                    
-                    <AnimatePresence>
-                      {isScannerOpen && (
-                        <motion.div 
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: 'auto', opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          className="mb-4 overflow-hidden"
+                  {/* Barcode — hidden in bulk edit mode */}
+                  {!bulkEditBaseCode && (
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="block text-sm font-bold text-slate-700">Code-Barres / SKU</label>
+                        <button 
+                          type="button"
+                          onClick={() => setIsScannerOpen(!isScannerOpen)}
+                          className={`flex items-center gap-1 text-xs font-black px-2 py-1 rounded-lg transition-all ${
+                            isScannerOpen ? 'bg-red-50 text-red-600' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                          }`}
                         >
-                          <BarcodeScanner 
-                            onScanSuccess={(code) => {
-                              setFormData({ ...formData, barcode: code });
-                              setIsScannerOpen(false);
-                            }}
-                          />
-                        </motion.div>
+                          {isScannerOpen ? <X size={14} /> : <Camera size={14} />}
+                          {isScannerOpen ? 'Fermer Caméra' : 'Scan avec Caméra'}
+                        </button>
+                      </div>
+                      
+                      <AnimatePresence>
+                        {isScannerOpen && (
+                          <motion.div 
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            className="mb-4 overflow-hidden"
+                          >
+                            <BarcodeScanner 
+                              onScanSuccess={(code) => {
+                                setFormData({ ...formData, barcode: code });
+                                setIsScannerOpen(false);
+                              }}
+                            />
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      <div className="relative">
+                        <Barcode className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                        <input 
+                          type="text" 
+                          required={!bulkEditBaseCode}
+                          className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-10 pr-4 outline-none focus:border-amber-400 font-bold"
+                          value={formData.barcode}
+                          onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Item Code — hidden in bulk edit mode */}
+                  {!bulkEditBaseCode && (
+                    <div>
+                      <label className="block text-sm font-bold text-slate-700 mb-2">Code Article (Optionnel)</label>
+                      <div className="relative">
+                        <Tag className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                        <input 
+                          type="text" 
+                          placeholder="Ex: H-1234"
+                          className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-10 pr-4 outline-none focus:border-amber-400 font-bold"
+                          value={formData.itemCode || ''}
+                          onChange={(e) => setFormData({ ...formData, itemCode: e.target.value })}
+                        />
+                      </div>
+                      {/* Preview hint for bulk codes */}
+                      {!editingId && !bulkEditBaseCode && formData.itemCode && parseInt(formData.quantity) > 1 && (
+                        <div className="mt-2 px-3 py-2 bg-indigo-50 border border-indigo-100 rounded-lg text-xs text-indigo-600 font-medium">
+                          <span className="font-black">Codes générés:</span>{' '}
+                          {Array.from({ length: Math.min(parseInt(formData.quantity) || 1, 5) }, (_, i) => 
+                            `${formData.itemCode}-${i + 1}`
+                          ).join(', ')}
+                          {parseInt(formData.quantity) > 5 && ` ... ${formData.itemCode}-${formData.quantity}`}
+                        </div>
                       )}
-                    </AnimatePresence>
-
-                    <div className="relative">
-                      <Barcode className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                      <input 
-                        type="text" 
-                        required
-                        className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-10 pr-4 outline-none focus:border-amber-400 font-bold"
-                        value={formData.barcode}
-                        onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
-                      />
                     </div>
-                  </div>
+                  )}
 
-                  <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-2">Code Article (Optionnel)</label>
-                    <div className="relative">
-                      <Tag className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                      <input 
-                        type="text" 
-                        placeholder="Ex: H-1234"
-                        className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-10 pr-4 outline-none focus:border-amber-400 font-bold"
-                        value={formData.itemCode || ''}
-                        onChange={(e) => setFormData({ ...formData, itemCode: e.target.value })}
-                      />
+                  {/* Quantity — only when adding new items (not editing, not bulk editing) */}
+                  {!editingId && !bulkEditBaseCode && (
+                    <div>
+                      <label className="block text-sm font-bold text-slate-700 mb-2">Quantité</label>
+                      <div className="relative">
+                        <Hash className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                        <input 
+                          type="number" 
+                          min="1"
+                          max="100"
+                          className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-10 pr-4 outline-none focus:border-amber-400 font-bold"
+                          value={formData.quantity}
+                          onChange={(e) => setFormData({ ...formData, quantity: Math.min(Math.max(parseInt(e.target.value) || 1, 1), 100) })}
+                        />
+                      </div>
+                      {parseInt(formData.quantity) > 1 && (
+                        <p className="mt-1 text-xs text-amber-600 font-semibold">
+                          {formData.quantity} articles seront créés avec des codes incrémentés
+                        </p>
+                      )}
                     </div>
-                  </div>
+                  )}
 
                   <div>
                     <label className="block text-sm font-bold text-slate-700 mb-2">Catégorie</label>
@@ -770,8 +889,10 @@ const Stock = () => {
                     onClick={() => {
                       setView('list');
                       setEditingId(null);
+                      setBulkEditBaseCode(null);
                       setFormData({
                         barcode: '',
+                        itemCode: '',
                         category: 'Jewellery',
                         subCategory: metadata.stock_sub_categories?.[0] || '',
                         stockType: 'on-display',
@@ -780,7 +901,9 @@ const Stock = () => {
                         serialNumber: '',
                         metalType: '',
                         fineness: '',
-                        weightGrams: ''
+                        weightGrams: '',
+                        price: '',
+                        quantity: 1
                       });
                     }}
                     className="flex-1 bg-slate-100 text-slate-600 font-bold py-4 rounded-2xl hover:bg-slate-200 transition-all"
@@ -795,7 +918,11 @@ const Stock = () => {
                     {isSaving ? <Loader2 className="animate-spin" /> : (
                       <>
                         <Save size={20} />
-                        <span>{editingId ? 'Mettre à jour l\'Inventaire' : 'Enregistrer dans l\'Inventaire'}</span>
+                        <span>
+                          {bulkEditBaseCode 
+                            ? `Modifier ${getBulkGroupCount(bulkEditBaseCode)} articles du groupe`
+                            : editingId ? 'Mettre à jour l\'Inventaire' : 'Enregistrer dans l\'Inventaire'}
+                        </span>
                       </>
                     )}
                   </button>

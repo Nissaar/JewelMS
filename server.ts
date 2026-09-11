@@ -6,7 +6,7 @@ import multer from "multer";
 import { createServer as createViteServer } from "vite";
 import { db, isPglite } from "./src/db/index";
 import { settings, stock, customers, receipts, orders, sales, saleItems, odf, odfItems, users, rolesPermissions, auditLogs } from "./src/db/schema";
-import { eq, or, ilike, and, sql } from "drizzle-orm";
+import { eq, or, ilike, like, and, sql } from "drizzle-orm";
 import { authenticateToken, checkPermission } from "./src/middleware/auth";
 import { auditLogger } from "./src/middleware/audit";
 
@@ -632,35 +632,114 @@ async function startServer() {
 
   app.post("/api/stock", authenticateToken, checkPermission('stock', 'create'), async (req, res) => {
     try {
-      const payload = { ...req.body };
-      // Sanitize brand for Jewellery
-      if (payload.category === 'Jewellery') {
-        payload.brand = null;
+      const { quantity: rawQuantity, ...basePayload } = req.body;
+      const quantity = Math.min(Math.max(parseInt(rawQuantity) || 1, 1), 100);
+
+      // Helper to sanitize a single payload
+      const sanitizePayload = (payload: any) => {
+        if (payload.category === 'Jewellery') {
+          payload.brand = null;
+        }
+        if (payload.weightGrams === "") payload.weightGrams = null;
+        if (payload.yearsOfGuarantee === "") payload.yearsOfGuarantee = null;
+        if (payload.fineness === "") payload.fineness = null;
+        if (payload.price === "" || payload.price === undefined || payload.price === null) {
+          payload.price = "0.00";
+          payload.priceNet = "0.00";
+          payload.priceVat = "0.00";
+        } else {
+          const priceNum = parseFloat(payload.price);
+          const priceNet = priceNum / 1.15;
+          const priceVat = priceNum - priceNet;
+          payload.priceNet = priceNet.toFixed(2);
+          payload.priceVat = priceVat.toFixed(2);
+          payload.price = priceNum.toFixed(2);
+        }
+        return payload;
+      };
+
+      if (quantity === 1) {
+        // Single insert — same as original behavior, no suffix
+        const payload = sanitizePayload({ ...basePayload });
+        const newItem = await db.insert(stock).values(payload).returning();
+        return res.status(201).json(newItem[0]);
       }
-      // Sanitize numeric fields that might be empty strings from frontend
-      if (payload.weightGrams === "") payload.weightGrams = null;
-      if (payload.yearsOfGuarantee === "") payload.yearsOfGuarantee = null;
-      if (payload.fineness === "") payload.fineness = null;
-      if (payload.price === "" || payload.price === undefined || payload.price === null) {
-        payload.price = "0.00";
-        payload.priceNet = "0.00";
-        payload.priceVat = "0.00";
-      } else {
-        const priceNum = parseFloat(payload.price);
-        const priceNet = priceNum / 1.15;
-        const priceVat = priceNum - priceNet;
-        payload.priceNet = priceNet.toFixed(2);
-        payload.priceVat = priceVat.toFixed(2);
-        payload.price = priceNum.toFixed(2);
-      }
-      
-      const newItem = await db.insert(stock).values(payload).returning();
-      res.status(201).json(newItem[0]);
+
+      // Bulk insert with transaction
+      const results = await db.transaction(async (tx) => {
+        const items = [];
+        for (let i = 1; i <= quantity; i++) {
+          const suffix = `-${i}`;
+          const payload = sanitizePayload({
+            ...basePayload,
+            barcode: `${basePayload.barcode}${suffix}`,
+            itemCode: basePayload.itemCode ? `${basePayload.itemCode}${suffix}` : null,
+          });
+          const [newItem] = await tx.insert(stock).values(payload).returning();
+          items.push(newItem);
+        }
+        return items;
+      });
+
+      res.status(201).json({ items: results, count: results.length });
     } catch (error: any) {
       if (error.code === '23505') {
-        return res.status(400).json({ message: "Ce code-barres existe déjà." });
+        return res.status(400).json({ message: "Un ou plusieurs codes-barres existent déjà." });
       }
+      console.error("Stock Create Error:", error);
       res.status(500).json({ error: "Failed to create stock item" });
+    }
+  });
+
+  // Bulk edit — update all remaining (unsold) items sharing the same base item code
+  app.put("/api/stock/bulk-edit", authenticateToken, checkPermission('stock', 'edit'), async (req, res) => {
+    try {
+      const { baseItemCode, ...updateFields } = req.body;
+      if (!baseItemCode) {
+        return res.status(400).json({ message: "baseItemCode est requis." });
+      }
+
+      // Remove fields that should stay unique per item
+      delete updateFields.barcode;
+      delete updateFields.itemCode;
+      delete updateFields.id;
+
+      // Sanitize numeric fields
+      if (updateFields.weightGrams === "") updateFields.weightGrams = null;
+      if (updateFields.yearsOfGuarantee === "") updateFields.yearsOfGuarantee = null;
+      if (updateFields.fineness === "") updateFields.fineness = null;
+      if (updateFields.category === 'Jewellery') {
+        updateFields.brand = null;
+      }
+      if (updateFields.price === "" || updateFields.price === undefined || updateFields.price === null) {
+        updateFields.price = "0.00";
+        updateFields.priceNet = "0.00";
+        updateFields.priceVat = "0.00";
+      } else if (updateFields.price !== undefined) {
+        const priceNum = parseFloat(updateFields.price);
+        const priceNet = priceNum / 1.15;
+        const priceVat = priceNum - priceNet;
+        updateFields.priceNet = priceNet.toFixed(2);
+        updateFields.priceVat = priceVat.toFixed(2);
+        updateFields.price = priceNum.toFixed(2);
+      }
+
+      // Match items whose itemCode starts with the base code followed by a dash
+      const pattern = `${baseItemCode}-%`;
+      const updated = await db.update(stock)
+        .set({ ...updateFields, updatedAt: new Date() })
+        .where(
+          and(
+            like(stock.itemCode, pattern),
+            eq(stock.status, 'Disponible')
+          )
+        )
+        .returning();
+
+      res.json({ updated: updated.length, items: updated });
+    } catch (error) {
+      console.error("Bulk Edit Error:", error);
+      res.status(500).json({ error: "Failed to bulk edit stock items" });
     }
   });
 
