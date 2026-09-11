@@ -28,7 +28,7 @@ COPY package*.json ./
 
 # Install only production dependencies
 RUN npm install --omit=dev
-RUN npx playwright install chromium --with-deps
+RUN apt-get update && npx playwright install chromium --with-deps
 
 # Copy the built application from the builder stage
 COPY --from=builder /app/dist ./dist
