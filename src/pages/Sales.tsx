@@ -263,6 +263,27 @@ const Sales = () => {
     }
   };
 
+  const resetSale = () => {
+    setSaleStep('item');
+    setCartItems([]);
+    setScannedItem(null);
+    setSelectedCustomer(null);
+    setBarcode('');
+    setCompletedSale(null);
+    setMessage({ type: '', text: '' });
+    setLinkedOdf(null);
+    setLinkedCommande(null);
+    setOdfSearch('');
+    setCommandeSearch('');
+    setPaymentMode('Cash');
+    setChequeNumber('');
+    setFinalPrice('');
+    setEditedInclusivePrice('');
+    setStockSearchResults([]);
+    setCustomerSearch('');
+    setSearchResults([]);
+  };
+
   const handleFinalizeSale = async () => {
     if (cartItems.length === 0 || !selectedCustomer) return;
     
@@ -1034,18 +1055,7 @@ const Sales = () => {
 
                 <div className="pt-8 border-t border-slate-100 flex gap-4">
                    <button 
-                    onClick={() => {
-                      setSaleStep('item');
-                      setScannedItem(null);
-                      setSelectedCustomer(null);
-                      setBarcode('');
-                      setCompletedSale(null);
-                      setMessage({ type: '', text: '' });
-                      setLinkedOdf(null);
-                      setLinkedCommande(null);
-                      setOdfSearch('');
-                      setCommandeSearch('');
-                    }}
+                    onClick={resetSale}
                     className="flex-1 bg-slate-900 text-white py-4 rounded-2xl font-black text-lg hover:shadow-xl transition-all"
                    >
                      Nouvelle Vente

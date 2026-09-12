@@ -3,8 +3,7 @@ import jwt from 'jsonwebtoken';
 import { db } from '../db/index'; // I'll need to create src/db/index.ts to export db
 import { users, rolesPermissions } from '../db/schema';
 import { eq, and } from 'drizzle-orm';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'your-default-secret';
+import { JWT_SECRET } from '../config';
 
 export interface AuthRequest extends Request {
   user?: {

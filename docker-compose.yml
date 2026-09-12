@@ -1,6 +1,11 @@
 services:
   app:
-    build: .
+    build:
+      context: .
+      # WSL2 runs in mirrored networking mode (.wslconfig networkingMode=mirrored),
+      # which breaks outbound internet from Docker bridge networks. Without this,
+      # npm install / playwright download hang during the build.
+      network: host
     ports:
       - "3000:3000"
     env_file:
@@ -11,6 +16,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - jewelms_net
     restart: always
 
   db:
@@ -29,6 +36,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - jewelms_net
     restart: always
 
 volumes:
