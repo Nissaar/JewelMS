@@ -15,7 +15,7 @@ export function registerOdfRoutes(app: Express, upload: Multer) {
       const { id } = req.params;
       const odfId = parseInt(id);
 
-      const { generateOdfDeclarationPDF } = await import("../services/pdfService");
+      const { generateOdfDeclarationPDF } = await import("../services/pdf");
       const result = await generateOdfDeclarationPDF(odfId);
       
       res.setHeader('Content-Type', 'application/pdf');
@@ -57,7 +57,7 @@ export function registerOdfRoutes(app: Express, upload: Multer) {
       }
 
       // Fallback to dynamic generation
-      const { generateODFPDF } = await import("../services/pdfService");
+      const { generateODFPDF } = await import("../services/pdf");
       const { doc } = await generateODFPDF(odfId);
       
       res.setHeader('Content-Type', 'application/pdf');
@@ -75,7 +75,7 @@ export function registerOdfRoutes(app: Express, upload: Multer) {
   app.post("/api/odf/:id/upload", authenticateToken, async (req, res) => {
     try {
       const odfId = parseInt(req.params.id);
-      const { generateODFPDF, getPDFBuffer } = await import("../services/pdfService");
+      const { generateODFPDF, getPDFBuffer } = await import("../services/pdf");
       const { uploadODFToStorage } = await import("../services/storageService");
       const { sanitize } = await import("../lib/utils");
       
@@ -129,7 +129,7 @@ export function registerOdfRoutes(app: Express, upload: Multer) {
       let record = odfArr[0];
 
       if (!record.fileUrl) {
-        const { generateODFPDF, getPDFBuffer } = await import("../services/pdfService");
+        const { generateODFPDF, getPDFBuffer } = await import("../services/pdf");
         const { uploadODFToStorage } = await import("../services/storageService");
         const { sanitize } = await import("../lib/utils");
         

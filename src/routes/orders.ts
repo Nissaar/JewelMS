@@ -62,7 +62,7 @@ export function registerOrdersRoutes(app: Express) {
       const { id } = req.params;
       const oId = parseInt(id);
 
-      const { generateBookingReceiptPDF } = await import("../services/pdfService");
+      const { generateBookingReceiptPDF } = await import("../services/pdf");
       const { doc } = await generateBookingReceiptPDF(oId);
       
       res.setHeader('Content-Type', 'application/pdf');

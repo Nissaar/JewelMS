@@ -223,7 +223,7 @@ export function registerReportsRoutes(app: Express) {
   app.get("/api/reports/vat/pdf", authenticateToken, checkPermission('reports', 'view'), async (req: any, res) => {
     const { day, month, year } = req.query;
     try {
-      const { generateVatReportPDF } = await import("../services/pdfService");
+      const { generateVatReportPDF } = await import("../services/pdf");
       const doc = await generateVatReportPDF(day?.toString(), month?.toString(), year?.toString());
 
       res.setHeader('Content-Type', 'application/pdf');
@@ -329,7 +329,7 @@ export function registerReportsRoutes(app: Express) {
   app.get("/api/reports/tradein/pdf", authenticateToken, checkPermission('reports', 'view'), async (req: any, res) => {
     const { startDate, endDate } = req.query;
     try {
-      const { generateTradeInReportPDF } = await import("../services/pdfService");
+      const { generateTradeInReportPDF } = await import("../services/pdf");
       const doc = await generateTradeInReportPDF(startDate?.toString(), endDate?.toString());
 
       res.setHeader('Content-Type', 'application/pdf');
@@ -347,7 +347,7 @@ export function registerReportsRoutes(app: Express) {
   app.get("/api/reports/sales-by-metal/pdf", authenticateToken, checkPermission('reports', 'view'), async (req: any, res) => {
     const { startDate, endDate, metalType, fineness } = req.query;
     try {
-      const { generateSalesByMetalReportPDF } = await import("../services/pdfService");
+      const { generateSalesByMetalReportPDF } = await import("../services/pdf");
       const doc = await generateSalesByMetalReportPDF(
         startDate?.toString(),
         endDate?.toString(),

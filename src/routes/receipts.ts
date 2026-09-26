@@ -35,7 +35,7 @@ export function registerReceiptsRoutes(app: Express, upload: Multer) {
       }
       
       // Fallback to dynamic generation
-      const { generateReceiptPDF } = await import("../services/pdfService");
+      const { generateReceiptPDF } = await import("../services/pdf");
       const { doc } = await generateReceiptPDF(sId);
       
       res.setHeader('Content-Type', 'application/pdf');
@@ -58,7 +58,7 @@ export function registerReceiptsRoutes(app: Express, upload: Multer) {
       const { saleId } = req.params;
       const sId = parseInt(saleId);
 
-      const { generateDeclarationPDF } = await import("../services/pdfService");
+      const { generateDeclarationPDF } = await import("../services/pdf");
       const result = await generateDeclarationPDF(sId);
       
       res.setHeader('Content-Type', 'application/pdf');
@@ -83,7 +83,7 @@ export function registerReceiptsRoutes(app: Express, upload: Multer) {
     try {
       const { saleId } = req.params;
       const sId = parseInt(saleId);
-      const { generateReceiptPDF, getPDFBuffer } = await import("../services/pdfService");
+      const { generateReceiptPDF, getPDFBuffer } = await import("../services/pdf");
       const { uploadReceiptToStorage } = await import("../services/storageService");
       const { sanitize } = await import("../lib/utils");
       
@@ -148,7 +148,7 @@ export function registerReceiptsRoutes(app: Express, upload: Multer) {
       let receipt = receiptArr[0];
 
       if (!receipt || !receipt.fileUrl) {
-        const { generateReceiptPDF, getPDFBuffer } = await import("../services/pdfService");
+        const { generateReceiptPDF, getPDFBuffer } = await import("../services/pdf");
         const { uploadReceiptToStorage } = await import("../services/storageService");
         const { sanitize } = await import("../lib/utils");
         
@@ -230,7 +230,7 @@ export function registerReceiptsRoutes(app: Express, upload: Multer) {
       let receipt = receiptArr[0];
 
       if (!receipt || !receipt.fileUrl) {
-        const { generateReceiptPDF, getPDFBuffer } = await import("../services/pdfService");
+        const { generateReceiptPDF, getPDFBuffer } = await import("../services/pdf");
         const { uploadReceiptToStorage } = await import("../services/storageService");
         const { sanitize } = await import("../lib/utils");
         

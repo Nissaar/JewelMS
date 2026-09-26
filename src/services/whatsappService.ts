@@ -27,7 +27,7 @@ async function getOrGenerateReceiptUrl(pdfUrl: string | null | undefined, receip
   const { db } = await import('../db');
   const { receipts } = await import('../db/schema');
   const { eq } = await import('drizzle-orm');
-  const { generateReceiptPDF, getPDFBuffer } = await import('./pdfService');
+  const { generateReceiptPDF, getPDFBuffer } = await import('./pdf');
   const { uploadReceiptToStorage } = await import('./storageService');
   const { sanitize } = await import('../lib/utils');
 
@@ -78,7 +78,7 @@ async function getOrGenerateODFUrl(pdfUrl: string | null | undefined, odfNumber:
   const { db } = await import('../db');
   const { odf } = await import('../db/schema');
   const { eq } = await import('drizzle-orm');
-  const { generateODFPDF, getPDFBuffer } = await import('./pdfService');
+  const { generateODFPDF, getPDFBuffer } = await import('./pdf');
   const { uploadODFToStorage } = await import('./storageService');
   const { sanitize } = await import('../lib/utils');
 
