@@ -7,6 +7,8 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   workers: 1,
   reporter: [
+    // In CI, 'github' turns failures into inline annotations on the commit / PR.
+    process.env.CI ? ['github'] : ['list'],
     ['html', { open: 'never', outputFolder: 'playwright-report' }],
     ['json', { outputFile: 'playwright-report/results.json' }]
   ],

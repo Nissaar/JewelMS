@@ -1,10 +1,10 @@
+import "dotenv/config";
 import express from "express";
 import path from "path";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import cors from "cors";
 import multer from "multer";
-import { createServer as createViteServer } from "vite";
 import { runMigrations } from "./src/db/migrations";
 import { auditLogger } from "./src/middleware/audit";
 
@@ -21,7 +21,7 @@ import { registerOdfRoutes } from "./src/routes/odf";
 import { registerOrdersRoutes } from "./src/routes/orders";
 import { registerAuditLogsRoutes } from "./src/routes/auditLogs";
 
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 async function startServer() {
   await runMigrations();
@@ -112,6 +112,8 @@ async function startServer() {
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
+    // Imported lazily: vite is a dev dependency and absent from the production image.
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",

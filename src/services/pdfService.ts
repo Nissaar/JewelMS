@@ -1,7 +1,7 @@
 import PDFDocument from 'pdfkit';
 import fs from 'fs';
 import path from 'path';
-import { chromium } from '@playwright/test';
+import { chromium } from 'playwright';
 import { db } from '../db';
 import { sales, saleItems, customers, receipts, settings, odf, odfItems, stock, orders } from '../db/schema';
 import { eq, and, sql, or, ilike } from 'drizzle-orm';
