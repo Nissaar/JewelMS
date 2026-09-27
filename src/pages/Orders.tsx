@@ -9,12 +9,13 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { formatCurrency, formatItemDetails } from '../lib/utils';
-import CustomerModal from '../components/CustomerModal';
+import { CustomerPicker } from '../components/CustomerPicker';
 import { sendErrorMessage } from '../lib/sendErrors';
 import { sendDocumentAndWait } from '../lib/sendDocument';
 import { openAuthenticatedFile } from '../lib/openFile';
 import { usePagedList } from '../hooks/usePagedList';
 import { Pager } from '../components/Pager';
+import { useDialog } from '../hooks/useDialog';
 
 const Orders = () => {
   const navigate = useNavigate();
@@ -29,15 +30,12 @@ const Orders = () => {
   const list = usePagedList<any>('/api/orders', { q: orderSearch }, 24);
 
   // Create State
-  const [customerSearch, setCustomerSearch] = useState('');
-  const [searchResults, setSearchResults] = useState<any[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [itemDescription, setItemDescription] = useState('');
   const [estimatedWeight, setEstimatedWeight] = useState('');
   const [estimatedPrice, setEstimatedPrice] = useState('');
   const [deposit, setDeposit] = useState('');
   const [orderDate, setOrderDate] = useState(new Date().toISOString().split('T')[0]);
-  const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
   const [lastCreatedOrderId, setLastCreatedOrderId] = useState<number | null>(null);
 
   // Finalize Modal State
@@ -53,6 +51,8 @@ const Orders = () => {
 
   // Delete Order State
   const [orderToDelete, setOrderToDelete] = useState<any>(null);
+  const deleteDialog = useDialog(!!orderToDelete, () => setOrderToDelete(null));
+  const finalizeDialog = useDialog(!!finalizingOrder, () => setFinalizingOrder(null));
   const [isDeleting, setIsDeleting] = useState(false);
 
   const handleDeleteOrder = async (orderId: number) => {
@@ -78,16 +78,6 @@ const Orders = () => {
   useEffect(() => {
     if (view === 'list') list.reload();
   }, [view]);
-
-  const handleCustomerSearch = async (query?: string) => {
-    const q = query !== undefined ? query : customerSearch;
-    try {
-      const res = await axios.get(`/api/customers?search=${encodeURIComponent(q)}`);
-      setSearchResults(res.data);
-    } catch (err) {
-      console.error(err);
-    }
-  };
 
   const handleCreateOrder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -216,50 +206,7 @@ const Orders = () => {
                 <h3 className="text-lg font-black text-slate-900 mb-6 flex items-center gap-2">
                   <User className="text-amber-500" size={20} /> Client (KYC)
                 </h3>
-                <div className="flex gap-2 mb-6">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                    <input 
-                      type="text"
-                      placeholder="Chercher Client..."
-                      className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-12 pr-4 font-bold outline-none focus:border-amber-400"
-                      value={customerSearch}
-                      onChange={(e) => {
-                        setCustomerSearch(e.target.value);
-                        handleCustomerSearch(e.target.value);
-                      }}
-                      onFocus={() => handleCustomerSearch()}
-                    />
-                  </div>
-                  <button 
-                    type="button"
-                    onClick={() => setIsCustomerModalOpen(true)}
-                    className="p-3 bg-amber-500 text-white rounded-xl hover:bg-amber-600 transition-colors shadow-lg shadow-amber-500/20"
-                    title="Nouveau Client"
-                  >
-                    <Plus size={24} />
-                  </button>
-                </div>
-                <div className="space-y-3 max-h-[300px] overflow-y-auto">
-                  {searchResults.map((c) => (
-                    <div 
-                      key={c.id} 
-                      onClick={() => setSelectedCustomer(c)}
-                      className={`p-4 rounded-2xl border-2 cursor-pointer transition-all ${
-                        selectedCustomer?.id === c.id ? 'border-amber-400 bg-amber-50' : 'border-slate-50 hover:border-slate-200'
-                      }`}
-                    >
-                      <p className="font-bold text-slate-900">{c.name}</p>
-                      <p className="text-xs text-slate-500">{c.idNumber}</p>
-                    </div>
-                  ))}
-                </div>
-                {selectedCustomer && (
-                  <div className="mt-6 p-4 bg-emerald-50 text-emerald-700 rounded-2xl flex items-center gap-3">
-                    <Check size={20} />
-                    <span className="text-sm font-bold">Client: {selectedCustomer.name}</span>
-                  </div>
-                )}
+                <CustomerPicker selected={selectedCustomer} onSelect={setSelectedCustomer} />
               </div>
             </div>
 
@@ -268,7 +215,7 @@ const Orders = () => {
               <div className="bg-white p-8 rounded-[2rem] shadow-xl border border-slate-100 space-y-6">
                 <div>
                   <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Date de Commande</label>
-                  <input 
+                  <input aria-label="Date de Commande" 
                     type="date" required
                     className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 font-bold outline-none focus:border-amber-400"
                     value={orderDate}
@@ -277,7 +224,7 @@ const Orders = () => {
                 </div>
                 <div>
                   <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Détails de la Commande</label>
-                  <textarea 
+                  <textarea aria-label="Détails de la Commande" 
                     rows={4} required
                     placeholder="Décrivez l'article (ex: Collier 22K sculpté, motif fleur...)"
                     className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-4 px-4 font-bold outline-none focus:border-amber-400"
@@ -289,7 +236,7 @@ const Orders = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Poids Estimé (g)</label>
-                    <input 
+                    <input aria-label="Poids Estimé (g)" 
                       type="number" step="0.01"
                       className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 font-bold outline-none focus:border-amber-400"
                       value={estimatedWeight}
@@ -298,7 +245,7 @@ const Orders = () => {
                   </div>
                   <div>
                     <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Prix Estimé Total (Rs)</label>
-                    <input 
+                    <input aria-label="Prix Estimé Total (Rs)" 
                       type="number"
                       className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 font-bold outline-none focus:border-amber-400"
                       value={estimatedPrice}
@@ -307,7 +254,7 @@ const Orders = () => {
                   </div>
                   <div>
                     <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Acompte Payé (Rs)</label>
-                    <input 
+                    <input aria-label="Acompte Payé (Rs)" 
                       type="number" required
                       className="w-full bg-slate-50 border-2 border-amber-200 rounded-xl py-3 px-4 font-bold outline-none focus:border-amber-400 text-amber-600 shadow-sm"
                       value={deposit}
@@ -385,7 +332,7 @@ const Orders = () => {
               }`}>
                 {message.type === 'success' ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />}
                 <span>{message.text}</span>
-                <button className="ml-auto hover:opacity-75" onClick={() => setMessage({ type: '', text: '' })}>
+                <button type="button" aria-label="Fermer le message" className="ml-auto hover:opacity-75" onClick={() => setMessage({ type: '', text: '' })}>
                   <X size={16} />
                 </button>
               </div>
@@ -393,7 +340,7 @@ const Orders = () => {
 
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
               <Search className="text-slate-400" size={20} />
-              <input 
+              <input aria-label="Rechercher Commande ou Client..." 
                 type="text" 
                 placeholder="Rechercher Commande ou Client..."
                 className="flex-1 bg-transparent border-none outline-none font-medium"
@@ -454,17 +401,10 @@ const Orders = () => {
         )}
       </AnimatePresence>
 
-      <CustomerModal 
-        isOpen={isCustomerModalOpen}
-        onClose={() => setIsCustomerModalOpen(false)}
-        onSuccess={(customer) => setSelectedCustomer(customer)}
-        initialName={customerSearch}
-      />
-
       {/* Confirmation Delete Modal */}
       <AnimatePresence>
         {orderToDelete && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+          <div ref={deleteDialog} role="dialog" aria-modal="true" aria-label="Confirmer la suppression" tabIndex={-1} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
             <motion.div 
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -513,7 +453,7 @@ const Orders = () => {
       {/* Finalize Modal */}
       <AnimatePresence>
         {finalizingOrder && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+          <div ref={finalizeDialog} role="dialog" aria-modal="true" aria-label="Finaliser la commande" tabIndex={-1} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
             <motion.div 
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -534,7 +474,7 @@ const Orders = () => {
 
                   <div className="p-10 space-y-8">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
-                      <div className="p-6 bg-slate-50 rounded-3xl hover:bg-emerald-50 transition-colors cursor-pointer group" onClick={handleDownloadFinalPDF}>
+                      <button type="button" className="p-6 bg-slate-50 rounded-3xl hover:bg-emerald-50 focus:bg-emerald-50 transition-colors group" onClick={handleDownloadFinalPDF}>
                         {isGeneratingPDF ? (
                           <Loader2 className="mx-auto text-emerald-600 mb-4 animate-spin" size={32} />
                         ) : (
@@ -542,17 +482,17 @@ const Orders = () => {
                         )}
                         <p className="font-black text-slate-900">Facture Finale</p>
                         <p className="text-xs text-slate-500">Imprimer/Télécharger</p>
-                      </div>
-                      <div className="p-6 bg-slate-50 rounded-3xl hover:bg-emerald-50 transition-colors cursor-pointer group" onClick={() => handleUploadAndSend('whatsapp')}>
+                      </button>
+                      <button type="button" className="p-6 bg-slate-50 rounded-3xl hover:bg-emerald-50 focus:bg-emerald-50 transition-colors group" onClick={() => handleUploadAndSend('whatsapp')}>
                         <Smartphone className="mx-auto text-slate-400 mb-4 group-hover:text-emerald-600" size={32} />
                         <p className="font-black text-slate-900">WhatsApp</p>
                         <p className="text-xs text-slate-500">Notifier le client</p>
-                      </div>
-                      <div className="p-6 bg-slate-50 rounded-3xl hover:bg-emerald-50 transition-colors cursor-pointer group" onClick={() => handleUploadAndSend('email')}>
+                      </button>
+                      <button type="button" className="p-6 bg-slate-50 rounded-3xl hover:bg-emerald-50 focus:bg-emerald-50 transition-colors group" onClick={() => handleUploadAndSend('email')}>
                         <Mail className="mx-auto text-slate-400 mb-4 group-hover:text-emerald-600" size={32} />
                         <p className="font-black text-slate-900">Email</p>
                         <p className="text-xs text-slate-500">Envoi sécurisé</p>
-                      </div>
+                      </button>
                     </div>
 
                     {isSending && (
@@ -596,7 +536,7 @@ const Orders = () => {
                 <div className="p-4 md:p-6 space-y-8 overflow-y-auto max-h-[92vh]">
                   <div className="flex justify-between items-center">
                     <h3 className="text-2xl md:text-3xl font-black text-slate-900">Finalisation Vente</h3>
-                    <button onClick={() => setFinalizingOrder(null)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><X size={28}/></button>
+                    <button aria-label="Fermer" onClick={() => setFinalizingOrder(null)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><X size={28}/></button>
                   </div>
 
                   <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
@@ -611,7 +551,7 @@ const Orders = () => {
                           <label className="block text-xs font-black text-slate-400 uppercase mb-2">Poids Final (g)</label>
                           <div className="relative">
                             <Scale className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                            <input 
+                            <input aria-label="Poids Final (g)" 
                               type="number" step="0.01" 
                               className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-4 pl-12 pr-4 font-bold outline-none focus:border-amber-400 transition-all"
                               value={finalWeight}
@@ -625,7 +565,7 @@ const Orders = () => {
                         <label className="block text-xs font-black text-slate-400 uppercase mb-2">Prix TTC Total (Réel)</label>
                         <div className="relative">
                           <Banknote className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400" size={24} />
-                          <input 
+                          <input aria-label="Prix TTC Total (Réel)" 
                             type="number" 
                             className="w-full bg-slate-50 border-2 border-amber-200 rounded-2xl py-6 pl-16 pr-6 font-black text-3xl outline-none focus:border-amber-400 text-slate-900 shadow-inner"
                             value={finalPrice}

@@ -40,7 +40,7 @@ const selectClass = 'w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-
 const SubCategorySelect: React.FC<{ label: string; value: string; options: string[]; onChange: (v: string) => void }> = ({ label, value, options, onChange }) => (
   <div>
     <label className="block text-sm font-bold text-slate-700 mb-2">{label}</label>
-    <select className={selectClass} value={value} onChange={(e) => onChange(e.target.value)}>
+    <select aria-label={label} className={selectClass} value={value} onChange={(e) => onChange(e.target.value)}>
       {options.length === 0
         ? <option value="">Aucune sous-catégorie trouvée</option>
         : options.map(name => <option key={name} value={name}>{name}</option>)}
@@ -228,7 +228,7 @@ export const StockFormView: React.FC<StockFormViewProps> = ({ mode, metadata, on
               <label className="block text-sm font-bold text-slate-700 mb-2">Catégorie</label>
               <div className="relative">
                 <Tag className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} aria-hidden="true" />
-                <select
+                <select aria-label="Catégorie"
                   className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-10 pr-4 outline-none focus:border-amber-400 font-bold appearance-none"
                   value={formData.category}
                   onChange={(e) => handleCategoryChange(e.target.value)}
@@ -290,7 +290,7 @@ export const StockFormView: React.FC<StockFormViewProps> = ({ mode, metadata, on
                   <SubCategorySelect label="Type de Bijou (Sous-Catégorie)" value={formData.subCategory} options={subCategories} onChange={v => set({ subCategory: v })} />
                   <div>
                     <label className="block text-sm font-bold text-slate-700 mb-2">Métal</label>
-                    <select className={selectClass} value={formData.metalType} onChange={(e) => set({ metalType: e.target.value })}>
+                    <select aria-label="Métal" className={selectClass} value={formData.metalType} onChange={(e) => set({ metalType: e.target.value })}>
                       {metadata.stock_metal_types?.map(m => <option key={m} value={m}>{m}</option>)}
                     </select>
                   </div>
@@ -299,7 +299,7 @@ export const StockFormView: React.FC<StockFormViewProps> = ({ mode, metadata, on
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="block text-sm font-bold text-slate-700 mb-2">Pureté (Finesse)</label>
-                    <select className={selectClass} value={formData.fineness} onChange={(e) => set({ fineness: e.target.value })}>
+                    <select aria-label="Pureté (Finesse)" className={selectClass} value={formData.fineness} onChange={(e) => set({ fineness: e.target.value })}>
                       {metadata.stock_fineness_options?.map(f => <option key={f} value={f}>{f}</option>)}
                     </select>
                   </div>
@@ -338,7 +338,7 @@ export const StockFormView: React.FC<StockFormViewProps> = ({ mode, metadata, on
                 <SubCategorySelect label="Marque" value={formData.brand} options={subCategories} onChange={v => set({ brand: v })} />
                 <div>
                   <label className="block text-sm font-bold text-slate-700 mb-2">Garantie (Années)</label>
-                  <select className={selectClass} value={formData.yearsOfGuarantee} onChange={(e) => set({ yearsOfGuarantee: parseInt(e.target.value) })}>
+                  <select aria-label="Garantie (Années)" className={selectClass} value={formData.yearsOfGuarantee} onChange={(e) => set({ yearsOfGuarantee: parseInt(e.target.value) })}>
                     {metadata.guarantee_options?.map(y => <option key={y} value={y}>{y} ans</option>)}
                   </select>
                 </div>

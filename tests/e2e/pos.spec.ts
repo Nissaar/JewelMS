@@ -37,8 +37,8 @@ test.describe('Point of Sale (POS) Checkout', () => {
     await page.locator('input[placeholder="Saisir barcode ou catégorie..."]').fill(posBarcode);
     await page.locator('button:has-text("Rechercher")').click();
 
-    // Item should be recognized
-    await expect(page.locator(`p:has-text("${posBarcode}")`).first()).toBeVisible();
+    // Item should be in the cart
+    await expect(page.locator(`tr:has-text("${posBarcode}")`)).toBeVisible();
 
     // Click "Continuer"
     await page.locator('button:has-text("Continuer")').click();
@@ -84,7 +84,7 @@ test.describe('Point of Sale (POS) Checkout', () => {
     await page.locator('a[href="/sales"]').click();
     await page.locator('input[placeholder="Saisir barcode ou catégorie..."]').fill(barcode);
     await page.locator('button:has-text("Rechercher")').click();
-    await expect(page.locator(`p:has-text("${barcode}")`).first()).toBeVisible();
+    await expect(page.locator(`tr:has-text("${barcode}")`)).toBeVisible();
 
     const priceInput = page.locator('input[type="number"][step="0.01"]').first();
     const continueButton = page.locator('button:has-text("Continuer")');

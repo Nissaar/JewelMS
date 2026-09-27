@@ -13,6 +13,7 @@ import { openAuthenticatedFile } from '../lib/openFile';
 import { useSearchParams } from 'react-router-dom';
 import { usePagedList } from '../hooks/usePagedList';
 import { Pager } from '../components/Pager';
+import { useDialog } from '../hooks/useDialog';
 
 const SalesHistory = () => {
   const { user } = useAuth();
@@ -28,6 +29,7 @@ const SalesHistory = () => {
   const [isGeneratingDecl, setIsGeneratingDecl] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
+  const detailsDialog = useDialog(isModalOpen && !!selectedSale, () => setIsModalOpen(false));
 
   const handleDownloadPDF = async (saleId: number) => {
     setIsGeneratingPDF(true);
@@ -104,7 +106,7 @@ const SalesHistory = () => {
       <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 flex flex-wrap items-center gap-6">
         <div className="flex-1 min-w-[300px] relative">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-          <input 
+          <input aria-label="Rechercher par Client, N° Receipt, ID..." 
             type="text" 
             placeholder="Rechercher par Client, N° Receipt, ID..."
             className="w-full bg-slate-50 border-2 border-slate-50 rounded-2xl py-3 pl-12 pr-4 font-bold outline-none focus:border-emerald-400 focus:bg-white transition-all"
@@ -116,7 +118,7 @@ const SalesHistory = () => {
         <div className="flex items-center gap-4">
           <div className="relative">
             <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-            <input 
+            <input aria-label="Filtrer par date" 
               type="date"
               className="bg-slate-50 border-2 border-slate-50 rounded-2xl py-3 pl-12 pr-4 font-bold outline-none focus:border-emerald-400 focus:bg-white transition-all"
               value={dateFilter}
@@ -189,7 +191,7 @@ const SalesHistory = () => {
                       <p className="text-[10px] font-bold text-slate-400 italic">TVA incluse</p>
                     </td>
                     <td className="px-8 py-6 text-center">
-                      <button 
+                      <button aria-label="Voir les détails de la vente" 
                         onClick={() => openDetails(sale)}
                         className="p-3 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-900 hover:text-white transition-all shadow-sm"
                       >
@@ -208,7 +210,7 @@ const SalesHistory = () => {
       {/* Details Modal */}
       <AnimatePresence>
         {isModalOpen && selectedSale && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div ref={detailsDialog} role="dialog" aria-modal="true" aria-label="Détails de la vente" tabIndex={-1} className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <motion.div 
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               onClick={() => setIsModalOpen(false)}
@@ -225,7 +227,7 @@ const SalesHistory = () => {
                   <h2 className="text-2xl font-black text-slate-900 tracking-tight">Détails de la Vente</h2>
                   <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest mt-1">N° TRANSACTION: {selectedSale.id}</p>
                 </div>
-                <button 
+                <button aria-label="Fermer" 
                   onClick={() => setIsModalOpen(false)}
                   className="p-2 hover:bg-slate-100 rounded-full transition-colors"
                 >

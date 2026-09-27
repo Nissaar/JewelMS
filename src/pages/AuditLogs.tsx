@@ -209,7 +209,7 @@ const AuditLogs = () => {
       {/* Filter Bar */}
       <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
         <Search className="text-slate-400" size={20} />
-        <input 
+        <input aria-label="Rechercher par utilisateur, action ou détails..." 
           type="text" 
           placeholder="Rechercher par utilisateur, action ou détails..."
           className="flex-1 bg-transparent border-none outline-none font-medium"

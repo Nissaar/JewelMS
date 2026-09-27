@@ -171,7 +171,7 @@ const DiscountReport: React.FC = () => {
             <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Rechercher</label>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-              <input 
+              <input aria-label="Rechercher" 
                 type="text" 
                 placeholder="N° Vente, Client, Code-barres ou Article..."
                 className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-2 pl-10 pr-4 font-medium outline-none focus:border-amber-400 transition-all placeholder:text-slate-400"
@@ -186,7 +186,7 @@ const DiscountReport: React.FC = () => {
             <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Date Début</label>
             <div className="relative">
               <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
-              <input 
+              <input aria-label="Date Début" 
                 type="date" 
                 className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-2 pl-10 pr-3 font-bold outline-none focus:border-amber-400 transition-all"
                 value={startDate}
@@ -199,7 +199,7 @@ const DiscountReport: React.FC = () => {
             <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Date Fin</label>
             <div className="relative">
               <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
-              <input 
+              <input aria-label="Date Fin" 
                 type="date" 
                 className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-2 pl-10 pr-3 font-bold outline-none focus:border-amber-400 transition-all"
                 value={endDate}

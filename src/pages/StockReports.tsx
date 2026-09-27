@@ -86,7 +86,7 @@ const StockReports = () => {
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2">
             <Filter className="text-slate-400" size={18} />
-            <select 
+            <select aria-label="Filtrer par catégorie" 
               className="bg-slate-50 border-2 border-slate-100 rounded-xl py-2 px-4 font-bold outline-none focus:border-amber-400"
               value={filters.category}
               onChange={(e) => handleFilterChange('category', e.target.value)}
@@ -99,7 +99,7 @@ const StockReports = () => {
             </select>
           </div>
           <div className="flex items-center gap-2">
-            <select 
+            <select aria-label="Filtrer par sous-catégorie" 
               className="bg-slate-50 border-2 border-slate-100 rounded-xl py-2 px-4 font-bold outline-none focus:border-amber-400"
               value={filters.subCategory}
               onChange={(e) => handleFilterChange('subCategory', e.target.value)}

@@ -97,7 +97,7 @@ export const Layout: React.FC = () => {
             <Link to="/" className="text-2xl font-bold tracking-tighter text-amber-400">
               HAUJEE
             </Link>
-            <button className="lg:hidden" onClick={() => setIsSidebarOpen(false)}>
+            <button aria-label="Fermer le menu" className="lg:hidden" onClick={() => setIsSidebarOpen(false)}>
               <X size={24} />
             </button>
           </div>
@@ -154,14 +154,14 @@ export const Layout: React.FC = () => {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Top Header */}
         <header className="bg-white border-b border-slate-200 h-16 flex items-center justify-between px-4 lg:px-8 shrink-0">
-          <button className="lg:hidden p-2 text-slate-600" onClick={() => setIsSidebarOpen(true)}>
+          <button aria-label="Ouvrir le menu" className="lg:hidden p-2 text-slate-600" onClick={() => setIsSidebarOpen(true)}>
             <Menu size={24} />
           </button>
 
           <div className="flex-1 max-w-2xl mx-4 relative" ref={searchRef}>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-              <input
+              <input aria-label="Rechercher stock, client, facture..."
                 type="text"
                 placeholder="Rechercher stock, client, facture..."
                 className="w-full bg-slate-100 border-none rounded-full py-2 pl-10 pr-4 text-sm focus:ring-2 focus:ring-amber-500/20 transition-all outline-none"

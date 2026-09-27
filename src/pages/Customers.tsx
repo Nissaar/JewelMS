@@ -13,6 +13,8 @@ import CustomerModal from '../components/CustomerModal';
 import { useSearchParams } from 'react-router-dom';
 import { usePagedList } from '../hooks/usePagedList';
 import { Pager } from '../components/Pager';
+import { activateOnKey } from '../lib/a11y';
+import { useDialog } from '../hooks/useDialog';
 
 const Customers = () => {
   const [searchParams] = useSearchParams();
@@ -24,6 +26,7 @@ const Customers = () => {
   const [editingCustomer, setEditingCustomer] = useState<any>(null);
   const [history, setHistory] = useState<any>(null);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const detailsDialog = useDialog(!!selectedCustomer, () => setSelectedCustomer(null));
 
   // New Customer Form State
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -73,7 +76,7 @@ const Customers = () => {
               ) : (
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
               )}
-              <input 
+              <input aria-label="Nom ou N° de Carte..." 
                 type="text" 
                 placeholder="Nom ou N° de Carte..."
                 className="bg-slate-50 border-2 border-slate-100 rounded-2xl py-3 pl-12 pr-4 font-bold outline-none focus:border-amber-400 w-64 transition-all"
@@ -121,11 +124,15 @@ const Customers = () => {
             <motion.div 
               key={c.id}
               layoutId={`card-${c.id}`}
+              role="button"
+              tabIndex={0}
+              aria-label={`Voir le dossier de ${c.name}`}
               onClick={() => openDetails(c)}
+              onKeyDown={activateOnKey(() => openDetails(c))}
               className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 hover:shadow-xl hover:border-amber-100 transition-all cursor-pointer group relative"
             >
-              <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
-                <button 
+              <div className="absolute top-4 right-4 transition-opacity flex gap-2 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
+                <button aria-label="Modifier le client" 
                   onClick={(e) => {
                     e.stopPropagation();
                     setEditingCustomer(c);
@@ -190,7 +197,7 @@ const Customers = () => {
       {/* Details Side-Drawer/Modal */}
       <AnimatePresence>
         {selectedCustomer && (
-          <div className="fixed inset-0 z-50 flex justify-end">
+          <div ref={detailsDialog} role="dialog" aria-modal="true" aria-label="Dossier client" tabIndex={-1} className="fixed inset-0 z-50 flex justify-end">
             <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -215,7 +222,7 @@ const Customers = () => {
                     <p className="text-xs font-black text-slate-400 uppercase tracking-widest">{selectedCustomer.idNumber}</p>
                   </div>
                 </div>
-                <button 
+                <button aria-label="Fermer" 
                   onClick={() => setSelectedCustomer(null)}
                   className="p-3 hover:bg-white hover:shadow-md rounded-full transition-all text-slate-400"
                 >

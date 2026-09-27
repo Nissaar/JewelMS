@@ -8,13 +8,14 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatCurrency, formatWeight, formatItemDetails } from '../lib/utils';
-import CustomerModal from '../components/CustomerModal';
+import { CustomerPicker } from '../components/CustomerPicker';
 import { sendErrorMessage } from '../lib/sendErrors';
 import { sendDocumentAndWait } from '../lib/sendDocument';
 import { openAuthenticatedFile } from '../lib/openFile';
 import { useSearchParams } from 'react-router-dom';
 import { usePagedList } from '../hooks/usePagedList';
 import { Pager } from '../components/Pager';
+import { activateOnKey } from '../lib/a11y';
 
 const ODF = () => {
   const [view, setView] = useState<'list' | 'create' | 'success'>('list');
@@ -29,10 +30,7 @@ const ODF = () => {
   const odfRecords = list.items;
 
   // Form State
-  const [customerSearch, setCustomerSearch] = useState('');
-  const [searchResults, setSearchResults] = useState<any[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
-  const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
 
   const [formData, setFormData] = useState({
     metalType: 'Gold',
@@ -137,16 +135,6 @@ const ODF = () => {
     }
   };
 
-  const handleCustomerSearch = async (query?: string) => {
-    const q = query !== undefined ? query : customerSearch;
-    try {
-      const res = await axios.get(`/api/customers?search=${encodeURIComponent(q)}`);
-      setSearchResults(res.data);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -236,55 +224,7 @@ const ODF = () => {
                   <User className="text-amber-500" size={20} /> Client (KYC)
                 </h3>
                 
-                <div className="flex gap-2 mb-6">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                    <input 
-                      type="text"
-                      placeholder="Chercher Client..."
-                      className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-12 pr-4 font-bold outline-none focus:border-amber-400"
-                      value={customerSearch}
-                      onChange={(e) => {
-                        setCustomerSearch(e.target.value);
-                        handleCustomerSearch(e.target.value);
-                      }}
-                      onFocus={() => handleCustomerSearch()}
-                    />
-                  </div>
-                  <button 
-                    type="button"
-                    onClick={() => setIsCustomerModalOpen(true)}
-                    className="p-3 bg-amber-500 text-white rounded-xl hover:bg-amber-600 transition-colors shadow-lg shadow-amber-500/20"
-                    title="Nouveau Client"
-                  >
-                    <Plus size={24} />
-                  </button>
-                </div>
-
-                <div className="space-y-3 max-h-[300px] overflow-y-auto">
-                  {searchResults.map((c) => (
-                    <div 
-                      key={c.id} 
-                      onClick={() => setSelectedCustomer(c)}
-                      className={`p-4 rounded-2xl border-2 cursor-pointer transition-all ${
-                        selectedCustomer?.id === c.id ? 'border-amber-400 bg-amber-50' : 'border-slate-50 hover:border-slate-200'
-                      }`}
-                    >
-                      <p className="font-bold text-slate-900">{c.name}</p>
-                      <p className="text-xs text-slate-500">{c.idNumber}</p>
-                    </div>
-                  ))}
-                </div>
-
-                {selectedCustomer && (
-                  <div className="mt-6 p-4 bg-emerald-50 text-emerald-700 rounded-2xl flex items-center gap-3">
-                    <Check size={20} />
-                    <div className="text-sm font-bold">
-                      <p>{selectedCustomer.name}</p>
-                      <p className="opacity-70 font-medium">Prêt pour ODF</p>
-                    </div>
-                  </div>
-                )}
+                <CustomerPicker selected={selectedCustomer} onSelect={setSelectedCustomer} selectedNote="Prêt pour ODF" />
               </div>
             </div>
 
@@ -293,7 +233,7 @@ const ODF = () => {
               <div className="bg-white p-8 rounded-[2rem] shadow-xl border border-slate-100 grid grid-cols-2 gap-6">
                 <div className="col-span-2 md:col-span-1">
                   <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Date du Rachat</label>
-                  <input 
+                  <input aria-label="Date du Rachat" 
                     type="date" required
                     className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 font-bold outline-none focus:border-amber-400"
                     value={formData.createdAt}
@@ -303,7 +243,7 @@ const ODF = () => {
 
                 <div className="col-span-2 md:col-span-1">
                   <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Métal</label>
-                  <select 
+                  <select aria-label="Métal" 
                     className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 font-bold outline-none focus:border-amber-400"
                     value={formData.metalType}
                     onChange={(e) => setFormData({...formData, metalType: e.target.value})}
@@ -318,7 +258,7 @@ const ODF = () => {
                   <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Article Réservé / Réparé</label>
                   <div className="relative">
                     <Tag className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                    <input 
+                    <input aria-label="Article Réservé / Réparé" 
                       type="text" placeholder="Bague, Chaîne..."
                       className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-12 pr-4 font-bold outline-none focus:border-amber-400"
                       value={formData.itemReservedRepair}
@@ -345,7 +285,7 @@ const ODF = () => {
                       <div key={index} className="grid grid-cols-12 gap-3 items-end bg-slate-50/50 p-4 rounded-2xl border-2 border-slate-100">
                         <div className="col-span-12 sm:col-span-4">
                           <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1.5">Description</label>
-                          <input
+                          <input aria-label="Description"
                             type="text" required placeholder="Ex: Bracelet, Collier..."
                             className="w-full bg-white border-2 border-slate-100 rounded-xl py-2 px-3 text-sm font-bold outline-none focus:border-amber-400"
                             value={item.description}
@@ -355,7 +295,7 @@ const ODF = () => {
 
                         <div className="col-span-6 sm:col-span-2">
                           <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1.5">Masse (g)</label>
-                          <input
+                          <input aria-label="Masse (g)"
                             type="number" step="0.001" required placeholder="0.000"
                             className="w-full bg-white border-2 border-slate-100 rounded-xl py-2 px-3 text-sm font-bold outline-none focus:border-amber-400"
                             value={item.mass}
@@ -365,7 +305,7 @@ const ODF = () => {
 
                         <div className="col-span-6 sm:col-span-2">
                           <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1.5">Finesse / Karat</label>
-                          <input
+                          <input aria-label="Finesse / Karat"
                             type="text" required placeholder="Ex: 22K, 750"
                             className="w-full bg-white border-2 border-slate-100 rounded-xl py-2 px-3 text-sm font-bold outline-none focus:border-amber-400"
                             value={item.fineness}
@@ -375,7 +315,7 @@ const ODF = () => {
 
                         <div className="col-span-12 sm:col-span-3">
                           <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1.5">Prix / Valeur Agréée (Rs)</label>
-                          <input
+                          <input aria-label="Prix / Valeur Agréée (Rs)"
                             type="number" step="0.01" required placeholder="0.00"
                             className="w-full bg-white border-2 border-slate-100 rounded-xl py-2 px-3 text-sm font-bold outline-none focus:border-amber-400 font-mono"
                             value={item.price}
@@ -419,7 +359,7 @@ const ODF = () => {
 
                 <div className="col-span-2">
                   <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Commentaires / Remarques</label>
-                  <textarea 
+                  <textarea aria-label="Commentaires / Remarques" 
                     rows={2}
                     className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 font-bold outline-none focus:border-amber-400"
                     placeholder="Détails supplémentaires..."
@@ -430,8 +370,12 @@ const ODF = () => {
 
                 <div className="col-span-2">
                   <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Preuve Photo (N° de Série / Article)</label>
-                  <div 
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Ajouter une photo"
                     onClick={() => fileInputRef.current?.click()}
+                    onKeyDown={activateOnKey(() => fileInputRef.current?.click())}
                     className="border-2 border-dashed border-slate-100 rounded-2xl p-8 text-center cursor-pointer hover:border-amber-400 hover:bg-amber-50 transition-all group"
                   >
                     {imagePreview ? (
@@ -661,13 +605,6 @@ const ODF = () => {
           </motion.div>
         )}
       </AnimatePresence>
-
-      <CustomerModal 
-        isOpen={isCustomerModalOpen}
-        onClose={() => setIsCustomerModalOpen(false)}
-        onSuccess={(customer) => setSelectedCustomer(customer)}
-        initialName={customerSearch}
-      />
     </div>
   );
 };

@@ -4,6 +4,7 @@ import axios from 'axios';
 import { Save, UserPlus, Shield, Check, X, AlertCircle, Loader2, Download, Smartphone, Monitor } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { FUNCTIONALITIES } from '../shared/permissions';
+import { useDialog } from '../hooks/useDialog';
 
 const SHOP_FIELDS = [
   { key: 'shop_name', label: 'Nom commercial' },
@@ -34,6 +35,8 @@ const Settings = () => {
   // Saving is only allowed once the edited user's own permissions have loaded.
   const [permissionsState, setPermissionsState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [resetPassword, setResetPassword] = useState('');
+  const addUserDialog = useDialog(showAddUser, () => setShowAddUser(false));
+  const editUserDialog = useDialog(isEditModalOpen && !!editingUser, () => setIsEditModalOpen(false));
 
   const functionalities = FUNCTIONALITIES;
 
@@ -429,7 +432,7 @@ const Settings = () => {
       {/* Add User Modal */}
       <AnimatePresence>
         {showAddUser && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div ref={addUserDialog} role="dialog" aria-modal="true" aria-label="Nouvel utilisateur" tabIndex={-1} className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -439,14 +442,14 @@ const Settings = () => {
               <div className="p-8">
                 <div className="flex items-center justify-between mb-8">
                   <h3 className="text-2xl font-bold text-slate-900">Nouvel Utilisateur</h3>
-                  <button onClick={() => setShowAddUser(false)} className="text-slate-400 hover:text-slate-900">
+                  <button aria-label="Fermer" onClick={() => setShowAddUser(false)} className="text-slate-400 hover:text-slate-900">
                     <X size={24} />
                   </button>
                 </div>
                 <form onSubmit={handleAddUser} className="space-y-4">
                   <div>
                     <label className="block text-sm font-bold text-slate-700 mb-1">Nom d'utilisateur</label>
-                    <input
+                    <input aria-label="Nom d'utilisateur"
                       type="text"
                       className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-amber-400 font-medium"
                       value={newUser.username}
@@ -456,7 +459,7 @@ const Settings = () => {
                   </div>
                   <div>
                     <label className="block text-sm font-bold text-slate-700 mb-1">Email</label>
-                    <input
+                    <input aria-label="Email"
                       type="email"
                       className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-amber-400 font-medium"
                       value={newUser.email}
@@ -466,7 +469,7 @@ const Settings = () => {
                   </div>
                   <div>
                     <label className="block text-sm font-bold text-slate-700 mb-1">Mot de passe</label>
-                    <input
+                    <input aria-label="Mot de passe"
                       type="password"
                       className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-amber-400 font-medium"
                       value={newUser.password}
@@ -476,7 +479,7 @@ const Settings = () => {
                   </div>
                   <div>
                     <label className="block text-sm font-bold text-slate-700 mb-1">Rôle</label>
-                    <select
+                    <select aria-label="Rôle"
                       className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-amber-400 font-bold"
                       value={newUser.role}
                       onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
@@ -502,7 +505,7 @@ const Settings = () => {
       {/* Edit User & Permissions Modal */}
       <AnimatePresence>
         {isEditModalOpen && editingUser && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div ref={editUserDialog} role="dialog" aria-modal="true" aria-label="Modifier l'utilisateur" tabIndex={-1} className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
             <motion.div
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
@@ -530,7 +533,7 @@ const Settings = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8 bg-slate-50 p-6 rounded-3xl border border-slate-100">
                     <div className="space-y-2">
                        <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Email de l'utilisateur</label>
-                       <input 
+                       <input aria-label="Email de l'utilisateur" 
                          type="email"
                          className="w-full bg-white border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-amber-400 font-bold"
                          value={editingUser.email}
@@ -539,7 +542,7 @@ const Settings = () => {
                     </div>
                     <div className="space-y-2">
                        <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Rôle Principal</label>
-                       <select 
+                       <select aria-label="Rôle Principal" 
                          className="w-full bg-white border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-amber-400 font-bold appearance-none"
                          value={editingUser.role}
                          onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })}
@@ -585,7 +588,7 @@ const Settings = () => {
                                 const isSelected = selectedPermissions.includes(permId);
                                 return (
                                   <td key={action} className="text-center py-5 px-4">
-                                    <button
+                                    <button aria-label={`${f.name} : ${({ canView: "voir", canCreate: "créer", canEdit: "éditer", canDelete: "supprimer" } as Record<string, string>)[action]}`} aria-pressed={isSelected}
                                       type="button"
                                       onClick={() => togglePermission(permId)}
                                       className={`h-7 w-7 rounded-lg border-2 flex items-center justify-center mx-auto transition-all ${

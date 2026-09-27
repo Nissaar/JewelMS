@@ -6,6 +6,7 @@ import {
   X, UserPlus
 } from 'lucide-react';
 import { motion } from 'motion/react';
+import { useDialog } from '../hooks/useDialog';
 
 interface CustomerModalProps {
   isOpen: boolean;
@@ -27,6 +28,7 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSucces
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
+  const dialogRef = useDialog(isOpen, onClose);
   const [hasInitialized, setHasInitialized] = useState(false);
 
   // Use useEffect to reset state when modal opens or editing customer changes
@@ -95,7 +97,7 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSucces
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+    <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={customerToEdit ? "Modifier le client" : "Nouveau client"} tabIndex={-1} className="fixed inset-0 z-[100] flex items-center justify-center p-6">
       <motion.div 
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -119,7 +121,7 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSucces
               <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Ajout rapide de conformité</p>
             </div>
           </div>
-          <button 
+          <button aria-label="Fermer" 
             onClick={onClose}
             className="p-3 hover:bg-white hover:shadow-md rounded-full transition-all text-slate-400"
           >

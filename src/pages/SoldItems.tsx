@@ -40,7 +40,7 @@ const SoldItems = () => {
       <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
         <div className="relative">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-          <input 
+          <input aria-label="Rechercher par Code-Barres, Client, Catégorie..." 
             type="text" 
             placeholder="Rechercher par Code-Barres, Client, Catégorie..."
             className="w-full bg-slate-50 border-2 border-slate-50 rounded-2xl py-3 pl-12 pr-4 font-bold outline-none focus:border-red-400 focus:bg-white transition-all underline-offset-4"
