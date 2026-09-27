@@ -5,7 +5,8 @@ import { eq, or, ilike, sql } from "drizzle-orm";
 import { authenticateToken, checkAnyPermission, checkPermission } from "../middleware/auth";
 import { customerCreateSchema, customerUpdateSchema, idParam } from "../lib/schemas";
 import { notFound, sendError } from "../lib/errors";
-import { escapeLike } from "../lib/sql";
+import { containsPattern, queryText } from "../lib/query";
+import { listResponse } from "../lib/pagination";
 import { saleBarcodes } from "../services/reportData";
 
 export function registerCustomersRoutes(app: Express) {
@@ -14,20 +15,19 @@ export function registerCustomersRoutes(app: Express) {
   const canFindCustomers = checkAnyPermission(['customers', 'view'], ['sales', 'create'], ['orders', 'create'], ['odf', 'create']);
   const canRegisterCustomers = checkAnyPermission(['customers', 'create'], ['sales', 'create'], ['orders', 'create'], ['odf', 'create']);
 
+  // ?search= (or ?q=) matches name or ID number.
   app.get("/api/customers", authenticateToken, canFindCustomers, async (req, res) => {
-    const { search } = req.query;
     try {
-      if (typeof search === 'string' && search.trim()) {
-        const searchStr = `%${escapeLike(search.trim())}%`;
-        const results = await db.select().from(customers).where(
-          or(
-            ilike(customers.name, searchStr),
-            ilike(customers.idNumber, searchStr)
-          )
-        );
-        return res.json(results);
-      }
-      res.json(await db.select().from(customers));
+      const q = queryText(req.query.search) || queryText(req.query.q);
+      const pattern = containsPattern(q);
+      const where = q ? or(ilike(customers.name, pattern), ilike(customers.idNumber, pattern)) : undefined;
+      res.json(await listResponse(req.query,
+        (limit, offset) => {
+          const query = db.select().from(customers).where(where).orderBy(customers.name, customers.id).$dynamic();
+          return limit ? query.limit(limit).offset(offset!) : query;
+        },
+        async () => (await db.select({ n: sql<number>`count(*)::int` }).from(customers).where(where))[0].n,
+      ));
     } catch (error) {
       sendError(res, error, "Failed to fetch customers");
     }

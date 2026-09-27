@@ -2,10 +2,12 @@ import type { Express } from "express";
 import type { Multer } from "multer";
 import { db } from "../db/index";
 import { customers, odf, odfItems } from "../db/schema";
-import { eq } from "drizzle-orm";
-import { authenticateToken, checkPermission } from "../middleware/auth";
+import { desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
+import { authenticateToken, checkPermission, type AuthRequest } from "../middleware/auth";
 import { idParam, odfCreateSchema, sendMethodSchema } from "../lib/schemas";
 import { notFound, sendError } from "../lib/errors";
+import { containsPattern, queryText } from "../lib/query";
+import { listResponse } from "../lib/pagination";
 import { assertCanSend, queueDocument } from "../services/notifications";
 import { ensureOdfFile } from "../services/documents";
 import { contentTypeFor, readFile, saveImage } from "../services/storage";
@@ -55,7 +57,7 @@ export function registerOdfRoutes(app: Express, upload: Multer) {
     }
   });
 
-  app.post("/api/odf/:id/send", authenticateToken, checkPermission('odf', 'create'), async (req: any, res) => {
+  app.post("/api/odf/:id/send", authenticateToken, checkPermission('odf', 'create'), async (req: AuthRequest, res) => {
     try {
       const odfId = idParam.parse(req.params.id);
       const { method } = sendMethodSchema.parse(req.body);
@@ -80,10 +82,17 @@ export function registerOdfRoutes(app: Express, upload: Multer) {
     }
   });
 
+  // Newest first, with their trade-in items. ?q= matches customer, description or ODF number.
   app.get("/api/odf", authenticateToken, checkPermission('odf', 'view'), async (req, res) => {
     try {
-      const allOdf = await db.select({
+      const q = queryText(req.query.q);
+      const pattern = containsPattern(q);
+      const where = q
+        ? or(ilike(customers.name, pattern), ilike(odf.description, pattern), sql`CAST(${odf.odfSerialNumber} AS TEXT) = ${q}`)
+        : undefined;
+      const base = () => db.select({
         id: odf.id,
+        odfSerialNumber: odf.odfSerialNumber,
         customerId: odf.customerId,
         customerName: customers.name,
         metalType: odf.metalType,
@@ -98,19 +107,27 @@ export function registerOdfRoutes(app: Express, upload: Multer) {
       })
       .from(odf)
       .innerJoin(customers, eq(odf.customerId, customers.id))
-      .orderBy(odf.createdAt);
+      .where(where)
+      .orderBy(desc(odf.createdAt), desc(odf.id))
+      .$dynamic();
 
-      const allOdfWithItems = await Promise.all(allOdf.map(async (record) => {
-        const items = await db.select().from(odfItems).where(eq(odfItems.odfId, record.id));
-        return {
+      // Items for the listed ODFs in one query rather than one query per ODF.
+      const withItems = async (records: Awaited<ReturnType<typeof base>>) => {
+        const ids = records.map(r => r.id);
+        const items = ids.length ? await db.select().from(odfItems).where(inArray(odfItems.odfId, ids)).orderBy(odfItems.id) : [];
+        return records.map(record => ({
           ...record,
           // The stored name is internal; clients load the photo via /api/odf/:id/image.
           imageUrl: record.imageUrl ? `/api/odf/${record.id}/image` : null,
-          tradeInItems: items
-        };
-      }));
+          tradeInItems: items.filter(item => item.odfId === record.id),
+        }));
+      };
 
-      res.json(allOdfWithItems);
+      res.json(await listResponse(req.query,
+        async (limit, offset) => withItems(await (limit ? base().limit(limit).offset(offset!) : base())),
+        async () => (await db.select({ n: sql<number>`count(*)::int` }).from(odf)
+          .innerJoin(customers, eq(odf.customerId, customers.id)).where(where))[0].n,
+      ));
     } catch (error) {
       sendError(res, error, "Failed to fetch ODF records");
     }
@@ -125,7 +142,7 @@ export function registerOdfRoutes(app: Express, upload: Multer) {
       const totalAmount = input.tradeInItems.reduce((sum, item) => sum + item.price, 0);
       const date = input.createdAt ?? new Date();
 
-      const created = await db.transaction(async (tx: any) => {
+      const created = await db.transaction(async (tx) => {
         const [record] = await tx.insert(odf).values({
           customerId: input.customerId,
           metalType: input.metalType,

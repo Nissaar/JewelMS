@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
-import { 
-  Percent, Tag, Search, Calendar, RefreshCcw, 
-  Loader2, AlertCircle, TrendingDown, ArrowDownRight, 
+import {
+  Percent, Tag, Search, Calendar, RefreshCcw,
+  Loader2, AlertCircle, TrendingDown,
   ShoppingBag, Trash2
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
 import { formatCurrency } from '../lib/utils';
 
 interface DiscountRecord {
@@ -25,7 +24,6 @@ interface DiscountRecord {
 const DiscountReport: React.FC = () => {
   const { token } = useAuth();
   const [records, setRecords] = useState<DiscountRecord[]>([]);
-  const [summary, setSummary] = useState({ totalDiscounts: '0.00', count: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,10 +40,6 @@ const DiscountReport: React.FC = () => {
         headers: { Authorization: `Bearer ${token}` }
       });
       setRecords(res.data.data || []);
-      setSummary({
-        totalDiscounts: res.data.summary?.totalDiscounts || '0.00',
-        count: res.data.summary?.count || 0
-      });
     } catch (err: any) {
       console.error("Error fetching discount report:", err);
       setError("Impossible de charger le rapport d'audit des remises");

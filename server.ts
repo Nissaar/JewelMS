@@ -127,6 +127,9 @@ async function startServer() {
   registerAuditLogsRoutes(app);
   registerNotificationRoutes(app);
 
+  // Unknown API paths get a JSON 404 instead of the web app's index.html.
+  app.use("/api", (req, res) => res.status(404).json({ error: `No such API route: ${req.method} ${req.path}` }));
+
   // Errors passed to next() (multer limits, malformed JSON) get a JSON reply
   // instead of Express's default HTML page.
   app.use("/api", (err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

@@ -18,8 +18,7 @@ const text = (max: number) =>
   z.preprocess(v => blankToNull(trimmed(v)), z.string().max(max).nullable()).optional();
 
 /** Required, non-empty text column. */
-const requiredText = (max: number) =>
-  z.preprocess(trimmed, z.string().min(1, 'Required').max(max));
+const requiredText = (max: number) => z.string().trim().min(1, 'Required').max(max);
 
 /** Non-negative decimal that may arrive as a number or numeric string; '' becomes null. */
 const decimal = (opts: { positive?: boolean } = {}) =>
@@ -160,14 +159,14 @@ const password = z.string().min(10, 'Le mot de passe doit contenir au moins 10 c
 const role = z.enum(['Admin', 'User']);
 
 export const userCreateSchema = z.object({
-  username: z.preprocess(trimmed, z.string().min(3).max(50).regex(/^[A-Za-z0-9._-]+$/, 'Lettres, chiffres, . _ - uniquement')),
-  email: z.preprocess(trimmed, z.string().email('Invalid email').max(100)),
+  username: z.string().trim().min(3).max(50).regex(/^[A-Za-z0-9._-]+$/, 'Lettres, chiffres, . _ - uniquement'),
+  email: z.string().trim().email('Invalid email').max(100),
   password,
   role: role.default('User'),
 });
 
 export const userUpdateSchema = z.object({
-  email: z.preprocess(trimmed, z.string().email('Invalid email').max(100)).optional(),
+  email: z.string().trim().email('Invalid email').max(100).optional(),
   role: role.optional(),
 });
 

@@ -1,12 +1,14 @@
 import type { Express } from "express";
 import { db } from "../db/index";
 import { stock, customers, receipts, orders, sales, saleItems, odf, auditLogs } from "../db/schema";
-import { eq, or, ilike, and, sql } from "drizzle-orm";
-import { authenticateToken, checkPermission, requireAdmin } from "../middleware/auth";
+import { eq, or, ilike, and, sql, desc } from "drizzle-orm";
+import { authenticateToken, checkPermission, requireAdmin, type AuthRequest } from "../middleware/auth";
 import { badRequest, notFound, sendError } from "../lib/errors";
 import { idParam, saleCreateSchema } from "../lib/schemas";
-import { escapeLike } from "../lib/sql";
-import { saleBarcodes } from "../services/reportData";
+import { containsPattern, queryText } from "../lib/query";
+import { listResponse } from "../lib/pagination";
+import { inShopTime } from "../lib/time";
+import { parseDateParam, saleBarcodes } from "../services/reportData";
 import { centsToDecimal, splitGross, sumLines, toCents } from "../shared/money";
 
 export function registerSalesRoutes(app: Express) {
@@ -159,7 +161,7 @@ export function registerSalesRoutes(app: Express) {
   });
 
 
-  app.post("/api/sales/:id/cancel", authenticateToken, requireAdmin, async (req: any, res) => {
+  app.post("/api/sales/:id/cancel", authenticateToken, requireAdmin, async (req: AuthRequest, res) => {
     try {
       const saleId = idParam.parse(req.params.id);
       await db.transaction(async (tx) => {
@@ -212,17 +214,23 @@ export function registerSalesRoutes(app: Express) {
     }
   });
 
+  // Newest first. ?q= matches customer, items, receipt or sale number;
+  // ?date=YYYY-MM-DD keeps one shop-time day.
   app.get("/api/sales/history", authenticateToken, checkPermission('sales', 'view'), async (req, res) => {
     try {
-      const { search, query, q } = req.query;
-      const searchTerm = (search || query || q)?.toString();
-
-      let conditions = [];
-      if (searchTerm) {
-        conditions.push(ilike(sales.itemDetails, `%${escapeLike(searchTerm)}%`));
-      }
-
-      const history = await db.select({
+      const q = queryText(req.query.q) || queryText(req.query.search) || queryText(req.query.query);
+      const date = parseDateParam(req.query.date, 'date');
+      const pattern = containsPattern(q);
+      const where = and(
+        q ? or(
+          ilike(sales.itemDetails, pattern),
+          ilike(customers.name, pattern),
+          sql`CAST(${receipts.receiptSerialNumber} AS TEXT) ILIKE ${pattern}`,
+          sql`CAST(${sales.id} AS TEXT) = ${q}`,
+        ) : undefined,
+        date ? sql`DATE(${inShopTime(sales.datetime)}) = ${date.toLocaleDateString('en-CA')}` : undefined,
+      );
+      const base = () => db.select({
         id: sales.id,
         receiptId: receipts.id,
         receiptNo: receipts.receiptSerialNumber,
@@ -253,10 +261,17 @@ export function registerSalesRoutes(app: Express) {
       .leftJoin(receipts, eq(sales.id, receipts.saleId))
       .leftJoin(stock, eq(sales.stockId, stock.id))
       .leftJoin(orders, eq(sales.orderId, orders.id))
-      .where(conditions.length > 0 ? and(...conditions) : undefined)
-      .orderBy(sql`${sales.datetime} DESC`);
+      .where(where)
+      .orderBy(sql`${sales.datetime} DESC`, desc(sales.id))
+      .$dynamic();
 
-      res.json(history);
+      res.json(await listResponse(req.query,
+        (limit, offset) => (limit ? base().limit(limit).offset(offset!) : base()),
+        async () => (await db.select({ n: sql<number>`count(*)::int` }).from(sales)
+          .leftJoin(customers, eq(sales.customerId, customers.id))
+          .leftJoin(receipts, eq(sales.id, receipts.saleId))
+          .where(where))[0].n,
+      ));
     } catch (error) {
       sendError(res, error, "Failed to fetch sales history", "Sales History Error");
     }

@@ -16,7 +16,7 @@ const SHOP_FIELDS = [
 ];
 
 const Settings = () => {
-  const { token, user: currentUser } = useAuth();
+  const { token } = useAuth();
   const { isInstallable, installApp } = usePWA();
   const [activeTab, setActiveTab] = useState<'general' | 'users' | 'pwa'>('general');
   const [settings, setSettings] = useState<any[]>([]);

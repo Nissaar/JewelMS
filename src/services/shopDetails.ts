@@ -24,7 +24,7 @@ export const SHOP_SETTING_DEFAULTS = {
 export async function getShopDetails(): Promise<ShopDetails> {
   const rows = await db.select().from(settings).where(inArray(settings.key, Object.keys(SHOP_SETTING_DEFAULTS)));
   const get = (key: keyof typeof SHOP_SETTING_DEFAULTS) =>
-    (rows.find((r: any) => r.key === key)?.value ?? SHOP_SETTING_DEFAULTS[key]).trim();
+    (rows.find((r) => r.key === key)?.value ?? SHOP_SETTING_DEFAULTS[key]).trim();
   return {
     name: get('shop_name') || SHOP_SETTING_DEFAULTS.shop_name,
     legalName: get('shop_legal_name'),

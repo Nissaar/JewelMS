@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
-import { 
-  BarChart3, Scale, Filter, ChevronDown, 
+import {
+  BarChart3, Scale, Filter,
   Loader2, Info, Package, Store, Eye,
   RefreshCw, TrendingUp
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
 const StockReports = () => {

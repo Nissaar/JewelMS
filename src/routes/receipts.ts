@@ -1,10 +1,12 @@
 import type { Express } from "express";
 import { db } from "../db/index";
 import { customers, receipts, sales } from "../db/schema";
-import { eq } from "drizzle-orm";
-import { authenticateToken, checkPermission } from "../middleware/auth";
+import { desc, eq, ilike, or, sql } from "drizzle-orm";
+import { authenticateToken, checkPermission, type AuthRequest } from "../middleware/auth";
 import { idParam, sendMethodSchema } from "../lib/schemas";
 import { notFound, sendError } from "../lib/errors";
+import { containsPattern, queryText } from "../lib/query";
+import { listResponse } from "../lib/pagination";
 import { assertCanSend, queueDocument } from "../services/notifications";
 import { saleBarcodes } from "../services/reportData";
 import { ensureReceiptFile } from "../services/documents";
@@ -42,7 +44,7 @@ export function registerReceiptsRoutes(app: Express) {
     }
   });
 
-  app.post("/api/receipts/:saleId/send", authenticateToken, checkPermission('sales', 'create'), async (req: any, res) => {
+  app.post("/api/receipts/:saleId/send", authenticateToken, checkPermission('sales', 'create'), async (req: AuthRequest, res) => {
     try {
       const saleId = idParam.parse(req.params.saleId);
       const { method } = sendMethodSchema.parse(req.body);
@@ -68,9 +70,13 @@ export function registerReceiptsRoutes(app: Express) {
     }
   });
 
+  // Newest first. ?q= matches receipt number or customer.
   app.get("/api/receipts", authenticateToken, checkPermission('sales', 'view'), async (req, res) => {
     try {
-      const allReceipts = await db.select({
+      const q = queryText(req.query.q);
+      const pattern = containsPattern(q);
+      const where = q ? or(sql`CAST(${receipts.receiptSerialNumber} AS TEXT) ILIKE ${pattern}`, ilike(customers.name, pattern)) : undefined;
+      const base = () => db.select({
         id: receipts.id,
         saleId: receipts.saleId,
         receiptNo: receipts.receiptSerialNumber,
@@ -84,9 +90,16 @@ export function registerReceiptsRoutes(app: Express) {
       .from(receipts)
       .innerJoin(sales, eq(receipts.saleId, sales.id))
       .leftJoin(customers, eq(sales.customerId, customers.id))
-      .orderBy(receipts.createdAt);
+      .where(where)
+      .orderBy(desc(receipts.createdAt), desc(receipts.id))
+      .$dynamic();
 
-      res.json(allReceipts);
+      res.json(await listResponse(req.query,
+        (limit, offset) => (limit ? base().limit(limit).offset(offset!) : base()),
+        async () => (await db.select({ n: sql<number>`count(*)::int` }).from(receipts)
+          .innerJoin(sales, eq(receipts.saleId, sales.id))
+          .leftJoin(customers, eq(sales.customerId, customers.id)).where(where))[0].n,
+      ));
     } catch (error) {
       sendError(res, error, "Failed to fetch receipts");
     }

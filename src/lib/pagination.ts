@@ -21,3 +21,21 @@ export interface Page<T> {
   page: number;
   pageSize: number;
 }
+
+/**
+ * Lists are paged only when the caller asks (?page=): screens that need the
+ * whole list (e.g. pickers) keep receiving a plain array.
+ */
+export const wantsPage = (query: Record<string, unknown>) => query.page !== undefined;
+
+/** Runs a list query either paged ({ items, total, page, pageSize }) or whole (array). */
+export async function listResponse<T>(
+  query: Record<string, unknown>,
+  fetch: (limit?: number, offset?: number) => Promise<T[]>,
+  count: () => Promise<number>,
+): Promise<Page<T> | T[]> {
+  if (!wantsPage(query)) return fetch();
+  const { page, pageSize, offset } = parsePage(query);
+  const [items, total] = await Promise.all([fetch(pageSize, offset), count()]);
+  return { items, total, page, pageSize };
+}

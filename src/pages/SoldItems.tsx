@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
-import { 
-  History, Search, Filter, Loader2, ArrowLeft,
-  Barcode, Tag, User, Scale, Calendar
+import {
+  History, Search, Loader2, ArrowLeft,
+  Barcode, User, Scale, Calendar
 } from 'lucide-react';
-import { motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { formatCurrency, formatWeight, formatItemDetails } from '../lib/utils';
 

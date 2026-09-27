@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
-import { 
-  Scale, User, Camera, Plus, Check, AlertCircle, 
+import {
+  Scale, User, Camera, Plus, Check, AlertCircle,
   Loader2, Search, History, Image as ImageIcon,
-  X, UserPlus, Info, Tag, Calendar, FileText, Printer, Send, Banknote,
+  X, Tag, FileText, Printer, Send,
   Smartphone, Mail
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -39,7 +39,6 @@ const ODF = () => {
   const [tradeInItems, setTradeInItems] = useState<Array<{ description: string, mass: string, fineness: string, price: string }>>([
     { description: '', mass: '', fineness: '22K', price: '' }
   ]);
-  const [dailyGoldRate, setDailyGoldRate] = useState<number>(3300);
   const [imageFile, setImageFile] = useState<File | null>(null);
 
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -83,52 +82,6 @@ const ODF = () => {
       setIsLoading(false);
     }
   };
-
-  const getPurityFraction = (fineness: string): number => {
-    const clean = String(fineness || '').toLowerCase().trim();
-    if (clean.includes('24k') || clean.includes('999') || clean.includes('99.9')) return 1.0;
-    if (clean.includes('22k') || clean.includes('916') || clean.includes('91.6')) return 0.916;
-    if (clean.includes('18k') || clean.includes('750') || clean.includes('75')) return 0.75;
-    if (clean.includes('14k') || clean.includes('585') || clean.includes('58.5')) return 0.585;
-    if (clean.includes('9k') || clean.includes('375') || clean.includes('37.5')) return 0.375;
-    
-    const matchFraction = clean.match(/(\d+)\s*\/\s*(\d+)/);
-    if (matchFraction) {
-      const num = parseInt(matchFraction[1]);
-      const den = parseInt(matchFraction[2]);
-      if (den > 0) return num / den;
-    }
-    
-    const matchPct = clean.match(/([\d.]+)\s*%/);
-    if (matchPct) {
-      return parseFloat(matchPct[1]) / 100;
-    }
-    
-    const matchNum = clean.match(/^(\d+)$/);
-    if (matchNum) {
-      const val = parseInt(matchNum[1]);
-      if (val > 100) return val / 1000;
-      if (val > 0) return val / 100;
-    }
-    
-    return 0.75; // Default to 18K
-  };
-
-  const getMetalRatePerGram = (mType: string): number => {
-    const metal = String(mType || 'Gold').toLowerCase().trim();
-    if (metal.includes('silver') || metal.includes('argent')) {
-      return 60; // Rs 60 per gram of pure silver
-    }
-    if (metal.includes('platinum') || metal.includes('platine')) {
-      return 1800; // Rs 1800 per gram of pure platinum
-    }
-    return 3300; // Rs 3300 per gram of pure gold
-  };
-
-  // When metalType changes, update dailyGoldRate to default value
-  useEffect(() => {
-    setDailyGoldRate(getMetalRatePerGram(formData.metalType));
-  }, [formData.metalType]);
 
   // Real-time Calculations
   let totalWeight = 0;
@@ -235,7 +188,6 @@ const ODF = () => {
       payload.append('comments', formData.comments);
       payload.append('createdAt', formData.createdAt);
       payload.append('tradeInItems', JSON.stringify(tradeInItems));
-      payload.append('appliedRate', dailyGoldRate.toString());
       if (imageFile) payload.append('image', imageFile);
 
       const res = await axios.post('/api/odf', payload, {

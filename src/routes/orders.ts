@@ -1,18 +1,28 @@
 import type { Express } from "express";
 import { db } from "../db/index";
 import { customers, orders, receipts, saleItems, sales } from "../db/schema";
-import { eq, and, sql } from "drizzle-orm";
-import { authenticateToken, checkPermission } from "../middleware/auth";
+import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
+import { authenticateToken, checkPermission, type AuthRequest } from "../middleware/auth";
 import { badRequest, notFound, sendError } from "../lib/errors";
+import { containsPattern, queryText } from "../lib/query";
+import { listResponse } from "../lib/pagination";
 import { centsToDecimal, splitGross, toCents } from "../shared/money";
 import { idParam, orderCreateSchema, orderFinalizeSchema } from "../lib/schemas";
 
 export function registerOrdersRoutes(app: Express) {
 
   // --- Orders Endpoints ---
+  // Newest first. ?q= matches customer or description; ?status=Pending|Finalized filters.
   app.get("/api/orders", authenticateToken, checkPermission('orders', 'view'), async (req, res) => {
     try {
-      const allOrders = await db.select({
+      const q = queryText(req.query.q);
+      const status = queryText(req.query.status);
+      const pattern = containsPattern(q);
+      const where = and(
+        status ? eq(orders.status, status) : undefined,
+        q ? or(ilike(customers.name, pattern), ilike(orders.itemDescription, pattern), sql`CAST(${orders.orderNumber} AS TEXT) = ${q}`) : undefined,
+      );
+      const base = () => db.select({
         id: orders.id,
         orderNumber: orders.orderNumber,
         customerId: orders.customerId,
@@ -28,8 +38,15 @@ export function registerOrdersRoutes(app: Express) {
       })
       .from(orders)
       .innerJoin(customers, eq(orders.customerId, customers.id))
-      .orderBy(sql`${orders.createdAt} DESC`);
-      res.json(allOrders);
+      .where(where)
+      .orderBy(sql`${orders.createdAt} DESC`, desc(orders.id))
+      .$dynamic();
+
+      res.json(await listResponse(req.query,
+        (limit, offset) => (limit ? base().limit(limit).offset(offset!) : base()),
+        async () => (await db.select({ n: sql<number>`count(*)::int` }).from(orders)
+          .innerJoin(customers, eq(orders.customerId, customers.id)).where(where))[0].n,
+      ));
     } catch (error) {
       sendError(res, error, "Failed to fetch orders");
     }
@@ -76,12 +93,12 @@ export function registerOrdersRoutes(app: Express) {
   });
 
 
-  app.post("/api/orders/:id/finalize", authenticateToken, checkPermission('orders', 'edit'), async (req: any, res) => {
+  app.post("/api/orders/:id/finalize", authenticateToken, checkPermission('orders', 'edit'), async (req: AuthRequest, res) => {
     try {
       const orderId = idParam.parse(req.params.id);
       const { finalWeight, finalPrice, paymentMode } = orderFinalizeSchema.parse(req.body);
 
-      const saleId = await db.transaction(async (tx: any) => {
+      const saleId = await db.transaction(async (tx) => {
         // Lock the order so a double-click can't finalize it twice.
         const [order] = await tx.select().from(orders).where(eq(orders.id, orderId)).limit(1).for('update');
         if (!order) throw notFound("Order not found");

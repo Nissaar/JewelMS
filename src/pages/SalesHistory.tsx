@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
-import { 
-  History, Search, Filter, Calendar, FileText, 
-  Download, Eye, X, Loader2, Banknote,
-  Smartphone, Mail, Check, AlertCircle, ExternalLink,
+import {
+  History, Search, Calendar, FileText,
+  Download, Eye, X, Loader2,
+    Check, AlertCircle,
   Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';

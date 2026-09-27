@@ -2,15 +2,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
-import { 
-  ShoppingCart, Barcode, User, CreditCard, Search, 
+import {
+  ShoppingCart, Barcode, User, CreditCard, Search,
   Plus, Check, AlertCircle, Loader2, Banknote,
-  Smartphone, Mail, Download, History, X, UserPlus,
-  Scale, Tag, Info, Camera, ArrowLeft, FileText, Trash2
+  Smartphone, Mail, Download, History, X,
+   Tag, Camera, ArrowLeft, FileText, Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import BarcodeScanner from '../components/BarcodeScanner';
-import { formatCurrency, formatItemDetails, getCleanDisplayLabel, getItemFullDescription } from '../lib/utils';
+import { formatCurrency, getCleanDisplayLabel, getItemFullDescription } from '../lib/utils';
 import CustomerModal from '../components/CustomerModal';
 import { sendErrorMessage } from '../lib/sendErrors';
 import { sendDocumentAndWait } from '../lib/sendDocument';
@@ -60,8 +60,6 @@ const Sales = () => {
   // Sale Details
   const [paymentMode, setPaymentMode] = useState('Cash');
   const [chequeNumber, setChequeNumber] = useState('');
-  const [finalPrice, setFinalPrice] = useState('');
-  const [editedInclusivePrice, setEditedInclusivePrice] = useState('');
 
   // Cart totals, computed exactly as the server will record them.
   const cartLines = cartItems.map(item => priceCartLine(item.stockItem.price, item.editedInclusivePrice));
@@ -92,8 +90,6 @@ const Sales = () => {
     setCartItems(prev => prev.some(ci => ci.stockItem.id === itemToAdd.id) ? prev : [...prev, newItem]);
     setScannedItem(null);
     setBarcode('');
-    setEditedInclusivePrice('');
-    setFinalPrice('');
     setMessage({ type: '', text: '' });
   };
 
@@ -167,7 +163,6 @@ const Sales = () => {
   
   // Post-Sale State
   const [completedSale, setCompletedSale] = useState<any>(null);
-  const [isUploading, setIsUploading] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [isGeneratingDecl, setIsGeneratingDecl] = useState(false);
@@ -251,8 +246,6 @@ const Sales = () => {
     setCommandeSearch('');
     setPaymentMode('Cash');
     setChequeNumber('');
-    setFinalPrice('');
-    setEditedInclusivePrice('');
     setStockSearchResults([]);
     setCustomerSearch('');
     setSearchResults([]);

@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
-import { 
-  Users, Search, Plus, MapPin, Phone, 
-  ShieldAlert, History, FileText, Package, 
-  Scale, X, Loader2, User, ChevronRight,
-  TrendingDown, TrendingUp, Minus, UserPlus,
-  Check, AlertCircle, Mail, Edit2
+import {
+  Users, Search, Plus, MapPin, Phone,
+   History, Package,
+   X, Loader2, User, ChevronRight,
+  TrendingDown, TrendingUp,
+    Mail, Edit2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatCurrency, getItemFullDescription } from '../lib/utils';

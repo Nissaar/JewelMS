@@ -83,7 +83,7 @@ export async function vatReportRows(filters: { day?: string; month?: string; yea
   .where(and(...conditions))
   .orderBy(sales.id);
 
-  return rows.map((row: any) => {
+  return rows.map((row) => {
     const amount = Number(row.amountExclVat || 0);
     const vat = Number(row.vatAmount || 0);
     return { ...row, vatAmount: vat.toFixed(2), total: (amount + vat).toFixed(2) };
@@ -130,7 +130,7 @@ export async function salesByMetalRows(filters: { startDate?: string; endDate?: 
   .where(and(...conditions))
   .orderBy(sql`${sales.createdAt} DESC`, saleItems.id);
 
-  const items = rows.map((row: any) => {
+  const items = rows.map((row) => {
     const weight = Number(row.weight || 0);
     const amount = Number(row.amount || 0);
     const vat = Number(row.vat15 || 0);
@@ -140,9 +140,9 @@ export async function salesByMetalRows(filters: { startDate?: string; endDate?: 
   return {
     items,
     summary: {
-      totalWeight: items.reduce((s: number, i: any) => s + i.weight, 0),
-      totalRevenue: items.reduce((s: number, i: any) => s + i.amount, 0),
-      totalRevenueWithVat: items.reduce((s: number, i: any) => s + i.totalWithVat, 0),
+      totalWeight: items.reduce((s: number, i) => s + i.weight, 0),
+      totalRevenue: items.reduce((s: number, i) => s + i.amount, 0),
+      totalRevenueWithVat: items.reduce((s: number, i) => s + i.totalWithVat, 0),
       count: items.length,
     },
   };
@@ -168,7 +168,7 @@ export async function discountRows() {
   .where(and(completed, sql`COALESCE(${sales.discountAmount}, 0) > 0`))
   .orderBy(sql`${sales.createdAt} DESC`);
 
-  const data = rows.map((row: any) => {
+  const data = rows.map((row) => {
     const discAmt = Number(row.discountAmount || 0);
     const finalPriceTTC = Number(row.amount || 0) + Number(row.vat15 || 0);
     return {
@@ -188,7 +188,7 @@ export async function discountRows() {
   return {
     data,
     summary: {
-      totalDiscounts: data.reduce((s: number, r: any) => s + Number(r.discountAmount), 0).toFixed(2),
+      totalDiscounts: data.reduce((s: number, r) => s + Number(r.discountAmount), 0).toFixed(2),
       count: data.length,
     },
   };
@@ -222,12 +222,12 @@ export async function tradeInRows(filters: { startDate?: string; endDate?: strin
   .orderBy(odf.createdAt);
 
   // One query for all items instead of one per ODF.
-  const ids = records.map((r: any) => r.id);
+  const ids = records.map((r) => r.id);
   const items = ids.length ? await db.select().from(odfItems).where(inArray(odfItems.odfId, ids)).orderBy(odfItems.id) : [];
   const itemsByOdf = new Map<number, any[]>();
   for (const item of items) itemsByOdf.set(item.odfId, [...(itemsByOdf.get(item.odfId) || []), item]);
 
-  return records.flatMap((record: any) => {
+  return records.flatMap((record) => {
     const base = {
       id: record.id,
       date: record.createdAt,

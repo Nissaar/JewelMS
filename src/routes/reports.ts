@@ -1,8 +1,8 @@
 import type { Express } from "express";
 import { db } from "../db/index";
-import { stock, customers, receipts, orders, sales, odf, odfItems } from "../db/schema";
+import { stock, customers, receipts, orders, sales } from "../db/schema";
 import { eq, or, ilike, and, sql } from "drizzle-orm";
-import { authenticateToken, checkPermission, userCan } from "../middleware/auth";
+import { authenticateToken, checkPermission, userCan, type AuthRequest } from "../middleware/auth";
 import { sendError } from "../lib/errors";
 import { discountRows, salesByMetalRows, tradeInRows, vatReportRows } from "../services/reportData";
 import { escapeLike } from "../lib/sql";
@@ -10,7 +10,7 @@ import { isShopToday } from "../lib/time";
 
 export function registerReportsRoutes(app: Express) {
 
-  app.get("/api/reports/dashboard-summary", authenticateToken, checkPermission('reports', 'view'), async (req: any, res) => {
+  app.get("/api/reports/dashboard-summary", authenticateToken, checkPermission('reports', 'view'), async (req: AuthRequest, res) => {
     try {
       // "Today" is the shop's local day, whatever the database session's time zone.
       const [todaySalesRes, newClientsRes, stockCountRes, pendingOrdersRes, recentSalesRes] = await Promise.all([
@@ -62,7 +62,7 @@ export function registerReportsRoutes(app: Express) {
 
   // Global search. Each section is only searched, and returned, when the user
   // may see that kind of record.
-  app.get("/api/search", authenticateToken, async (req: any, res) => {
+  app.get("/api/search", authenticateToken, async (req: AuthRequest, res) => {
     const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
     const searchStr = `%${escapeLike(q)}%`;
 
@@ -109,7 +109,7 @@ export function registerReportsRoutes(app: Express) {
 
 
   app.get("/api/reports/stock-weight", authenticateToken, checkPermission('reports', 'view'), async (req, res) => {
-    const { category, subCategory, groupBy } = req.query;
+    const { category, subCategory } = req.query;
     try {
       const conditions = [eq(stock.status, 'Disponible')];
       if (category) conditions.push(eq(stock.category, category as string));
@@ -171,7 +171,7 @@ export function registerReportsRoutes(app: Express) {
     }
   });
 
-  app.get("/api/reports/vat", authenticateToken, checkPermission('reports', 'view'), async (req: any, res) => {
+  app.get("/api/reports/vat", authenticateToken, checkPermission('reports', 'view'), async (req: AuthRequest, res) => {
     try {
       const data = await vatReportRows(req.query);
       const totalVat = data.reduce((sum: number, row: any) => sum + Number(row.vatAmount), 0);
@@ -182,7 +182,7 @@ export function registerReportsRoutes(app: Express) {
   });
 
 
-  app.get("/api/reports/vat/pdf", authenticateToken, checkPermission('reports', 'view'), async (req: any, res) => {
+  app.get("/api/reports/vat/pdf", authenticateToken, checkPermission('reports', 'view'), async (req: AuthRequest, res) => {
     const { day, month, year } = req.query;
     try {
       const { generateVatReportPDF } = await import("../services/pdf");
@@ -200,7 +200,7 @@ export function registerReportsRoutes(app: Express) {
 
 
   // --- Registre Trade-In (Assay Office) Endpoints ---
-  app.get("/api/reports/tradein", authenticateToken, checkPermission('reports', 'view'), async (req: any, res) => {
+  app.get("/api/reports/tradein", authenticateToken, checkPermission('reports', 'view'), async (req: AuthRequest, res) => {
     try {
       res.json(await tradeInRows(req.query));
     } catch (error) {
@@ -209,7 +209,7 @@ export function registerReportsRoutes(app: Express) {
   });
 
 
-  app.get("/api/reports/tradein/pdf", authenticateToken, checkPermission('reports', 'view'), async (req: any, res) => {
+  app.get("/api/reports/tradein/pdf", authenticateToken, checkPermission('reports', 'view'), async (req: AuthRequest, res) => {
     const { startDate, endDate } = req.query;
     try {
       const { generateTradeInReportPDF } = await import("../services/pdf");
@@ -226,7 +226,7 @@ export function registerReportsRoutes(app: Express) {
   });
 
 
-  app.get("/api/reports/sales-by-metal/pdf", authenticateToken, checkPermission('reports', 'view'), async (req: any, res) => {
+  app.get("/api/reports/sales-by-metal/pdf", authenticateToken, checkPermission('reports', 'view'), async (req: AuthRequest, res) => {
     const { startDate, endDate, metalType, fineness } = req.query;
     try {
       const { generateSalesByMetalReportPDF } = await import("../services/pdf");
@@ -249,7 +249,7 @@ export function registerReportsRoutes(app: Express) {
 
 
   // --- Sales by Metal Report Endpoint ---
-  app.get("/api/reports/sales-by-metal", authenticateToken, checkPermission('reports', 'view'), async (req: any, res) => {
+  app.get("/api/reports/sales-by-metal", authenticateToken, checkPermission('reports', 'view'), async (req: AuthRequest, res) => {
     try {
       res.json(await salesByMetalRows(req.query));
     } catch (error) {
@@ -259,7 +259,7 @@ export function registerReportsRoutes(app: Express) {
 
 
   // --- Discount Report Endpoint ---
-  app.get("/api/reports/discounts", authenticateToken, checkPermission('reports', 'view'), async (req: any, res) => {
+  app.get("/api/reports/discounts", authenticateToken, checkPermission('reports', 'view'), async (req: AuthRequest, res) => {
     try {
       res.json(await discountRows());
     } catch (error) {

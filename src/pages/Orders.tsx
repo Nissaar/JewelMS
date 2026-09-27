@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
-import { 
-  Package, User, Plus, Check, AlertCircle, 
+import {
+  Package, User, Plus, Check, AlertCircle,
   Loader2, Search, Scale, X,
-  ShoppingCart, Info, Clock, CheckCircle2, Banknote, UserPlus,
+  ShoppingCart, Info, Clock, CheckCircle2, Banknote,
   Smartphone, Mail, Download, History, Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';

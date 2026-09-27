@@ -1,4 +1,3 @@
-import PDFDocument from 'pdfkit';
 
 export function numberToWords(num: number): string {
   if (!(num > 0)) return 'Zero';

@@ -42,7 +42,7 @@ async function adoptLegacyDatabase() {
   if (adopted) return;
 
   console.log("Existing database without migration history: upgrading it to the baseline schema.");
-  await db.transaction(async (tx: any) => {
+  await db.transaction(async (tx) => {
     await upgradeLegacySchema(tx);
     await tx.execute(sql`INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES (${baseline.hash}, ${baseline.folderMillis})`);
   });

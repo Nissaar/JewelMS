@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
-import { 
-  ShieldAlert, Fingerprint, Clock, User, 
-  Search, RefreshCcw, Filter, Loader2,
+import {
+  ShieldAlert, Fingerprint, Clock,
+  Search, RefreshCcw, Loader2,
   Terminal, ShieldCheck, Database
 } from 'lucide-react';
-import { motion } from 'motion/react';
 
 const AuditLogDetails = ({ data }: { data: any }) => {
   if (!data) return <span className="text-slate-400 italic text-xs">Aucun détail</span>;
@@ -112,7 +111,7 @@ const AuditLogDetails = ({ data }: { data: any }) => {
 };
 
 const AuditLogs = () => {
-  const { token, user } = useAuth();
+  const { user } = useAuth();
   const [logs, setLogs] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');

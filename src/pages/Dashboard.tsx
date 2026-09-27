@@ -1,19 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
-import { 
-  TrendingUp, 
-  Users, 
-  Package, 
-  Clock, 
-  ArrowUpRight, 
+import {
+  TrendingUp,
+  Users,
+  Package,
+  Clock,
   Loader2,
   Coins,
   ShoppingCart,
   Scale
 } from 'lucide-react';
 import { motion } from 'motion/react';
-import { formatCurrency, formatItemDetails, formatWeight, getItemFullDescription } from '../lib/utils';
+import { formatCurrency, formatWeight, getItemFullDescription } from '../lib/utils';
 
 const Dashboard = () => {
   const { token } = useAuth();

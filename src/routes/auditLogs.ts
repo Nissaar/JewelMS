@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { db } from "../db/index";
 import { users, auditLogs } from "../db/schema";
 import { desc, eq, ilike, or, sql } from "drizzle-orm";
-import { authenticateToken, requireAdmin } from "../middleware/auth";
+import { authenticateToken, requireAdmin, type AuthRequest } from "../middleware/auth";
 import { sendError } from "../lib/errors";
 import { escapeLike } from "../lib/sql";
 import { parsePage } from "../lib/pagination";
@@ -10,7 +10,7 @@ import { parsePage } from "../lib/pagination";
 export function registerAuditLogsRoutes(app: Express) {
 
   /** Newest first, one page at a time; ?q= searches user, action and details. */
-  app.get("/api/audit-logs", authenticateToken, requireAdmin, async (req: any, res) => {
+  app.get("/api/audit-logs", authenticateToken, requireAdmin, async (req: AuthRequest, res) => {
     try {
       const { page, pageSize, offset } = parsePage(req.query);
       const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';

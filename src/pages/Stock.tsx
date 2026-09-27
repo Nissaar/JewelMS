@@ -4,8 +4,8 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { formatWeight, formatItemDetails, formatCurrency } from '../lib/utils';
 import BarcodeScanner from '../components/BarcodeScanner';
-import { 
-  Package, Plus, Search, Filter, Edit2, Trash2, Save, X, 
+import {
+  Package, Plus, Search, Filter, Edit2, Trash2, Save, X,
   Settings as SettingsIcon, Check, AlertCircle, Loader2,
   ChevronDown, Barcode, Scale, Info, Tag, History, Camera,
   Coins, Copy, Hash

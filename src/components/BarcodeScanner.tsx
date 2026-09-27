@@ -10,7 +10,6 @@ interface BarcodeScannerProps {
 
 const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onScanSuccess, onScanError }) => {
   const [isOcrProcessing, setIsOcrProcessing] = useState(false);
-  const [ocrMode, setOcrMode] = useState<'barcode' | 'ocr'>('barcode');
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
   const workerRef = useRef<any>(null);
   const lastOcrTime = useRef<number>(0);

@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import axios from 'axios';
-import { 
-  User, ShieldAlert, FileText, MapPin, 
-  Phone, Mail, Check, AlertCircle, Loader2, 
+import {
+  User, ShieldAlert, FileText, MapPin,
+  Phone, Mail, Check, AlertCircle, Loader2,
   X, UserPlus
 } from 'lucide-react';
 import { motion } from 'motion/react';

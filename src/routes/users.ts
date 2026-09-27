@@ -3,7 +3,7 @@ import { db } from "../db/index";
 import { users, rolesPermissions } from "../db/schema";
 import bcrypt from "bcryptjs";
 import { eq, sql } from "drizzle-orm";
-import { authenticateToken, requireAdmin } from "../middleware/auth";
+import { authenticateToken, requireAdmin, type AuthRequest } from "../middleware/auth";
 import { idParam, passwordResetSchema, permissionsUpdateSchema, userCreateSchema, userUpdateSchema } from "../lib/schemas";
 import { badRequest, notFound, sendError } from "../lib/errors";
 
@@ -20,7 +20,7 @@ const uniqueViolation = (error: any) => error?.code === '23505' || error?.cause?
 
 export function registerUsersRoutes(app: Express) {
 
-  app.get("/api/users", authenticateToken, requireAdmin, async (req: any, res) => {
+  app.get("/api/users", authenticateToken, requireAdmin, async (req: AuthRequest, res) => {
     try {
       res.json(await db.select(publicUser).from(users));
     } catch (error) {
@@ -28,7 +28,7 @@ export function registerUsersRoutes(app: Express) {
     }
   });
 
-  app.post("/api/users", authenticateToken, requireAdmin, async (req: any, res) => {
+  app.post("/api/users", authenticateToken, requireAdmin, async (req: AuthRequest, res) => {
     try {
       const { username, email, password, role } = userCreateSchema.parse(req.body);
       const [newUser] = await db.insert(users).values({
@@ -44,12 +44,12 @@ export function registerUsersRoutes(app: Express) {
     }
   });
 
-  app.put("/api/users/:id", authenticateToken, requireAdmin, async (req: any, res) => {
+  app.put("/api/users/:id", authenticateToken, requireAdmin, async (req: AuthRequest, res) => {
     try {
       const userId = idParam.parse(req.params.id);
       const input = userUpdateSchema.parse(req.body);
 
-      const updated = await db.transaction(async (tx: any) => {
+      const updated = await db.transaction(async (tx) => {
         const [current] = await tx.select().from(users).where(eq(users.id, userId)).limit(1).for('update');
         if (!current) throw notFound("User not found");
 
@@ -77,7 +77,7 @@ export function registerUsersRoutes(app: Express) {
     }
   });
 
-  app.post("/api/users/:id/reset-password", authenticateToken, requireAdmin, async (req: any, res) => {
+  app.post("/api/users/:id/reset-password", authenticateToken, requireAdmin, async (req: AuthRequest, res) => {
     try {
       const userId = idParam.parse(req.params.id);
       const { password } = passwordResetSchema.parse(req.body);
@@ -96,7 +96,7 @@ export function registerUsersRoutes(app: Express) {
     }
   });
 
-  app.get("/api/users/:id/permissions", authenticateToken, requireAdmin, async (req: any, res) => {
+  app.get("/api/users/:id/permissions", authenticateToken, requireAdmin, async (req: AuthRequest, res) => {
     try {
       const permissions = await db.select().from(rolesPermissions).where(eq(rolesPermissions.userId, idParam.parse(req.params.id)));
       res.json(permissions);
@@ -106,7 +106,7 @@ export function registerUsersRoutes(app: Express) {
   });
 
 
-  app.put("/api/users/:id/permissions", authenticateToken, requireAdmin, async (req: any, res) => {
+  app.put("/api/users/:id/permissions", authenticateToken, requireAdmin, async (req: AuthRequest, res) => {
     try {
       const userId = idParam.parse(req.params.id);
       const { permissions } = permissionsUpdateSchema.parse(req.body);

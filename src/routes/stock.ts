@@ -2,11 +2,13 @@ import type { Express } from "express";
 import type { z } from "zod";
 import { db } from "../db/index";
 import { settings, stock } from "../db/schema";
-import { eq, or, ilike, like, and, sql } from "drizzle-orm";
+import { eq, or, ilike, like, and, sql, desc } from "drizzle-orm";
 import { authenticateToken, checkAnyPermission, checkPermission } from "../middleware/auth";
 import { idParam, stockBulkEditSchema, stockCreateSchema, stockUpdateSchema } from "../lib/schemas";
 import { badRequest, notFound, sendError } from "../lib/errors";
 import { escapeLike } from "../lib/sql";
+import { containsPattern, queryText } from "../lib/query";
+import { listResponse } from "../lib/pagination";
 import { centsToDecimal, splitGross, toCents } from "../shared/money";
 
 type StockFields = Partial<z.infer<typeof stockUpdateSchema>>;
@@ -16,9 +18,9 @@ type StockFields = Partial<z.infer<typeof stockUpdateSchema>>;
  * net and VAT parts are derived here. Fields absent from the input are left
  * out, so an update never touches what the client didn't send.
  */
-function toStockColumns(input: StockFields): Record<string, unknown> {
+function toStockColumns(input: StockFields) {
   const { price, weightGrams, ...rest } = input;
-  const columns: Record<string, unknown> = { ...rest };
+  const columns: Partial<typeof stock.$inferInsert> = { ...rest };
 
   if (weightGrams !== undefined) columns.weightGrams = weightGrams === null ? null : weightGrams.toFixed(3);
   if (price !== undefined) {
@@ -46,10 +48,24 @@ export function registerStockRoutes(app: Express) {
     }
   });
 
+  // Available stock, newest first. ?q= matches barcode, serial or item code; ?category= filters.
   app.get("/api/stock", authenticateToken, checkPermission('stock', 'view'), async (req, res) => {
     try {
-      const items = await db.select().from(stock).where(eq(stock.status, 'Disponible'));
-      res.json(items);
+      const q = queryText(req.query.q);
+      const category = queryText(req.query.category);
+      const pattern = containsPattern(q);
+      const where = and(
+        eq(stock.status, 'Disponible'),
+        category && category !== 'All' ? eq(stock.category, category) : undefined,
+        q ? or(ilike(stock.barcode, pattern), ilike(stock.serialNumber, pattern), ilike(stock.itemCode, pattern)) : undefined,
+      );
+      res.json(await listResponse(req.query,
+        (limit, offset) => {
+          const query = db.select().from(stock).where(where).orderBy(desc(stock.createdAt), desc(stock.id)).$dynamic();
+          return limit ? query.limit(limit).offset(offset!) : query;
+        },
+        async () => (await db.select({ n: sql<number>`count(*)::int` }).from(stock).where(where))[0].n,
+      ));
     } catch (error) {
       sendError(res, error, "Failed to fetch stock");
     }
@@ -66,21 +82,33 @@ export function registerStockRoutes(app: Express) {
         WHERE si.stock_id = stock.id AND s.status = 'Completed'
         ORDER BY s.id DESC LIMIT 1)`);
 
-      const items = await db.select({
-        id: stock.id,
-        barcode: stock.barcode,
-        category: stock.category,
-        subCategory: stock.subCategory,
-        metalType: stock.metalType,
-        weightGrams: stock.weightGrams,
-        soldAt: stock.soldAt,
-        customerName: lastSale('c.name'),
-        price: lastSale('si.amount'),
-      })
-      .from(stock)
-      .where(eq(stock.status, 'Vendu'))
-      .orderBy(sql`${stock.soldAt} DESC`);
-      res.json(items);
+      const q = queryText(req.query.q);
+      const pattern = containsPattern(q);
+      const where = and(
+        eq(stock.status, 'Vendu'),
+        q ? or(ilike(stock.barcode, pattern), ilike(stock.category, pattern), sql`${lastSale('c.name')} ILIKE ${pattern}`) : undefined,
+      );
+      res.json(await listResponse(req.query,
+        (limit, offset) => {
+          const query = db.select({
+            id: stock.id,
+            barcode: stock.barcode,
+            category: stock.category,
+            subCategory: stock.subCategory,
+            metalType: stock.metalType,
+            weightGrams: stock.weightGrams,
+            soldAt: stock.soldAt,
+            customerName: lastSale('c.name'),
+            price: lastSale('si.amount'),
+          })
+          .from(stock)
+          .where(where)
+          .orderBy(sql`${stock.soldAt} DESC NULLS LAST`, desc(stock.id))
+          .$dynamic();
+          return limit ? query.limit(limit).offset(offset!) : query;
+        },
+        async () => (await db.select({ n: sql<number>`count(*)::int` }).from(stock).where(where))[0].n,
+      ));
     } catch (error) {
       sendError(res, error, "Failed to fetch sold items");
     }
@@ -135,7 +163,8 @@ export function registerStockRoutes(app: Express) {
   app.post("/api/stock", authenticateToken, checkPermission('stock', 'create'), async (req, res) => {
     try {
       const { quantity, ...input } = stockCreateSchema.parse(req.body);
-      const base = toStockColumns(input);
+      // Required columns spelled out so the insert is fully typed.
+      const base = { ...toStockColumns(input), barcode: input.barcode, category: input.category, stockType: input.stockType };
 
       if (quantity === 1) {
         const [newItem] = await db.insert(stock).values(base).returning();
@@ -143,7 +172,7 @@ export function registerStockRoutes(app: Express) {
       }
 
       // Several identical pieces: one row each, with "-1", "-2"... suffixes.
-      const results = await db.transaction(async (tx: any) => {
+      const results = await db.transaction(async (tx) => {
         const items = [];
         for (let i = 1; i <= quantity; i++) {
           const [newItem] = await tx.insert(stock).values({

@@ -66,7 +66,7 @@ export async function queueDocument(kind: DocumentKind, refId: number, method: S
   }))).returning();
 
   setImmediate(() => { void deliver(kind, refId, customer, rows); });
-  return rows.map((r: any) => ({ id: r.id, channel: r.channel, status: r.status }));
+  return rows.map((r) => ({ id: r.id, channel: r.channel, status: r.status }));
 }
 
 /** Sends on each channel independently: a WhatsApp failure doesn't stop the email. */

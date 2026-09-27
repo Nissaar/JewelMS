@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { db } from "../db/index";
 import { settings } from "../db/schema";
 import { eq } from "drizzle-orm";
-import { authenticateToken, requireAdmin } from "../middleware/auth";
+import { authenticateToken, requireAdmin, type AuthRequest } from "../middleware/auth";
 import { settingUpdateSchema } from "../lib/schemas";
 import { notFound, sendError } from "../lib/errors";
 
@@ -30,7 +30,7 @@ export function registerSettingsRoutes(app: Express) {
   });
 
 
-  app.put("/api/settings/:key", authenticateToken, requireAdmin, async (req: any, res) => {
+  app.put("/api/settings/:key", authenticateToken, requireAdmin, async (req: AuthRequest, res) => {
     try {
       const { value } = settingUpdateSchema.parse(req.body);
       const updated = await db.update(settings)
