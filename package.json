@@ -11,6 +11,7 @@
     "lint": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:init-sql": "node scripts/generate-init-sql.mjs",
+    "test:unit": "tsx --test tests/unit/*.test.ts",
     "test:e2e": "playwright test",
     "generate-pdf-report": "node generate-pdf-report.js"
   },

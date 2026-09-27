@@ -63,6 +63,9 @@ jobs:
       - name: Type check
         run: npm run lint
 
+      - name: Unit tests
+        run: npm run test:unit
+
       - name: Check init.sql matches the migrations
         run: |
           npm run db:init-sql
