@@ -13,6 +13,8 @@ import BarcodeScanner from '../components/BarcodeScanner';
 import { formatCurrency, formatItemDetails, getCleanDisplayLabel, getItemFullDescription } from '../lib/utils';
 import CustomerModal from '../components/CustomerModal';
 import { sendErrorMessage } from '../lib/sendErrors';
+import { sumLines } from '../shared/money';
+import { priceCartLine } from '../lib/cartPricing';
 
 const Sales = () => {
   const navigate = useNavigate();
@@ -30,10 +32,8 @@ const Sales = () => {
     stockItem: any;
     barcode: string;
     qty: number;
+    /** Price the customer pays, VAT included, as typed at the till. */
     editedInclusivePrice: string;
-    netPrice: number;
-    computedDiscountAmount: number;
-    computedDiscountPercentage: number;
   }>>([]);
   
   // Stock Search State
@@ -62,11 +62,13 @@ const Sales = () => {
   const [finalPrice, setFinalPrice] = useState('');
   const [editedInclusivePrice, setEditedInclusivePrice] = useState('');
 
-  // Cart Calculations using .reduce()
-  const totalNetHT = cartItems.reduce((sum, item) => sum + (item.netPrice * item.qty), 0);
-  const vatAmount = totalNetHT * 0.15;
-  const totalWithVat = totalNetHT * 1.15;
-  const totalDiscount = cartItems.reduce((sum, item) => sum + (item.computedDiscountAmount * item.qty), 0);
+  // Cart totals, computed exactly as the server will record them.
+  const cartLines = cartItems.map(item => priceCartLine(item.stockItem.price, item.editedInclusivePrice));
+  const cartTotals = sumLines(cartLines.map(l => l.amounts));
+  const totalNetHT = cartTotals.netCents / 100;
+  const vatAmount = cartTotals.vatCents / 100;
+  const totalWithVat = cartTotals.grossCents / 100;
+  const cartError = cartLines.find(l => l.error)?.error ?? null;
 
   const handleAddToCart = (itemToAdd: any, customPriceTtc?: string) => {
     const exists = cartItems.some(ci => ci.stockItem.id === itemToAdd.id || (ci.barcode && ci.barcode === itemToAdd.barcode));
@@ -76,16 +78,6 @@ const Sales = () => {
     }
 
     const rawPriceTtc = customPriceTtc !== undefined ? customPriceTtc : (itemToAdd.price ? Number(itemToAdd.price).toString() : '0');
-    const priceTtcNum = parseFloat(rawPriceTtc);
-    const net = !isNaN(priceTtcNum) && priceTtcNum > 0 ? priceTtcNum / 1.15 : 0;
-    
-    const originalPrice = parseFloat(itemToAdd.price || '0');
-    let discAmt = 0;
-    let discPct = 0;
-    if (originalPrice > 0 && priceTtcNum < originalPrice) {
-      discAmt = originalPrice - priceTtcNum;
-      discPct = (discAmt / originalPrice) * 100;
-    }
 
     const newItem = {
       id: itemToAdd.id || itemToAdd.barcode || Date.now(),
@@ -93,9 +85,6 @@ const Sales = () => {
       barcode: itemToAdd.barcode || '',
       qty: 1,
       editedInclusivePrice: rawPriceTtc,
-      netPrice: net,
-      computedDiscountAmount: discAmt,
-      computedDiscountPercentage: discPct,
     };
 
     setCartItems(prev => [...prev, newItem]);
@@ -111,25 +100,7 @@ const Sales = () => {
   };
 
   const handleUpdateCartItemPrice = (index: number, newPriceTtc: string) => {
-    setCartItems(prev => prev.map((item, i) => {
-      if (i !== index) return item;
-      const priceNum = parseFloat(newPriceTtc);
-      const net = !isNaN(priceNum) && priceNum > 0 ? priceNum / 1.15 : 0;
-      const origPrice = parseFloat(item.stockItem.price || '0');
-      let discAmt = 0;
-      let discPct = 0;
-      if (origPrice > 0 && priceNum < origPrice) {
-        discAmt = origPrice - priceNum;
-        discPct = (discAmt / origPrice) * 100;
-      }
-      return {
-        ...item,
-        editedInclusivePrice: newPriceTtc,
-        netPrice: net,
-        computedDiscountAmount: discAmt,
-        computedDiscountPercentage: discPct
-      };
-    }));
+    setCartItems(prev => prev.map((item, i) => i === index ? { ...item, editedInclusivePrice: newPriceTtc } : item));
   };
 
   useEffect(() => {
@@ -286,23 +257,18 @@ const Sales = () => {
   };
 
   const handleFinalizeSale = async () => {
-    if (cartItems.length === 0 || !selectedCustomer) return;
-    
+    if (cartItems.length === 0 || !selectedCustomer || cartError) return;
+
     setIsLoading(true);
     try {
       const salePayload = {
         customerId: selectedCustomer.id,
         paymentMode,
         chequeNumber: paymentMode === 'Cheque' ? chequeNumber : null,
-        items: cartItems.map(item => ({
+        // The server prices each item from stock; only the discount is sent.
+        items: cartItems.map((item, i) => ({
           stockId: item.stockItem.id,
-          barcode: item.barcode,
-          qty: item.qty,
-          amount: item.netPrice.toFixed(2),
-          unitSalesPrice: item.netPrice.toFixed(2),
-          discountAmount: item.computedDiscountAmount > 0 ? item.computedDiscountAmount.toFixed(2) : '0.00',
-          discountPercentage: item.computedDiscountPercentage > 0 ? item.computedDiscountPercentage.toFixed(2) : '0.00',
-          itemDetails: `${item.stockItem.subCategory || item.stockItem.category || ''} (${item.stockItem.metalType || ''} ${item.stockItem.fineness || ''})`.trim()
+          discountAmount: (cartLines[i].discountCents / 100).toFixed(2),
         })),
         linkedOdfId: linkedOdf?.id || null,
         linkedCommandeId: linkedCommande?.id || null,
@@ -535,6 +501,7 @@ const Sales = () => {
                                  step="0.01"
                                  className="w-28 bg-slate-50 border border-slate-200 rounded-xl py-1 px-2 font-extrabold text-right focus:border-amber-400 outline-none text-slate-900 transition-all font-mono"
                                  value={item.editedInclusivePrice}
+                                 aria-invalid={!!cartLines[idx]?.error}
                                  onChange={(e) => handleUpdateCartItemPrice(idx, e.target.value)}
                                />
                              </td>
@@ -566,9 +533,13 @@ const Sales = () => {
                        <p className="text-xs font-bold text-slate-400 uppercase">Total TTC</p>
                        <p className="text-2xl font-black text-slate-900">{formatCurrency(totalWithVat)}</p>
                      </div>
+                     {cartError && (
+                       <p role="alert" className="w-full text-sm font-bold text-red-600">{cartError}</p>
+                     )}
                      <button 
                        onClick={() => setSaleStep('customer')}
-                       className="bg-amber-500 text-slate-900 px-6 py-3 rounded-xl font-bold hover:bg-amber-400 transition-all flex items-center gap-2"
+                       disabled={!!cartError}
+                       className="bg-amber-500 text-slate-900 px-6 py-3 rounded-xl font-bold hover:bg-amber-400 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                      >
                        Continuer <Plus size={18} />
                      </button>
@@ -949,7 +920,7 @@ const Sales = () => {
                   <div className="pt-8 flex flex-col gap-3">
                     <button 
                       onClick={handleFinalizeSale}
-                      disabled={isLoading || cartItems.length === 0}
+                      disabled={isLoading || cartItems.length === 0 || !!cartError}
                       className="w-full bg-emerald-600 text-white py-5 rounded-2xl font-black text-xl shadow-2xl flex items-center justify-center gap-3 hover:bg-emerald-700 transition-all disabled:opacity-50"
                     >
                       {isLoading ? <Loader2 className="animate-spin" /> : <>Finaliser & Facturer <PlusCircle size={24}/></>}
@@ -995,6 +966,7 @@ const Sales = () => {
                       <p className="font-black text-slate-900">{isGeneratingPDF ? 'Génération...' : 'Télécharger PDF'}</p>
                       <p className="text-xs text-slate-500 font-medium">{isGeneratingPDF ? 'Veuillez patienter' : 'Impression directe'}</p>
                     </div>
+                    {completedSale?.linkedOdfId && (
                     <div className="p-6 bg-slate-50 rounded-3xl hover:bg-emerald-50 transition-colors cursor-pointer group" onClick={handleDownloadDeclarationPDF}>
                        {isGeneratingDecl ? (
                          <Loader2 className="mx-auto text-emerald-600 mb-4 animate-spin" size={32} />
@@ -1004,8 +976,7 @@ const Sales = () => {
                        <p className="font-black text-slate-900">{isGeneratingDecl ? 'Génération...' : 'Imprimer Déclaration (Trade-in)'}</p>
                        <p className="text-xs text-slate-500 font-medium">{isGeneratingDecl ? 'Veuillez patienter' : 'Trade-in PDF'}</p>
                     </div>
-                    <div className="hidden" style={{display: 'none'}}>
-                   </div>
+                    )}
                    <div className="p-6 bg-slate-50 rounded-3xl hover:bg-emerald-50 transition-colors cursor-pointer group" onClick={() => handleUploadAndSend('whatsapp')}>
                       <Smartphone className="mx-auto text-slate-400 mb-4 group-hover:text-emerald-600" size={32} />
                       <p className="font-black text-slate-900">WhatsApp</p>

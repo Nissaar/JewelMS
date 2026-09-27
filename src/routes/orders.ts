@@ -1,9 +1,10 @@
 import type { Express } from "express";
 import { db } from "../db/index";
-import { customers, orders, sales } from "../db/schema";
+import { customers, orders, receipts, saleItems, sales } from "../db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { authenticateToken, checkPermission } from "../middleware/auth";
-import { notFound, sendError } from "../lib/errors";
+import { badRequest, notFound, sendError } from "../lib/errors";
+import { centsToDecimal, splitGross, toCents } from "../shared/money";
 import { idParam, orderCreateSchema, orderFinalizeSchema } from "../lib/schemas";
 
 export function registerOrdersRoutes(app: Express) {
@@ -80,33 +81,46 @@ export function registerOrdersRoutes(app: Express) {
       const orderId = idParam.parse(req.params.id);
       const { finalWeight, finalPrice, paymentMode } = orderFinalizeSchema.parse(req.body);
 
-      await db.transaction(async (tx: any) => {
-        const [order] = await tx.select().from(orders).where(eq(orders.id, orderId)).limit(1);
+      const saleId = await db.transaction(async (tx: any) => {
+        // Lock the order so a double-click can't finalize it twice.
+        const [order] = await tx.select().from(orders).where(eq(orders.id, orderId)).limit(1).for('update');
         if (!order) throw notFound("Order not found");
+        if (order.status !== 'Pending') throw badRequest("Cette commande est déjà finalisée.");
+
+        // The final price is entered VAT-inclusive ("Prix TTC Total").
+        const { netCents, vatCents } = splitGross(toCents(finalPrice));
 
         await tx.update(orders)
-          .set({ status: 'Finalized', finalWeight: finalWeight?.toFixed(3) ?? null, finalPrice: finalPrice!.toFixed(2), updatedAt: new Date() })
+          .set({ status: 'Finalized', finalWeight: finalWeight?.toFixed(3) ?? null, finalPrice: centsToDecimal(toCents(finalPrice)), updatedAt: new Date() })
           .where(eq(orders.id, orderId));
 
-        const totalAmount = Number(finalPrice) || 0;
-        const vat = totalAmount * 0.15;
-
-        const newSale = await tx.insert(sales).values({
+        const [newSale] = await tx.insert(sales).values({
           customerId: order.customerId,
           stockId: null,
           orderId: order.id,
-          amount: totalAmount.toString(),
-          vat15: vat.toFixed(2),
+          amount: centsToDecimal(netCents),
+          vat15: centsToDecimal(vatCents),
           weight: finalWeight?.toFixed(3) ?? null,
           paymentMode,
           itemDetails: `Finalized Order #${order.orderNumber}: ${order.itemDescription}`,
           qty: 1,
-          unitSalesPrice: totalAmount.toString(),
+          unitSalesPrice: centsToDecimal(netCents),
           datetime: new Date()
         }).returning({ id: sales.id });
-
-        res.json({ message: "Order finalized and sale created", saleId: newSale[0].id });
+        await tx.insert(saleItems).values({
+          saleId: newSale.id,
+          itemDetails: `Commande #${order.orderNumber}: ${order.itemDescription || ''}`.trim(),
+          qty: 1,
+          unitSalesPrice: centsToDecimal(netCents),
+          amount: centsToDecimal(netCents),
+          weight: finalWeight?.toFixed(3) ?? null,
+        });
+        await tx.insert(receipts).values({ saleId: newSale.id });
+        return newSale.id;
       });
+
+      // Reply only once the transaction has committed.
+      res.json({ message: "Order finalized and sale created", saleId });
     } catch (error) {
       sendError(res, error, "Failed to finalize order", "Order Finalization Error");
     }

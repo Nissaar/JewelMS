@@ -402,6 +402,7 @@ const SalesHistory = () => {
                       )}
                       {isGeneratingPDF ? 'Génération...' : 'Télécharger PDF'}
                     </button>
+                    {selectedSale.linkedOdfId && (
                     <button 
                       onClick={() => handleDownloadDeclarationPDF(selectedSale.id)}
                       disabled={isGeneratingDecl || selectedSale.status === 'Cancelled'}
@@ -414,6 +415,7 @@ const SalesHistory = () => {
                       )}
                       {isGeneratingDecl ? 'Génération...' : 'Imprimer Déclaration (Trade-in)'}
                     </button>
+                    )}
                   </div>
                   <button 
                     onClick={() => setIsModalOpen(false)}

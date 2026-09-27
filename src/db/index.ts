@@ -7,6 +7,11 @@ import * as schema from './schema';
 export let db: any;
 export let isPglite = false;
 
+if (!process.env.DATABASE_URL && process.env.NODE_ENV === 'production') {
+  // The in-memory fallback would run normally and lose every sale on restart.
+  throw new Error('DATABASE_URL is not set. Refusing to start in production without a real database.');
+}
+
 if (process.env.DATABASE_URL) {
   const pool = new pg.Pool({
     connectionString: process.env.DATABASE_URL,

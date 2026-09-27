@@ -6,6 +6,7 @@ import { authenticateToken, checkAnyPermission, checkPermission } from "../middl
 import { customerCreateSchema, customerUpdateSchema, idParam } from "../lib/schemas";
 import { notFound, sendError } from "../lib/errors";
 import { escapeLike } from "../lib/sql";
+import { saleBarcodes } from "../services/reportData";
 
 export function registerCustomersRoutes(app: Express) {
 
@@ -75,7 +76,8 @@ export function registerCustomersRoutes(app: Express) {
           date: sales.datetime,
           amount: sales.amount,
           itemDetails: sales.itemDetails,
-          barcode: stock.barcode,
+          barcode: saleBarcodes,
+          status: sales.status,
           category: stock.category,
           subCategory: stock.subCategory,
           fileUrl: receipts.fileUrl

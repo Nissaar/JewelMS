@@ -4,18 +4,18 @@ import { stock, customers, receipts, orders, sales, odf, odfItems } from "../db/
 import { eq, or, ilike, and, sql } from "drizzle-orm";
 import { authenticateToken, checkPermission, userCan } from "../middleware/auth";
 import { sendError } from "../lib/errors";
+import { discountRows, salesByMetalRows, tradeInRows, vatReportRows } from "../services/reportData";
 import { escapeLike } from "../lib/sql";
 
 export function registerReportsRoutes(app: Express) {
 
-  // --- Search & Reporting Endpoints ---
   app.get("/api/reports/dashboard-summary", authenticateToken, checkPermission('reports', 'view'), async (req: any, res) => {
     try {
       // Use PostgreSQL's CURRENT_DATE for more reliable "today" filtering
       const [todaySalesRes, newClientsRes, stockCountRes, pendingOrdersRes, recentSalesRes] = await Promise.all([
         db.select({ total: sql<string>`SUM(${sales.amount})` })
           .from(sales)
-          .where(sql`DATE(${sales.datetime} AT TIME ZONE 'UTC') = CURRENT_DATE`),
+          .where(and(eq(sales.status, 'Completed'), sql`DATE(${sales.datetime} AT TIME ZONE 'UTC') = CURRENT_DATE`)),
         
         db.select({ count: sql<number>`COUNT(${customers.id})`.mapWith(Number) })
           .from(customers)
@@ -54,8 +54,7 @@ export function registerReportsRoutes(app: Express) {
         recentSales: recentSalesRes
       });
     } catch (error) {
-      console.error("Dashboard Summary Error:", error);
-      res.status(500).json({ error: "Failed to fetch dashboard summary" });
+      sendError(res, error, "Failed to fetch dashboard summary", "Dashboard Summary Error");
     }
   });
 
@@ -167,52 +166,17 @@ export function registerReportsRoutes(app: Express) {
 
       res.json(report);
     } catch (error) {
-      console.error("Reporting Error:", error);
-      res.status(500).json({ error: "Failed to generate weight report" });
+      sendError(res, error, "Failed to generate weight report", "Reporting Error");
     }
   });
 
-  // Settings Endpoints (Admin only)
-
-
-  // --- Reports & Audit Endpoints ---
   app.get("/api/reports/vat", authenticateToken, checkPermission('reports', 'view'), async (req: any, res) => {
-    const { day, month, year } = req.query;
     try {
-      let conditions = [];
-      if (year) conditions.push(sql`EXTRACT(YEAR FROM ${sales.createdAt}) = ${year}`);
-      if (month) conditions.push(sql`EXTRACT(MONTH FROM ${sales.createdAt}) = ${month}`);
-      if (day) conditions.push(sql`EXTRACT(DAY FROM ${sales.createdAt}) = ${day}`);
-
-      const reportData = await db.select({
-        saleId: sales.id,
-        receiptNo: receipts.receiptSerialNumber,
-        itemDetails: sales.itemDetails,
-        weight: sales.weight,
-        amountExclVat: sales.amount,
-        createdAt: sales.createdAt
-      })
-      .from(sales)
-      .leftJoin(receipts, eq(sales.id, receipts.saleId))
-      .where(conditions.length > 0 ? and(...conditions) : undefined)
-      .orderBy(sales.id);
-
-      const calculatedData = reportData.map(row => {
-        const amount = parseFloat(row.amountExclVat || "0");
-        const vat = amount * 0.15;
-        return {
-          ...row,
-          vatAmount: vat.toFixed(2),
-          total: (amount + vat).toFixed(2)
-        };
-      });
-
-      const totalVat = calculatedData.reduce((sum, row) => sum + parseFloat(row.vatAmount), 0);
-
-      res.json({ data: calculatedData, summary: { totalVat: totalVat.toFixed(2) } });
+      const data = await vatReportRows(req.query);
+      const totalVat = data.reduce((sum: number, row: any) => sum + Number(row.vatAmount), 0);
+      res.json({ data, summary: { totalVat: totalVat.toFixed(2) } });
     } catch (error) {
-      console.error("VAT Report Error:", error);
-      res.status(500).json({ error: "Failed to fetch VAT report" });
+      sendError(res, error, "Failed to fetch VAT report", "VAT Report Error");
     }
   });
 
@@ -228,97 +192,18 @@ export function registerReportsRoutes(app: Express) {
 
       doc.pipe(res);
       doc.end();
-    } catch (error: any) {
-      console.error("VAT PDF Generation Error:", error);
-      res.status(500).json({ error: "Failed to generate VAT PDF report" });
+    } catch (error) {
+      sendError(res, error, "Failed to generate VAT PDF report", "VAT PDF Generation Error");
     }
   });
-
-  // --- Registre Trade-In (Assay Office) Endpoints ---
 
 
   // --- Registre Trade-In (Assay Office) Endpoints ---
   app.get("/api/reports/tradein", authenticateToken, checkPermission('reports', 'view'), async (req: any, res) => {
-    const { startDate, endDate } = req.query;
     try {
-      let conditions = [];
-      if (startDate) {
-        conditions.push(sql`${odf.createdAt} >= ${new Date(startDate as string)}`);
-      }
-      if (endDate) {
-        const end = new Date(endDate as string);
-        end.setHours(23, 59, 59, 999);
-        conditions.push(sql`${odf.createdAt} <= ${end}`);
-      }
-
-      const allOdf = await db.select({
-        id: odf.id,
-        odfSerialNumber: odf.odfSerialNumber,
-        createdAt: odf.createdAt,
-        customerId: odf.customerId,
-        customerName: customers.name,
-        customerNIC: customers.idNumber,
-        customerAddress: customers.address,
-        metalType: odf.metalType,
-        fineness: odf.fineness,
-        weight: odf.weight,
-        amount: odf.amount,
-        description: odf.description,
-        receiptNo: receipts.receiptSerialNumber
-      })
-      .from(odf)
-      .innerJoin(customers, eq(odf.customerId, customers.id))
-      .leftJoin(sales, eq(sales.linkedOdfId, odf.id))
-      .leftJoin(receipts, eq(receipts.saleId, sales.id))
-      .where(conditions.length > 0 ? and(...conditions) : undefined)
-      .orderBy(odf.createdAt);
-
-      const allOdfWithItems = await Promise.all(allOdf.map(async (record) => {
-        const items = await db.select().from(odfItems).where(eq(odfItems.odfId, record.id));
-        return {
-          ...record,
-          tradeInItems: items
-        };
-      }));
-
-      // Flatten items for the ledger
-      const flattened = [];
-      for (const record of allOdfWithItems) {
-        if (record.tradeInItems && record.tradeInItems.length > 0) {
-          for (const item of record.tradeInItems) {
-            flattened.push({
-              id: record.id,
-              date: record.createdAt,
-              customerName: record.customerName,
-              customerNIC: record.customerNIC,
-              customerAddress: record.customerAddress,
-              description: item.description || `${record.metalType} ${item.fineness || record.fineness}`,
-              weight: item.mass,
-              fineness: item.fineness,
-              invNo: `#ODF-${record.odfSerialNumber || record.id}`,
-              out: record.receiptNo ? `#FS-${record.receiptNo}` : '-'
-            });
-          }
-        } else {
-          flattened.push({
-            id: record.id,
-            date: record.createdAt,
-            customerName: record.customerName,
-            customerNIC: record.customerNIC,
-            customerAddress: record.customerAddress,
-            description: record.description || `${record.metalType} ${record.fineness}`,
-            weight: record.weight,
-            fineness: record.fineness,
-            invNo: `#ODF-${record.odfSerialNumber || record.id}`,
-            out: record.receiptNo ? `#FS-${record.receiptNo}` : '-'
-          });
-        }
-      }
-
-      res.json(flattened);
+      res.json(await tradeInRows(req.query));
     } catch (error) {
-      console.error("Trade-In Ledger Report Error:", error);
-      res.status(500).json({ error: "Failed to fetch trade-in ledger report" });
+      sendError(res, error, "Failed to fetch trade-in ledger report", "Trade-In Ledger Report Error");
     }
   });
 
@@ -334,9 +219,8 @@ export function registerReportsRoutes(app: Express) {
 
       doc.pipe(res);
       doc.end();
-    } catch (error: any) {
-      console.error("Trade-In PDF Generation Error:", error);
-      res.status(500).json({ error: "Failed to generate Trade-In PDF report" });
+    } catch (error) {
+      sendError(res, error, "Failed to generate Trade-In PDF report", "Trade-In PDF Generation Error");
     }
   });
 
@@ -357,170 +241,28 @@ export function registerReportsRoutes(app: Express) {
 
       doc.pipe(res);
       doc.end();
-    } catch (error: any) {
-      console.error("Sales by Metal PDF Generation Error:", error);
-      res.status(500).json({ error: "Failed to generate Sales by Metal PDF report" });
+    } catch (error) {
+      sendError(res, error, "Failed to generate Sales by Metal PDF report", "Sales by Metal PDF Generation Error");
     }
   });
-
-  // --- Sales by Metal Report Endpoint ---
 
 
   // --- Sales by Metal Report Endpoint ---
   app.get("/api/reports/sales-by-metal", authenticateToken, checkPermission('reports', 'view'), async (req: any, res) => {
-    const { startDate, endDate, metalType, fineness } = req.query;
     try {
-      let conditions = [];
-      
-      // Filter out cancelled sales
-      conditions.push(eq(sales.status, 'Completed'));
-
-      if (startDate) {
-        conditions.push(sql`${sales.createdAt} >= ${new Date(startDate as string)}`);
-      }
-      if (endDate) {
-        const end = new Date(endDate as string);
-        end.setHours(23, 59, 59, 999);
-        conditions.push(sql`${sales.createdAt} <= ${end}`);
-      }
-
-      if (metalType && metalType !== 'all') {
-        let mType = (metalType as string).toLowerCase().trim();
-        if (mType === 'or' || mType === 'gold') {
-          conditions.push(or(ilike(sales.metalType, 'Gold'), ilike(sales.metalType, 'Or')));
-        } else if (mType === 'argent' || mType === 'silver') {
-          conditions.push(or(ilike(sales.metalType, 'Silver'), ilike(sales.metalType, 'Argent')));
-        } else if (mType === 'platine' || mType === 'platinum') {
-          conditions.push(or(ilike(sales.metalType, 'Platinum'), ilike(sales.metalType, 'Platine')));
-        } else {
-          conditions.push(ilike(sales.metalType, metalType as string));
-        }
-      }
-
-      if (fineness && fineness !== 'all') {
-        conditions.push(ilike(sales.fineness, fineness as string));
-      }
-
-      const matchingSales = await db.select({
-        id: sales.id,
-        createdAt: sales.createdAt,
-        customerName: customers.name,
-        itemDetails: sales.itemDetails,
-        barcode: stock.barcode,
-        metalType: sales.metalType,
-        fineness: sales.fineness,
-        weight: sales.weight,
-        amount: sales.amount,
-        vat15: sales.vat15,
-        receiptNo: receipts.receiptSerialNumber
-      })
-      .from(sales)
-      .leftJoin(customers, eq(sales.customerId, customers.id))
-      .leftJoin(stock, eq(sales.stockId, stock.id))
-      .leftJoin(receipts, eq(sales.id, receipts.saleId))
-      .where(conditions.length > 0 ? and(...conditions) : undefined)
-      .orderBy(sql`${sales.createdAt} DESC`);
-
-      let totalWeight = 0;
-      let totalRevenue = 0;
-      
-      const items = matchingSales.map(row => {
-        const w = parseFloat(row.weight || "0");
-        const amt = parseFloat(row.amount || "0");
-        const vat = parseFloat(row.vat15 || "0");
-        const totalWithVat = amt + vat;
-        
-        totalWeight += w;
-        totalRevenue += amt;
-        
-        return {
-          ...row,
-          weight: w,
-          amount: amt,
-          totalWithVat: totalWithVat
-        };
-      });
-
-      res.json({
-        items,
-        summary: {
-          totalWeight,
-          totalRevenue,
-          totalRevenueWithVat: items.reduce((sum, item) => sum + item.totalWithVat, 0),
-          count: items.length
-        }
-      });
+      res.json(await salesByMetalRows(req.query));
     } catch (error) {
-      console.error("Sales by Metal Report Error:", error);
-      res.status(500).json({ error: "Failed to generate sales by metal report" });
+      sendError(res, error, "Failed to generate sales by metal report", "Sales by Metal Report Error");
     }
   });
-
-  // --- Discount Report Endpoint ---
 
 
   // --- Discount Report Endpoint ---
   app.get("/api/reports/discounts", authenticateToken, checkPermission('reports', 'view'), async (req: any, res) => {
     try {
-      const discountReport = await db.select({
-        saleId: sales.id,
-        createdAt: sales.createdAt,
-        customerName: customers.name,
-        customerIdNumber: customers.idNumber,
-        itemBarcode: stock.barcode,
-        itemDetails: sales.itemDetails,
-        stockPrice: stock.price,
-        amount: sales.amount,
-        vat15: sales.vat15,
-        discountAmount: sales.discountAmount,
-        discountPercentage: sales.discountPercentage,
-        unitSalesPrice: sales.unitSalesPrice,
-      })
-      .from(sales)
-      .leftJoin(customers, eq(sales.customerId, customers.id))
-      .leftJoin(stock, eq(sales.stockId, stock.id))
-      .where(
-        and(
-          sql`${sales.discountAmount} IS NOT NULL`,
-          sql`CAST(${sales.discountAmount} AS NUMERIC) > 0`
-        )
-      )
-      .orderBy(sql`${sales.createdAt} DESC`);
-
-      const formattedReport = discountReport.map(row => {
-        const discAmt = parseFloat(row.discountAmount || "0");
-        const discPct = parseFloat(row.discountPercentage || "0");
-        const amt = parseFloat(row.amount || "0");
-        const vat = parseFloat(row.vat15 || "0");
-        const finalPriceTTC = amt + vat;
-        const originalPriceTTC = finalPriceTTC + discAmt;
-
-        return {
-          saleId: row.saleId,
-          createdAt: row.createdAt,
-          customerName: row.customerName || "Client inconnu",
-          customerIdNumber: row.customerIdNumber || "",
-          itemBarcode: row.itemBarcode || "N/A",
-          itemDetails: row.itemDetails || "N/A",
-          originalPriceTTC: originalPriceTTC.toFixed(2),
-          finalPriceTTC: finalPriceTTC.toFixed(2),
-          discountAmount: discAmt.toFixed(2),
-          discountPercentage: discPct.toFixed(2),
-        };
-      });
-
-      const totalDiscounts = formattedReport.reduce((sum, row) => sum + parseFloat(row.discountAmount), 0);
-
-      res.json({
-        data: formattedReport,
-        summary: {
-          totalDiscounts: totalDiscounts.toFixed(2),
-          count: formattedReport.length
-        }
-      });
+      res.json(await discountRows());
     } catch (error) {
-      console.error("Discount Report Error:", error);
-      res.status(500).json({ error: "Failed to fetch discount report" });
+      sendError(res, error, "Failed to fetch discount report", "Discount Report Error");
     }
   });
 }

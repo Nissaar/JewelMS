@@ -93,16 +93,14 @@ export const customerUpdateSchema = z.object({ ...customerFields, name: customer
 
 // --- Sales -----------------------------------------------------------------
 
+/**
+ * One cart line. The price always comes from the stock record; the till only
+ * says how much discount (VAT-inclusive rupees) was given on it.
+ */
 export const saleItemSchema = z.object({
-  stockId: optionalId,
-  barcode: text(100),
-  qty: z.coerce.number().int().min(1).max(1).optional(),
-  amount: decimal(),
-  unitSalesPrice: decimal(),
-  discountAmount: decimal(),
-  discountPercentage: decimal(),
-  itemDetails: text(500),
-}).refine(i => i.stockId || i.barcode, 'Each item needs a stockId or barcode');
+  stockId: id,
+  discountAmount: decimal().transform(v => v ?? 0),
+});
 
 export const saleCreateSchema = z.object({
   customerId: optionalId,
@@ -112,7 +110,6 @@ export const saleCreateSchema = z.object({
   linkedOdfId: optionalId,
   linkedCommandeId: optionalId,
   items: z.array(saleItemSchema).min(1, 'Aucun article spécifié pour la vente.').max(100),
-  discountPercentage: decimal(),
 });
 
 // --- Orders ----------------------------------------------------------------

@@ -4,6 +4,7 @@ import { sales, saleItems, customers, receipts, odf, stock, orders } from '../..
 import { eq } from 'drizzle-orm';
 import { formatCurrency, formatItemDetails } from '../../lib/utils';
 import { numberToWords, addWatermark } from './common';
+import { getShopDetails } from '../shopDetails';
 
 /**
  * Builds the tax invoice. A counted print increments the receipt's print count,
@@ -58,6 +59,8 @@ export async function generateReceiptPDF(
   }
   const receipt = receiptRecords[0];
 
+  const shop = await getShopDetails();
+
   // 2. Create PDF with standard A4 page size
   const doc = new PDFDocument({
     size: 'A4',
@@ -67,10 +70,11 @@ export async function generateReceiptPDF(
 
   // Header Block
   doc.fillColor('#5c3a21');
-  doc.fontSize(24).font('Helvetica-Bold').text('HAUJEE JEWELLERY', { align: 'center', characterSpacing: 2 });
+  doc.fontSize(24).font('Helvetica-Bold').text(shop.name.toUpperCase(), { align: 'center', characterSpacing: 2 });
   doc.fillColor('#000000');
   doc.fontSize(14).font('Helvetica-Bold').text('TAX INVOICE', { align: 'center' });
-  doc.fontSize(10).font('Helvetica').text('VAT / BRN : C10012345', { align: 'center' });
+  const registration = [shop.vatNumber && `VAT : ${shop.vatNumber}`, shop.brn && `BRN : ${shop.brn}`].filter(Boolean).join('   ');
+  if (registration) doc.fontSize(10).font('Helvetica').text(registration, { align: 'center' });
   doc.moveDown(0.5);
   doc.strokeColor('#5c3a21').lineWidth(2).moveTo(40, doc.y).lineTo(555, doc.y).stroke();
   doc.moveDown(1);
@@ -359,10 +363,10 @@ export async function generateReceiptPDF(
   // Store Address details centered at the bottom
   const storeY = 410;
   doc.fillColor('#5c3a21').font('Helvetica-Bold').fontSize(10);
-  doc.text('Haujee Jewellery', 40, storeY, { align: 'center' });
+  doc.text(shop.legalName || shop.name, 40, storeY, { align: 'center' });
   doc.font('Helvetica').fontSize(9);
-  doc.text('12 Rue de la Corderie, Port Louis, Mauritius', 40, storeY + 15, { align: 'center' });
-  doc.text('Tel: +230 212 3456', 40, storeY + 28, { align: 'center' });
+  if (shop.address) doc.text(shop.address, 40, storeY + 15, { align: 'center' });
+  if (shop.phone) doc.text(`Tel: ${shop.phone}`, 40, storeY + 28, { align: 'center' });
 
   if (countAsPrint) {
     await db.update(receipts)

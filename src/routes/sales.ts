@@ -6,13 +6,15 @@ import { authenticateToken, checkPermission, requireAdmin } from "../middleware/
 import { badRequest, notFound, sendError } from "../lib/errors";
 import { idParam, saleCreateSchema } from "../lib/schemas";
 import { escapeLike } from "../lib/sql";
+import { saleBarcodes } from "../services/reportData";
+import { centsToDecimal, splitGross, sumLines, toCents } from "../shared/money";
 
 export function registerSalesRoutes(app: Express) {
 
   // --- Sales Recording Endpoint ---
   app.post("/api/sales", authenticateToken, checkPermission('sales', 'create'), async (req, res) => {
     try {
-      const { customerId, paymentMode, chequeNumber, orderId, linkedOdfId: lOdfId, linkedCommandeId: lCommandeId, items: rawItemsList, discountPercentage } =
+      const { customerId, paymentMode, chequeNumber, orderId, linkedOdfId: lOdfId, linkedCommandeId: lCommandeId, items: rawItemsList } =
         saleCreateSchema.parse(req.body);
 
       const result = await db.transaction(async (tx) => {
@@ -44,80 +46,69 @@ export function registerSalesRoutes(app: Express) {
           }
         }
 
-        // Process each item in cart
-        const processedItems: any[] = [];
-        let totalAmountNum = 0;
-        let totalDiscountNum = 0;
+        const stockIds = rawItemsList.map(i => i.stockId);
+        if (new Set(stockIds).size !== stockIds.length) {
+          throw badRequest("Le même article figure deux fois dans le panier.");
+        }
 
+        // Price every line from its stock record. The till only supplies the
+        // discount, which must leave a positive price.
+        const processedItems = [];
         for (const rawItem of rawItemsList) {
-          let stockItem: any = null;
-
           // Lock the row for the duration of the transaction. Without this, two
           // concurrent checkouts can both read the item as 'Disponible' and both
           // mark it sold.
-          if (rawItem.stockId) {
-            const items = await tx.select().from(stock)
-              .where(and(eq(stock.id, rawItem.stockId), eq(stock.status, 'Disponible')))
-              .limit(1)
-              .for('update');
-            if (items.length > 0) stockItem = items[0];
-          } else if (rawItem.barcode) {
-            const items = await tx.select().from(stock)
-              .where(and(eq(stock.barcode, rawItem.barcode), eq(stock.status, 'Disponible')))
-              .limit(1)
-              .for('update');
-            if (items.length > 0) stockItem = items[0];
-          }
-
+          const [stockItem] = await tx.select().from(stock)
+            .where(and(eq(stock.id, rawItem.stockId), eq(stock.status, 'Disponible')))
+            .limit(1)
+            .for('update');
           if (!stockItem) {
-            throw badRequest(`Un article du panier (Code-barres: ${rawItem.barcode || rawItem.stockId || 'Inconnu'}) n'est plus disponible en stock.`);
+            throw badRequest(`Un article du panier (ID: ${rawItem.stockId}) n'est plus disponible en stock.`);
           }
 
-          const itemQty = Number(rawItem.qty || 1);
-          const itemNetPrice = rawItem.amount ? parseFloat(String(rawItem.amount)) : (stockItem.price ? parseFloat(stockItem.price) / 1.15 : 0);
-          const itemUnitPrice = rawItem.unitSalesPrice ? parseFloat(String(rawItem.unitSalesPrice)) : itemNetPrice;
-          const itemDisc = rawItem.discountAmount ? parseFloat(String(rawItem.discountAmount)) : 0;
+          const listCents = toCents(stockItem.price);
+          const discountCents = toCents(rawItem.discountAmount);
+          if (listCents <= 0) {
+            throw badRequest(`L'article ${stockItem.barcode} n'a pas de prix. Ajoutez un prix dans le Stock avant de le vendre.`);
+          }
+          if (discountCents >= listCents) {
+            throw badRequest(`La remise sur l'article ${stockItem.barcode} ne peut pas atteindre ou dépasser son prix.`);
+          }
 
-          // Multiply by quantity: the frontend totals as netPrice * qty, and the
-          // two must agree or the recorded sale undercharges.
-          totalAmountNum += itemNetPrice * itemQty;
-          totalDiscountNum += itemDisc * itemQty;
-
-          const desc = rawItem.itemDetails || `${stockItem.barcode || ''} - ${stockItem.category || ''} ${stockItem.subCategory || ''} ${stockItem.metalType ? `(${stockItem.metalType})` : ''}`.trim().replace(/\s+/g, ' ');
-
+          const line = splitGross(listCents - discountCents);
+          const metal = [stockItem.metalType, stockItem.fineness].filter(Boolean).join(' ');
           processedItems.push({
             stockItem,
-            stockId: stockItem.id,
-            barcode: stockItem.barcode,
-            qty: itemQty,
-            itemDetails: desc,
-            unitSalesPrice: itemUnitPrice.toFixed(2),
-            amount: itemNetPrice.toFixed(2),
-            weight: stockItem.weightGrams,
-            fineness: stockItem.fineness,
-            metalType: stockItem.metalType
+            line,
+            listCents,
+            discountCents,
+            itemDetails: `${stockItem.subCategory || stockItem.category}${metal ? ` (${metal})` : ''}`,
           });
         }
 
-        const totalVatNum = totalAmountNum * 0.15;
-        const mainStockItem = processedItems[0]?.stockItem;
+        const totals = sumLines(processedItems.map(p => p.line));
+        const totalListCents = processedItems.reduce((sum, p) => sum + p.listCents, 0);
+        const totalDiscountCents = processedItems.reduce((sum, p) => sum + p.discountCents, 0);
+        const totalWeight = processedItems.reduce((sum, p) => sum + Number(p.stockItem.weightGrams || 0), 0);
+        const first = processedItems[0].stockItem;
+        const sameMetal = processedItems.every(p => p.stockItem.metalType === first.metalType && p.stockItem.fineness === first.fineness);
 
-        // 1. Insert parent sale
+        // 1. Insert parent sale. amount is net of VAT and of discounts.
         const newSale = await tx.insert(sales).values({
           customerId,
-          stockId: mainStockItem ? mainStockItem.id : null,
+          stockId: first.id,
           paymentMode,
-          chequeNumber,
-          qty: processedItems.reduce((acc, curr) => acc + curr.qty, 0),
+          chequeNumber: paymentMode === 'Cheque' ? chequeNumber : null,
+          qty: processedItems.length,
           itemDetails: processedItems.length === 1 ? processedItems[0].itemDetails : `${processedItems.length} articles en panier`,
-          weight: mainStockItem ? mainStockItem.weightGrams : null,
-          fineness: mainStockItem ? mainStockItem.fineness : null,
-          unitSalesPrice: totalAmountNum.toFixed(2),
-          amount: totalAmountNum.toFixed(2),
-          discountAmount: totalDiscountNum.toFixed(2),
-          discountPercentage: (discountPercentage !== undefined && discountPercentage !== null) ? discountPercentage.toString() : '0.00',
-          vat15: totalVatNum.toFixed(2),
-          metalType: mainStockItem ? mainStockItem.metalType : null,
+          weight: totalWeight ? totalWeight.toFixed(3) : null,
+          fineness: sameMetal ? first.fineness : null,
+          metalType: sameMetal ? first.metalType : null,
+          unitSalesPrice: centsToDecimal(totals.netCents),
+          amount: centsToDecimal(totals.netCents),
+          vat15: centsToDecimal(totals.vatCents),
+          discountAmount: centsToDecimal(totalDiscountCents),
+          discountPercentage: (totalDiscountCents / totalListCents * 100).toFixed(2),
           orderId: orderId || lCommandeId || null,
           linkedOdfId: lOdfId,
           linkedCommandeId: lCommandeId,
@@ -126,23 +117,23 @@ export function registerSalesRoutes(app: Express) {
         const saleId = newSale[0].id;
 
         // 2. Insert into sale_items table & mark stock items as sold
-        for (const pItem of processedItems) {
+        for (const { stockItem, line, itemDetails } of processedItems) {
           await tx.insert(saleItems).values({
             saleId,
-            stockId: pItem.stockId,
-            barcode: pItem.barcode,
-            itemDetails: pItem.itemDetails,
-            qty: pItem.qty,
-            unitSalesPrice: pItem.unitSalesPrice,
-            amount: pItem.amount,
-            weight: pItem.weight,
-            fineness: pItem.fineness,
-            metalType: pItem.metalType,
+            stockId: stockItem.id,
+            barcode: stockItem.barcode,
+            itemDetails,
+            qty: 1,
+            unitSalesPrice: centsToDecimal(line.netCents),
+            amount: centsToDecimal(line.netCents),
+            weight: stockItem.weightGrams,
+            fineness: stockItem.fineness,
+            metalType: stockItem.metalType,
           });
 
           await tx.update(stock)
             .set({ status: 'Vendu', soldAt: new Date(), updatedAt: new Date() })
-            .where(eq(stock.id, pItem.stockId));
+            .where(eq(stock.id, stockItem.id));
         }
 
         // 3. Create associated receipt
@@ -240,7 +231,7 @@ export function registerSalesRoutes(app: Express) {
         paymentMode: sales.paymentMode,
         vat15: sales.vat15,
         itemDetails: sales.itemDetails,
-        barcode: stock.barcode,
+        barcode: saleBarcodes,
         category: stock.category,
         subCategory: stock.subCategory,
         weight: sales.weight,
@@ -253,6 +244,7 @@ export function registerSalesRoutes(app: Express) {
         orderId: sales.orderId,
         orderDeposit: orders.deposit,
         orderNumber: orders.orderNumber,
+        linkedOdfId: sales.linkedOdfId,
         status: sales.status
       })
       .from(sales)

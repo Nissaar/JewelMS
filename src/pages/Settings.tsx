@@ -6,6 +6,15 @@ import { Save, UserPlus, Shield, Check, X, AlertCircle, Loader2, Download, Smart
 import { motion, AnimatePresence } from 'motion/react';
 import { FUNCTIONALITIES } from '../shared/permissions';
 
+const SHOP_FIELDS = [
+  { key: 'shop_name', label: 'Nom commercial' },
+  { key: 'shop_legal_name', label: 'Raison sociale' },
+  { key: 'shop_address', label: 'Adresse' },
+  { key: 'shop_phone', label: 'Téléphone' },
+  { key: 'shop_brn', label: 'BRN' },
+  { key: 'shop_vat_number', label: 'N° TVA' },
+];
+
 const Settings = () => {
   const { token, user: currentUser } = useAuth();
   const { isInstallable, installApp } = usePWA();
@@ -54,6 +63,22 @@ const Settings = () => {
     try {
       await axios.put(`/api/settings/${key}`, { value }, { headers: { Authorization: `Bearer ${token}` } });
       setMessage({ type: 'success', text: 'Paramètres mis à jour' });
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Erreur lors de la mise à jour' });
+    } finally {
+      setIsSaving(false);
+      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+    }
+  };
+
+  const handleSaveShopDetails = async () => {
+    setIsSaving(true);
+    try {
+      for (const { key } of SHOP_FIELDS) {
+        const value = (document.getElementById(key) as HTMLInputElement).value;
+        await axios.put(`/api/settings/${key}`, { value }, { headers: { Authorization: `Bearer ${token}` } });
+      }
+      setMessage({ type: 'success', text: 'Coordonnées de la boutique mises à jour' });
     } catch (err) {
       setMessage({ type: 'error', text: 'Erreur lors de la mise à jour' });
     } finally {
@@ -198,6 +223,32 @@ const Settings = () => {
         <div className="space-y-6">
           {activeTab === 'general' ? (
             <div className="grid grid-cols-1 gap-8">
+              <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-lg font-bold text-slate-800">Coordonnées de la boutique</h3>
+                  <button
+                    onClick={handleSaveShopDetails}
+                    disabled={isSaving}
+                    className="flex items-center space-x-2 bg-slate-900 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-slate-800 transition-colors disabled:opacity-50"
+                  >
+                    <Save size={16} />
+                    <span>Enregistrer</span>
+                  </button>
+                </div>
+                <p className="text-sm text-slate-500 mb-6">Imprimées sur les factures et les déclarations de trade-in. Les champs vides ne sont pas imprimés.</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {SHOP_FIELDS.map(({ key, label }) => (
+                    <div key={key}>
+                      <label htmlFor={key} className="block text-xs font-bold text-slate-500 uppercase mb-1">{label}</label>
+                      <input
+                        id={key}
+                        defaultValue={settings.find(s => s.key === key)?.value || ''}
+                        className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-2 outline-none focus:border-amber-400 transition-colors font-medium text-slate-700"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
               {['receipt_heading', 'receipt_policy_wording'].map((key) => {
                 const setting = settings.find(s => s.key === key);
                 return (

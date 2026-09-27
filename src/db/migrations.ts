@@ -4,12 +4,9 @@ import { sql } from "drizzle-orm";
 
 /**
  * Idempotent schema fixes and default-data seeding, run once at startup.
- * Failures are logged but non-fatal: the server still boots so the problem is
- * visible through the app rather than a silent exit.
+ * Any failure stops the server: running on a half-migrated schema corrupts data.
  */
 export async function runMigrations() {
-// Run one-time database migrations/fixes
-try {
   if (isPglite) {
     const { migrate } = await import("drizzle-orm/pglite/migrator");
     await migrate(db, { migrationsFolder: "./drizzle" });
@@ -69,6 +66,15 @@ try {
       created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
     );
   `);
+  // Reports read sale_items. Sales recorded before that table existed have
+  // their single item on the sale row: copy it over, once.
+  await db.execute(sql`
+    INSERT INTO sale_items (sale_id, stock_id, barcode, item_details, qty, unit_sales_price, amount, weight, fineness, metal_type, created_at)
+    SELECT s.id, s.stock_id, st.barcode, s.item_details, s.qty, s.unit_sales_price, s.amount, s.weight, s.fineness, s.metal_type, s.created_at
+    FROM sales s
+    LEFT JOIN stock st ON st.id = s.stock_id
+    WHERE NOT EXISTS (SELECT 1 FROM sale_items si WHERE si.sale_id = s.id);
+  `);
   console.log("Database migrations: stock_category_check dropped, category length increased, price added, gold_rate columns dropped, odf_items, and sale_items tables verified.");
 
   // Seed default data if users/settings don't exist yet
@@ -98,8 +104,11 @@ try {
     ]);
     console.log("Default settings seeded.");
   }
-} catch (err) {
-  console.error("Migration error (non-fatal):", err);
-}
 
+  // Shop legal details (Settings > Général). Added individually so existing
+  // databases get the new keys without touching values already set.
+  const { SHOP_SETTING_DEFAULTS } = await import("../services/shopDetails");
+  for (const [key, value] of Object.entries(SHOP_SETTING_DEFAULTS)) {
+    await db.insert(settings).values({ key, value }).onConflictDoNothing({ target: settings.key });
+  }
 }

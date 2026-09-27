@@ -1,11 +1,12 @@
 import type { Express } from "express";
 import { db } from "../db/index";
-import { stock, customers, receipts, sales } from "../db/schema";
+import { customers, receipts, sales } from "../db/schema";
 import { eq } from "drizzle-orm";
 import { authenticateToken, checkPermission } from "../middleware/auth";
 import { idParam, sendMethodSchema } from "../lib/schemas";
 import { notFound, sendError } from "../lib/errors";
 import { assertCanSend, deliverDocument } from "../services/notifications";
+import { saleBarcodes } from "../services/reportData";
 import { ensureReceiptFile } from "../services/documents";
 import { contentTypeFor, readFile, verifyFileToken } from "../services/storage";
 
@@ -76,13 +77,13 @@ export function registerReceiptsRoutes(app: Express) {
         createdAt: receipts.createdAt,
         customerName: customers.name,
         totalAmount: sales.amount,
-        barcode: stock.barcode,
+        barcode: saleBarcodes,
+        status: sales.status,
         itemDetails: sales.itemDetails
       })
       .from(receipts)
       .innerJoin(sales, eq(receipts.saleId, sales.id))
       .leftJoin(customers, eq(sales.customerId, customers.id))
-      .leftJoin(stock, eq(sales.stockId, stock.id))
       .orderBy(receipts.createdAt);
 
       res.json(allReceipts);

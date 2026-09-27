@@ -1,39 +1,11 @@
 import PDFDocument from 'pdfkit';
 import { db } from '../../db';
-import { sales, customers, receipts, settings, odf, odfItems, stock } from '../../db/schema';
-import { eq, and, sql, or, ilike } from 'drizzle-orm';
+import { settings } from '../../db/schema';
+import { salesByMetalRows, tradeInRows, vatReportRows } from '../reportData';
 import { formatCurrency } from '../../lib/utils';
 
 export async function generateVatReportPDF(day?: string, month?: string, year?: string): Promise<PDFKit.PDFDocument> {
-  const conditions = [];
-  if (year) conditions.push(sql`EXTRACT(YEAR FROM ${sales.createdAt}) = ${year}`);
-  if (month) conditions.push(sql`EXTRACT(MONTH FROM ${sales.createdAt}) = ${month}`);
-  if (day) conditions.push(sql`EXTRACT(DAY FROM ${sales.createdAt}) = ${day}`);
-
-  const reportData = await db.select({
-    saleId: sales.id,
-    receiptNo: receipts.receiptSerialNumber,
-    itemDetails: sales.itemDetails,
-    weight: sales.weight,
-    amountExclVat: sales.amount,
-    metalType: sales.metalType,
-    fineness: sales.fineness,
-    createdAt: sales.createdAt
-  })
-  .from(sales)
-  .leftJoin(receipts, eq(sales.id, receipts.saleId))
-  .where(conditions.length > 0 ? and(...conditions) : undefined)
-  .orderBy(sales.id);
-
-  const calculatedData = reportData.map(row => {
-    const amount = parseFloat(row.amountExclVat || "0");
-    const vat = amount * 0.15;
-    return {
-      ...row,
-      vatAmount: vat.toFixed(2),
-      total: (amount + vat).toFixed(2)
-    };
-  });
+  const calculatedData = await vatReportRows({ day, month, year });
 
   const allSettings = await db.select().from(settings);
   const heading = allSettings.find(s => s.key === 'receipt_heading')?.value || 'Haujee Jewellery';
@@ -144,79 +116,7 @@ export async function generateVatReportPDF(day?: string, month?: string, year?: 
 }
 
 export async function generateTradeInReportPDF(startDate?: string, endDate?: string): Promise<PDFKit.PDFDocument> {
-  let conditions = [];
-  if (startDate) {
-    conditions.push(sql`${odf.createdAt} >= ${new Date(startDate)}`);
-  }
-  if (endDate) {
-    const end = new Date(endDate);
-    end.setHours(23, 59, 59, 999);
-    conditions.push(sql`${odf.createdAt} <= ${end}`);
-  }
-
-  const allOdf = await db.select({
-    id: odf.id,
-    odfSerialNumber: odf.odfSerialNumber,
-    createdAt: odf.createdAt,
-    customerId: odf.customerId,
-    customerName: customers.name,
-    customerNIC: customers.idNumber,
-    customerAddress: customers.address,
-    metalType: odf.metalType,
-    fineness: odf.fineness,
-    weight: odf.weight,
-    amount: odf.amount,
-    description: odf.description,
-    receiptNo: receipts.receiptSerialNumber
-  })
-  .from(odf)
-  .innerJoin(customers, eq(odf.customerId, customers.id))
-  .leftJoin(sales, eq(sales.linkedOdfId, odf.id))
-  .leftJoin(receipts, eq(receipts.saleId, sales.id))
-  .where(conditions.length > 0 ? and(...conditions) : undefined)
-  .orderBy(odf.createdAt);
-
-  const allOdfWithItems = await Promise.all(allOdf.map(async (record) => {
-    const items = await db.select().from(odfItems).where(eq(odfItems.odfId, record.id));
-    return {
-      ...record,
-      tradeInItems: items
-    };
-  }));
-
-  // Flatten items for the ledger
-  const calculatedData = [];
-  for (const record of allOdfWithItems) {
-    if (record.tradeInItems && record.tradeInItems.length > 0) {
-      for (const item of record.tradeInItems) {
-        calculatedData.push({
-          id: record.id,
-          date: record.createdAt,
-          customerName: record.customerName,
-          customerNIC: record.customerNIC,
-          customerAddress: record.customerAddress,
-          description: item.description || `${record.metalType} ${item.fineness || record.fineness}`,
-          weight: item.mass,
-          fineness: item.fineness,
-          invNo: `#ODF-${record.odfSerialNumber || record.id}`,
-          out: record.receiptNo ? `#FS-${record.receiptNo}` : '-'
-        });
-      }
-    } else {
-      calculatedData.push({
-        id: record.id,
-        date: record.createdAt,
-        customerName: record.customerName,
-        customerNIC: record.customerNIC,
-        customerAddress: record.customerAddress,
-        description: record.description || `${record.metalType} ${record.fineness}`,
-        weight: record.weight,
-        fineness: record.fineness,
-        invNo: `#ODF-${record.odfSerialNumber || record.id}`,
-        out: record.receiptNo ? `#FS-${record.receiptNo}` : '-'
-      });
-    }
-  }
+  const calculatedData = await tradeInRows({ startDate, endDate });
 
   const allSettings = await db.select().from(settings);
   const heading = allSettings.find(s => s.key === 'receipt_heading')?.value || 'Haujee Jewellery';
@@ -328,70 +228,7 @@ export async function generateTradeInReportPDF(startDate?: string, endDate?: str
 }
 
 export async function generateSalesByMetalReportPDF(startDate?: string, endDate?: string, metalType?: string, fineness?: string): Promise<PDFKit.PDFDocument> {
-  let conditions = [];
-  
-  // Filter out cancelled sales
-  conditions.push(eq(sales.status, 'Completed'));
-
-  if (startDate) {
-    conditions.push(sql`${sales.createdAt} >= ${new Date(startDate)}`);
-  }
-  if (endDate) {
-    const end = new Date(endDate);
-    end.setHours(23, 59, 59, 999);
-    conditions.push(sql`${sales.createdAt} <= ${end}`);
-  }
-
-  if (metalType && metalType !== 'all') {
-    let mType = metalType.toLowerCase().trim();
-    if (mType === 'or' || mType === 'gold') {
-      conditions.push(or(ilike(sales.metalType, 'Gold'), ilike(sales.metalType, 'Or')));
-    } else if (mType === 'argent' || mType === 'silver') {
-      conditions.push(or(ilike(sales.metalType, 'Silver'), ilike(sales.metalType, 'Argent')));
-    } else if (mType === 'platine' || mType === 'platinum') {
-      conditions.push(or(ilike(sales.metalType, 'Platinum'), ilike(sales.metalType, 'Platine')));
-    } else {
-      conditions.push(ilike(sales.metalType, metalType));
-    }
-  }
-
-  if (fineness && fineness !== 'all') {
-    conditions.push(ilike(sales.fineness, fineness));
-  }
-
-  const matchingSales = await db.select({
-    id: sales.id,
-    createdAt: sales.createdAt,
-    customerName: customers.name,
-    itemDetails: sales.itemDetails,
-    barcode: stock.barcode,
-    metalType: sales.metalType,
-    fineness: sales.fineness,
-    weight: sales.weight,
-    amount: sales.amount,
-    vat15: sales.vat15,
-    receiptNo: receipts.receiptSerialNumber
-  })
-  .from(sales)
-  .leftJoin(customers, eq(sales.customerId, customers.id))
-  .leftJoin(stock, eq(sales.stockId, stock.id))
-  .leftJoin(receipts, eq(sales.id, receipts.saleId))
-  .where(conditions.length > 0 ? and(...conditions) : undefined)
-  .orderBy(sql`${sales.createdAt} DESC`);
-
-  const calculatedData = matchingSales.map(row => {
-    const w = parseFloat(row.weight || "0");
-    const amt = parseFloat(row.amount || "0");
-    const vat = parseFloat(row.vat15 || "0");
-    const totalWithVat = amt + vat;
-    
-    return {
-      ...row,
-      weight: w,
-      amount: amt,
-      totalWithVat: totalWithVat
-    };
-  });
+  const { items: calculatedData } = await salesByMetalRows({ startDate, endDate, metalType, fineness });
 
   const allSettings = await db.select().from(settings);
   const heading = allSettings.find(s => s.key === 'receipt_heading')?.value || 'Haujee Jewellery';

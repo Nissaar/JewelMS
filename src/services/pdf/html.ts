@@ -17,6 +17,8 @@ interface DeclarationTemplateData {
   customer_nic: string;
   start_date: string;
   end_date: string;
+  shop_legal_name: string;
+  shop_address: string;
 }
 
 /**
@@ -47,6 +49,8 @@ export function renderDeclarationTemplate(data: DeclarationTemplateData): string
     customer_nic: data.customer_nic || 'N/A',
     start_date: data.start_date || '',
     end_date: data.end_date || '',
+    shop_legal_name: data.shop_legal_name.toUpperCase(),
+    shop_address: data.shop_address.toUpperCase(),
   });
 }
 

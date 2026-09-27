@@ -125,6 +125,14 @@ const Orders = () => {
     }
   };
 
+  // Each order starts with an empty finalize form, never the previous order's values.
+  useEffect(() => {
+    setFinalWeight('');
+    setFinalPrice('');
+    setPaymentMode('Cash');
+    setCompletedOrderSaleId(null);
+  }, [finalizingOrder?.id]);
+
   const handleFinalize = async () => {
     if (!finalizingOrder || !finalWeight || !finalPrice) return;
 
@@ -139,8 +147,8 @@ const Orders = () => {
       setCompletedOrderSaleId(res.data.saleId);
       setMessage({ type: 'success', text: 'Commande finalisée avec succès!' });
       fetchOrders();
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Erreur lors de la finalisation' });
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.response?.data?.error || 'Erreur lors de la finalisation' });
     } finally {
       setIsLoading(false);
     }
@@ -381,7 +389,7 @@ const Orders = () => {
 
               <button 
                 type="submit" 
-                disabled={isLoading}
+                disabled={isLoading || !!lastCreatedOrderId}
                 className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black text-xl shadow-2xl flex items-center justify-center gap-3 hover:bg-slate-800 transition-all disabled:opacity-50"
               >
                 {isLoading ? <Loader2 className="animate-spin" size={24} /> : <>Enregistrer Commande <Check size={24} /></>}

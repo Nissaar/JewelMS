@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import type { z } from "zod";
 import { db } from "../db/index";
-import { settings, stock, customers, sales } from "../db/schema";
+import { settings, stock } from "../db/schema";
 import { eq, or, ilike, like, and, sql } from "drizzle-orm";
 import { authenticateToken, checkAnyPermission, checkPermission } from "../middleware/auth";
 import { idParam, stockBulkEditSchema, stockCreateSchema, stockUpdateSchema } from "../lib/schemas";
@@ -57,6 +57,15 @@ export function registerStockRoutes(app: Express) {
 
   app.get("/api/stock/sold", authenticateToken, checkAnyPermission(['stock', 'view'], ['reports', 'view']), async (req, res) => {
     try {
+      // The item's latest completed sale (an item can be sold, returned, resold).
+      // Written as plain SQL: drizzle leaves column names unqualified inside
+      // sql fragments of a single-table query, which is ambiguous here.
+      const lastSale = (column: string) => sql.raw(`(SELECT ${column} FROM sale_items si
+        JOIN sales s ON s.id = si.sale_id
+        LEFT JOIN customers c ON c.id = s.customer_id
+        WHERE si.stock_id = stock.id AND s.status = 'Completed'
+        ORDER BY s.id DESC LIMIT 1)`);
+
       const items = await db.select({
         id: stock.id,
         barcode: stock.barcode,
@@ -65,12 +74,10 @@ export function registerStockRoutes(app: Express) {
         metalType: stock.metalType,
         weightGrams: stock.weightGrams,
         soldAt: stock.soldAt,
-        customerName: customers.name,
-        price: sales.amount
+        customerName: lastSale('c.name'),
+        price: lastSale('si.amount'),
       })
       .from(stock)
-      .leftJoin(sales, eq(stock.id, sales.stockId))
-      .leftJoin(customers, eq(sales.customerId, customers.id))
       .where(eq(stock.status, 'Vendu'))
       .orderBy(sql`${stock.soldAt} DESC`);
       res.json(items);
