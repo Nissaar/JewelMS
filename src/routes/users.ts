@@ -5,7 +5,7 @@ import bcrypt from "bcryptjs";
 import { eq, sql } from "drizzle-orm";
 import { authenticateToken, requireAdmin, type AuthRequest } from "../middleware/auth";
 import { idParam, passwordResetSchema, permissionsUpdateSchema, userCreateSchema, userUpdateSchema } from "../lib/schemas";
-import { badRequest, notFound, sendError } from "../lib/errors";
+import { badRequest, isUniqueViolation, notFound, sendError } from "../lib/errors";
 
 // Columns safe to return: never the password hash or token version.
 const publicUser = {
@@ -15,8 +15,6 @@ const publicUser = {
   role: users.role,
   createdAt: users.createdAt,
 };
-
-const uniqueViolation = (error: any) => error?.code === '23505' || error?.cause?.code === '23505';
 
 export function registerUsersRoutes(app: Express) {
 
@@ -39,7 +37,7 @@ export function registerUsersRoutes(app: Express) {
       }).returning(publicUser);
       res.status(201).json(newUser);
     } catch (error) {
-      if (uniqueViolation(error)) return res.status(400).json({ error: "Ce nom d'utilisateur ou cet email existe déjà." });
+      if (isUniqueViolation(error)) return res.status(400).json({ error: "Ce nom d'utilisateur ou cet email existe déjà." });
       sendError(res, error, "Failed to create user", "User Creation Error");
     }
   });
@@ -72,7 +70,7 @@ export function registerUsersRoutes(app: Express) {
       });
       res.json(updated);
     } catch (error) {
-      if (uniqueViolation(error)) return res.status(400).json({ error: "Cet email est déjà utilisé." });
+      if (isUniqueViolation(error)) return res.status(400).json({ error: "Cet email est déjà utilisé." });
       sendError(res, error, "Failed to update user", "User Update Error");
     }
   });

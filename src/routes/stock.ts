@@ -5,7 +5,7 @@ import { settings, stock } from "../db/schema";
 import { eq, or, ilike, like, and, sql, desc } from "drizzle-orm";
 import { authenticateToken, checkAnyPermission, checkPermission } from "../middleware/auth";
 import { idParam, stockBulkEditSchema, stockCreateSchema, stockUpdateSchema } from "../lib/schemas";
-import { badRequest, notFound, sendError } from "../lib/errors";
+import { badRequest, isUniqueViolation, notFound, sendError } from "../lib/errors";
 import { escapeLike } from "../lib/sql";
 import { containsPattern, queryText } from "../lib/query";
 import { listResponse } from "../lib/pagination";
@@ -187,7 +187,7 @@ export function registerStockRoutes(app: Express) {
 
       res.status(201).json({ items: results, count: results.length });
     } catch (error: any) {
-      if (error.code === '23505') {
+      if (isUniqueViolation(error)) {
         return res.status(400).json({ error: "Un ou plusieurs codes-barres existent déjà.", message: "Un ou plusieurs codes-barres existent déjà." });
       }
       sendError(res, error, "Failed to create stock item", "Stock Create Error");
@@ -229,7 +229,7 @@ export function registerStockRoutes(app: Express) {
       if (!updated) throw notFound("Stock item not found");
       res.json(updated);
     } catch (error: any) {
-      if (error.code === '23505') return res.status(400).json({ error: "Ce code-barres existe déjà." });
+      if (isUniqueViolation(error)) return res.status(400).json({ error: "Ce code-barres existe déjà." });
       sendError(res, error, "Failed to update stock item", "Stock Update Error");
     }
   });

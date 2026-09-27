@@ -24,6 +24,14 @@ export const badRequest = (message: string, code?: string) => new AppError(messa
 /** The referenced record does not exist. */
 export const notFound = (message: string) => new AppError(message, 404);
 
+/**
+ * Whether a database error is a unique-constraint violation (duplicate key).
+ * The driver's code is on the error itself or, when drizzle wraps it in a
+ * DrizzleQueryError, on its cause.
+ */
+export const isUniqueViolation = (error: any): boolean =>
+  error?.code === '23505' || error?.cause?.code === '23505';
+
 /** Status to respond with for a thrown error, defaulting to 500. */
 export const statusFor = (error: unknown): number => {
   if (error instanceof AppError) return error.statusCode;

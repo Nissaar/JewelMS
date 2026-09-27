@@ -4,7 +4,7 @@ import { stock, customers, receipts, orders, sales, odf } from "../db/schema";
 import { eq, or, ilike, sql } from "drizzle-orm";
 import { authenticateToken, checkAnyPermission, checkPermission } from "../middleware/auth";
 import { customerCreateSchema, customerUpdateSchema, idParam } from "../lib/schemas";
-import { notFound, sendError } from "../lib/errors";
+import { isUniqueViolation, notFound, sendError } from "../lib/errors";
 import { containsPattern, queryText } from "../lib/query";
 import { listResponse } from "../lib/pagination";
 import { saleBarcodes } from "../services/reportData";
@@ -39,7 +39,7 @@ export function registerCustomersRoutes(app: Express) {
       const [newCustomer] = await db.insert(customers).values(input).returning();
       res.status(201).json(newCustomer);
     } catch (error: any) {
-      if (error.code === '23505') {
+      if (isUniqueViolation(error)) {
         return res.status(400).json({ error: "Ce client existe déjà.", message: "Ce client existe déjà." });
       }
       sendError(res, error, "Failed to create customer profile", "Customer Create Error");
@@ -57,7 +57,7 @@ export function registerCustomersRoutes(app: Express) {
       if (!updated) throw notFound("Customer not found");
       res.json(updated);
     } catch (error: any) {
-      if (error.code === '23505') {
+      if (isUniqueViolation(error)) {
         return res.status(400).json({ error: "Ce numéro d'identité est déjà utilisé.", message: "Ce numéro d'identité est déjà utilisé." });
       }
       sendError(res, error, "Failed to update customer", "Customer Update Error");
