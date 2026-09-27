@@ -12,6 +12,7 @@ import { useNavigate } from 'react-router-dom';
 import { formatCurrency, formatItemDetails } from '../lib/utils';
 import CustomerModal from '../components/CustomerModal';
 import { sendErrorMessage } from '../lib/sendErrors';
+import { sendDocumentAndWait } from '../lib/sendDocument';
 
 const Orders = () => {
   const navigate = useNavigate();
@@ -91,7 +92,7 @@ const Orders = () => {
   const handleCustomerSearch = async (query?: string) => {
     const q = query !== undefined ? query : customerSearch;
     try {
-      const res = await axios.get(`/api/customers?search=${q}`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await axios.get(`/api/customers?search=${encodeURIComponent(q)}`, { headers: { Authorization: `Bearer ${token}` } });
       setSearchResults(res.data);
     } catch (err) {
       console.error(err);
@@ -176,8 +177,9 @@ const Orders = () => {
     if (!completedOrderSaleId) return;
     setIsSending(true);
     try {
-      await axios.post(`/api/receipts/${completedOrderSaleId}/send`, { method }, { headers: { Authorization: `Bearer ${token}` } });
-      setMessage({ type: 'success', text: 'Reçu envoyé avec succès!' });
+      setMessage({ type: 'success', text: 'Envoi en cours…' });
+      const result = await sendDocumentAndWait('receipt', completedOrderSaleId, method);
+      setMessage({ type: result.ok ? 'success' : 'error', text: result.text });
     } catch (err: any) {
       setMessage({ type: 'error', text: sendErrorMessage(err) });
     } finally {

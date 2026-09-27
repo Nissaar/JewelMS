@@ -5,15 +5,29 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1778958078489,
-      "tag": "0000_colorful_iron_lad",
+      "when": 1790503081329,
+      "tag": "0000_baseline",
       "breakpoints": true
     },
     {
       "idx": 1,
       "version": "7",
-      "when": 1779191462702,
-      "tag": "0001_big_sue_storm",
+      "when": 1790503209021,
+      "tag": "0001_notifications_token_version_unique_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790503455977,
+      "tag": "0002_audit_log_action_length",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790503651162,
+      "tag": "0003_sale_item_vat",
       "breakpoints": true
     }
   ]

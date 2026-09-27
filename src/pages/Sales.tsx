@@ -13,7 +13,8 @@ import BarcodeScanner from '../components/BarcodeScanner';
 import { formatCurrency, formatItemDetails, getCleanDisplayLabel, getItemFullDescription } from '../lib/utils';
 import CustomerModal from '../components/CustomerModal';
 import { sendErrorMessage } from '../lib/sendErrors';
-import { sumLines } from '../shared/money';
+import { sendDocumentAndWait } from '../lib/sendDocument';
+import { sumLines, toCents } from '../shared/money';
 import { priceCartLine } from '../lib/cartPricing';
 
 const Sales = () => {
@@ -87,7 +88,8 @@ const Sales = () => {
       editedInclusivePrice: rawPriceTtc,
     };
 
-    setCartItems(prev => [...prev, newItem]);
+    // Check again against the latest cart: two quick scans can both pass the check above.
+    setCartItems(prev => prev.some(ci => ci.stockItem.id === itemToAdd.id) ? prev : [...prev, newItem]);
     setScannedItem(null);
     setBarcode('');
     setEditedInclusivePrice('');
@@ -191,7 +193,7 @@ const Sales = () => {
 
   const handleStockSearch = async () => {
     try {
-      const res = await axios.get(`/api/stock/autocomplete?q=${barcode}`, { 
+      const res = await axios.get(`/api/stock/autocomplete?q=${encodeURIComponent(barcode)}`, { 
         headers: { Authorization: `Bearer ${token}` } 
       });
       setStockSearchResults(res.data);
@@ -228,7 +230,7 @@ const Sales = () => {
   const handleCustomerSearch = async (query?: string) => {
     const q = query !== undefined ? query : customerSearch;
     try {
-      const res = await axios.get(`/api/customers?search=${q}`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await axios.get(`/api/customers?search=${encodeURIComponent(q)}`, { headers: { Authorization: `Bearer ${token}` } });
       setSearchResults(res.data);
     } catch (err) {
       console.error(err);
@@ -326,9 +328,9 @@ const Sales = () => {
     if (!completedSale) return;
     setIsSending(true);
     try {
-      await axios.post(`/api/receipts/${completedSale.id}/send`, { method }, { headers: { Authorization: `Bearer ${token}` } });
-      
-      setMessage({ type: 'success', text: 'Reçu envoyé avec succès!' });
+      setMessage({ type: 'success', text: 'Envoi en cours…' });
+      const result = await sendDocumentAndWait('receipt', completedSale.id, method);
+      setMessage({ type: result.ok ? 'success' : 'error', text: result.text });
     } catch (err: any) {
       setMessage({ type: 'error', text: sendErrorMessage(err) });
     } finally {
@@ -863,7 +865,7 @@ const Sales = () => {
                     <div className="pt-4 border-t border-slate-800 flex justify-between items-center">
                       <span className="text-slate-200 font-black uppercase text-sm tracking-widest">Net À Payer</span>
                       <span className="text-4xl font-black text-white tracking-tighter">
-                        {formatCurrency(totalWithVat - (linkedOdf ? parseFloat(linkedOdf.amount || '0') : 0) - (linkedCommande ? parseFloat(linkedCommande.deposit || '0') : 0))}
+                        {formatCurrency(Math.max(0, cartTotals.grossCents - toCents(linkedOdf?.amount) - toCents(linkedCommande?.deposit)) / 100)}
                       </span>
                     </div>
                   </div>

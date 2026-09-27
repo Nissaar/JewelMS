@@ -18,7 +18,7 @@ async function sendDocumentTemplate(phoneNumber: string, templateName: string, l
       `https://graph.facebook.com/v17.0/${phoneNumberId}/messages`,
       {
         messaging_product: 'whatsapp',
-        to: phoneNumber.replace(/\D/g, ''),
+        to: phoneNumber,
         type: 'template',
         template: {
           name: templateName,
@@ -29,7 +29,7 @@ async function sendDocumentTemplate(phoneNumber: string, templateName: string, l
           ],
         },
       },
-      { headers: { Authorization: `Bearer ${token}` } },
+      { headers: { Authorization: `Bearer ${token}` }, timeout: 15000 },
     );
     return response.data;
   } catch (error) {

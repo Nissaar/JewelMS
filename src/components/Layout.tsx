@@ -53,7 +53,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
       setIsSearching(true);
       setIsSearchOpen(true);
       try {
-        const response = await axios.get(`/api/search?q=${searchQuery}`, {
+        const response = await axios.get(`/api/search?q=${encodeURIComponent(searchQuery)}`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         setSearchResults(response.data);

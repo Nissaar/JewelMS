@@ -1,4 +1,6 @@
 import "dotenv/config";
+// Run on shop time so dates on receipts and reports are local (containers default to UTC).
+process.env.TZ ||= process.env.SHOP_TIME_ZONE || "Indian/Mauritius";
 import express from "express";
 import path from "path";
 import helmet from "helmet";
@@ -21,6 +23,7 @@ import { registerReceiptsRoutes } from "./src/routes/receipts";
 import { registerOdfRoutes } from "./src/routes/odf";
 import { registerOrdersRoutes } from "./src/routes/orders";
 import { registerAuditLogsRoutes } from "./src/routes/auditLogs";
+import { registerNotificationRoutes } from "./src/routes/notifications";
 
 const PORT = Number(process.env.PORT) || 3000;
 
@@ -29,9 +32,35 @@ async function startServer() {
 
   const app = express();
 
+  // Number of reverse proxies in front of the app (Cloudflare -> Traefik -> app
+  // is 2). Without it every client appears to come from the proxy's IP, so all
+  // users share one login rate limit and audit logs show the proxy address.
+  const trustProxy = Number(process.env.TRUST_PROXY || 0);
+  if (trustProxy > 0) app.set("trust proxy", trustProxy);
+
   // Security Middleware
+  // Content Security Policy in production only: the Vite dev server injects
+  // inline scripts for hot reload. Allowed third parties: Google Fonts, and
+  // jsDelivr for the scanner's OCR worker, WebAssembly core and language data.
+  const isProduction = process.env.NODE_ENV === "production";
   app.use(helmet({
-    contentSecurityPolicy: false, // Disable CSP for Vite dev server compatibility
+    contentSecurityPolicy: isProduction ? {
+      useDefaults: false,
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "https://cdn.jsdelivr.net", "'wasm-unsafe-eval'"],
+        workerSrc: ["'self'", "blob:"],
+        connectSrc: ["'self'", "https://cdn.jsdelivr.net"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
+        imgSrc: ["'self'", "data:", "blob:"],
+        mediaSrc: ["'self'", "blob:"],
+        objectSrc: ["'none'"],
+        baseUri: ["'self'"],
+        formAction: ["'self'"],
+        frameAncestors: ["'self'"],
+      },
+    } : false,
   }));
 
   // The frontend is served from this same origin, so cross-origin access is only
@@ -96,6 +125,7 @@ async function startServer() {
   registerOdfRoutes(app, upload);
   registerOrdersRoutes(app);
   registerAuditLogsRoutes(app);
+  registerNotificationRoutes(app);
 
   // Errors passed to next() (multer limits, malformed JSON) get a JSON reply
   // instead of Express's default HTML page.

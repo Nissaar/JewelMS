@@ -1,7 +1,7 @@
 import PDFDocument from 'pdfkit';
 
 export function numberToWords(num: number): string {
-  if (num <= 0) return 'Zero';
+  if (!(num > 0)) return 'Zero';
 
   const a = [
     '', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
@@ -25,8 +25,10 @@ export function numberToWords(num: number): string {
     return str;
   }
 
-  const integerPart = Math.floor(num);
-  const decimalPart = Math.round((num - integerPart) * 100);
+  // Work in whole cents so 1.995 becomes 2.00, never "One Hundred Cents".
+  const totalCents = Math.round(num * 100);
+  const integerPart = Math.floor(totalCents / 100);
+  const decimalPart = totalCents % 100;
 
   let word = '';
   let temp = integerPart;
@@ -42,7 +44,7 @@ export function numberToWords(num: number): string {
     groupIndex++;
   }
 
-  let finalStr = word.trim();
+  let finalStr = word.trim() || 'Zero';
   if (decimalPart > 0) {
     finalStr += ' and ' + translate(decimalPart).trim() + ' Cents';
   }

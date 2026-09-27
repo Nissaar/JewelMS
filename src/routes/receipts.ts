@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { authenticateToken, checkPermission } from "../middleware/auth";
 import { idParam, sendMethodSchema } from "../lib/schemas";
 import { notFound, sendError } from "../lib/errors";
-import { assertCanSend, deliverDocument } from "../services/notifications";
+import { assertCanSend, queueDocument } from "../services/notifications";
 import { saleBarcodes } from "../services/reportData";
 import { ensureReceiptFile } from "../services/documents";
 import { contentTypeFor, readFile, verifyFileToken } from "../services/storage";
@@ -42,7 +42,7 @@ export function registerReceiptsRoutes(app: Express) {
     }
   });
 
-  app.post("/api/receipts/:saleId/send", authenticateToken, checkPermission('sales', 'create'), async (req, res) => {
+  app.post("/api/receipts/:saleId/send", authenticateToken, checkPermission('sales', 'create'), async (req: any, res) => {
     try {
       const saleId = idParam.parse(req.params.saleId);
       const { method } = sendMethodSchema.parse(req.body);
@@ -57,12 +57,12 @@ export function registerReceiptsRoutes(app: Express) {
       // Generate the stored copy now so a PDF failure is reported to the caller.
       await ensureReceiptFile(saleId);
 
+      const notifications = await queueDocument('receipt', saleId, method, customer, req.user?.id);
       res.json({
         success: true,
-        message: "Demande reçue. L'envoi est en cours d'exécution en arrière-plan.",
-        results: { queued: true },
+        message: "Envoi en cours.",
+        notifications,
       });
-      setImmediate(() => deliverDocument('receipt', saleId, method, customer));
     } catch (error) {
       sendError(res, error, "Failed to send receipt", "Send Receipt Error");
     }

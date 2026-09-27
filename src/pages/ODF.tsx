@@ -11,6 +11,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { formatCurrency, formatWeight, formatItemDetails } from '../lib/utils';
 import CustomerModal from '../components/CustomerModal';
 import { sendErrorMessage } from '../lib/sendErrors';
+import { sendDocumentAndWait } from '../lib/sendDocument';
 import { openAuthenticatedFile } from '../lib/openFile';
 
 const ODF = () => {
@@ -42,6 +43,8 @@ const ODF = () => {
   const [imageFile, setImageFile] = useState<File | null>(null);
 
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  // Release the previous preview's memory whenever it changes or the page closes.
+  useEffect(() => () => { if (imagePreview) URL.revokeObjectURL(imagePreview); }, [imagePreview]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Success View State
@@ -186,11 +189,9 @@ const ODF = () => {
   const handleSendFull = async (id: number, method: 'whatsapp' | 'email' | 'both') => {
     setIsProcessing(true);
     try {
-      await axios.post(`/api/odf/${id}/send`, { method }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      setMessage({ type: 'success', text: `Document envoyé par ${method === 'both' ? 'Email & WhatsApp' : method === 'whatsapp' ? 'WhatsApp' : 'Email'}!` });
+      setMessage({ type: 'success', text: 'Envoi en cours…' });
+      const result = await sendDocumentAndWait('odf', id, method);
+      setMessage({ type: result.ok ? 'success' : 'error', text: result.text });
     } catch (err: any) {
       setMessage({ type: 'error', text: sendErrorMessage(err) });
     } finally {
@@ -202,7 +203,7 @@ const ODF = () => {
   const handleCustomerSearch = async (query?: string) => {
     const q = query !== undefined ? query : customerSearch;
     try {
-      const res = await axios.get(`/api/customers?search=${q}`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await axios.get(`/api/customers?search=${encodeURIComponent(q)}`, { headers: { Authorization: `Bearer ${token}` } });
       setSearchResults(res.data);
     } catch (err) {
       console.error(err);
@@ -280,6 +281,16 @@ const ODF = () => {
           {view === 'list' ? <><Plus size={20} /> Nouveau Rachat</> : <><History size={20} /> Voir Historique</>}
         </button>
       </div>
+
+      {/* The create form shows its own message; list and success views show it here. */}
+      {view !== 'create' && message.text && (
+        <div role="status" className={`p-4 rounded-xl text-center font-bold flex items-center justify-center gap-2 ${
+          message.type === 'success' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'
+        }`}>
+          {message.type === 'success' ? <Check size={20} /> : <AlertCircle size={20} />}
+          {message.text}
+        </div>
+      )}
 
       <AnimatePresence mode="wait">
         {view === 'create' ? (
@@ -495,7 +506,9 @@ const ODF = () => {
                     {imagePreview ? (
                       <div className="relative inline-block">
                         <img src={imagePreview} alt="Preview" className="h-32 w-auto rounded-xl shadow-lg" />
-                        <button 
+                        <button
+                          type="button"
+                          aria-label="Retirer la photo" 
                           onClick={(e) => { e.stopPropagation(); setImagePreview(null); setImageFile(null); }}
                           className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1"
                         >

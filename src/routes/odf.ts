@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 import { authenticateToken, checkPermission } from "../middleware/auth";
 import { idParam, odfCreateSchema, sendMethodSchema } from "../lib/schemas";
 import { notFound, sendError } from "../lib/errors";
-import { assertCanSend, deliverDocument } from "../services/notifications";
+import { assertCanSend, queueDocument } from "../services/notifications";
 import { ensureOdfFile } from "../services/documents";
 import { contentTypeFor, readFile, saveImage } from "../services/storage";
 
@@ -55,7 +55,7 @@ export function registerOdfRoutes(app: Express, upload: Multer) {
     }
   });
 
-  app.post("/api/odf/:id/send", authenticateToken, checkPermission('odf', 'create'), async (req, res) => {
+  app.post("/api/odf/:id/send", authenticateToken, checkPermission('odf', 'create'), async (req: any, res) => {
     try {
       const odfId = idParam.parse(req.params.id);
       const { method } = sendMethodSchema.parse(req.body);
@@ -69,12 +69,12 @@ export function registerOdfRoutes(app: Express, upload: Multer) {
 
       await ensureOdfFile(odfId);
 
+      const notifications = await queueDocument('odf', odfId, method, customer, req.user?.id);
       res.json({
         success: true,
-        message: "Demande reçue. L'envoi est en cours d'exécution en arrière-plan.",
-        results: { queued: true },
+        message: "Envoi en cours.",
+        notifications,
       });
-      setImmediate(() => deliverDocument('odf', odfId, method, customer));
     } catch (error) {
       sendError(res, error, "Failed to send ODF", "ODF Send Error");
     }

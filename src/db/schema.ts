@@ -6,6 +6,8 @@ export const users = pgTable('users', {
   email: varchar('email', { length: 100 }).unique().notNull(),
   passwordHash: text('password_hash').notNull(),
   role: varchar('role', { length: 20 }).default('User').notNull(), // 'Admin' | 'User'
+  // Bumped on logout, password or role change: tokens carrying an older value are rejected.
+  tokenVersion: integer('token_version').default(0).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
@@ -26,12 +28,14 @@ export const rolesPermissions = pgTable('roles_permissions', {
 export const auditLogs = pgTable('audit_logs', {
   id: serial('id').primaryKey(),
   userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
-  actionType: varchar('action_type', { length: 50 }).notNull(),
+  actionType: varchar('action_type', { length: 255 }).notNull(),
   details: jsonb('details'),
   ipAddress: varchar('ip_address', { length: 45 }),
   userAgent: text('user_agent'),
   timestamp: timestamp('timestamp', { withTimezone: true }).defaultNow().notNull(),
-});
+}, (t) => ({
+  timestampIdx: index('idx_audit_logs_timestamp').on(t.timestamp),
+}));
 
 export const stock = pgTable('stock', {
   id: serial('id').primaryKey(),
@@ -110,7 +114,8 @@ export const saleItems = pgTable('sale_items', {
   itemDetails: text('item_details'),
   qty: integer('qty').default(1).notNull(),
   unitSalesPrice: numeric('unit_sales_price', { precision: 15, scale: 2 }),
-  amount: numeric('amount', { precision: 15, scale: 2 }),
+  amount: numeric('amount', { precision: 15, scale: 2 }), // net of VAT
+  vat15: numeric('vat_15', { precision: 15, scale: 2 }), // this line's VAT; amount + vat15 = price paid
   weight: numeric('weight', { precision: 10, scale: 3 }),
   fineness: varchar('fineness', { length: 20 }),
   metalType: varchar('metal_type', { length: 50 }),
@@ -120,7 +125,7 @@ export const saleItems = pgTable('sale_items', {
 export const receipts = pgTable('receipts', {
   id: serial('id').primaryKey(),
   receiptSerialNumber: serial('receipt_serial_number'),
-  saleId: integer('sale_id').references(() => sales.id, { onDelete: 'cascade' }).notNull(),
+  saleId: integer('sale_id').references(() => sales.id, { onDelete: 'cascade' }).notNull().unique(),
   printCount: integer('print_count').default(0).notNull(),
   fileUrl: text('file_url'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
@@ -174,3 +179,19 @@ export const settings = pgTable('settings', {
   value: text('value'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
+
+/** One row per delivery attempt of a receipt or ODF by WhatsApp or email. */
+export const notificationLog = pgTable('notification_log', {
+  id: serial('id').primaryKey(),
+  kind: varchar('kind', { length: 20 }).notNull(), // 'receipt' | 'odf'
+  refId: integer('ref_id').notNull(), // sale id or ODF id
+  channel: varchar('channel', { length: 20 }).notNull(), // 'whatsapp' | 'email'
+  recipient: varchar('recipient', { length: 255 }),
+  status: varchar('status', { length: 20 }).default('pending').notNull(), // 'pending' | 'sent' | 'failed'
+  error: text('error'),
+  createdBy: integer('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  refIdx: index('idx_notification_log_ref').on(t.kind, t.refId),
+}));

@@ -1,10 +1,11 @@
 import PDFDocument from 'pdfkit';
 import { db } from '../../db';
 import { sales, saleItems, customers, receipts, odf, stock, orders } from '../../db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { formatCurrency, formatItemDetails } from '../../lib/utils';
 import { numberToWords, addWatermark } from './common';
 import { getShopDetails } from '../shopDetails';
+import { splitGross, toCents, VAT_RATE } from '../../shared/money';
 
 /**
  * Builds the tax invoice. A counted print increments the receipt's print count,
@@ -52,12 +53,19 @@ export async function generateReceiptPDF(
     : [];
   const linkedCommande = linkedCommandeRecords[0];
 
-  // Check if receipt exists, if not create one
-  let receiptRecords = await db.select().from(receipts).where(eq(receipts.saleId, saleId)).limit(1);
-  if (receiptRecords.length === 0) {
-    receiptRecords = await db.insert(receipts).values({ saleId }).returning();
+  // One receipt per sale (unique sale_id); safe when two requests race.
+  await db.insert(receipts).values({ saleId }).onConflictDoNothing({ target: receipts.saleId });
+  let [receipt] = await db.select().from(receipts).where(eq(receipts.saleId, saleId)).limit(1);
+
+  // Count the print atomically; every print after the first is a copy.
+  let isCopy = false;
+  if (countAsPrint) {
+    [receipt] = await db.update(receipts)
+      .set({ printCount: sql`${receipts.printCount} + 1` })
+      .where(eq(receipts.id, receipt.id))
+      .returning();
+    isCopy = receipt.printCount > 1;
   }
-  const receipt = receiptRecords[0];
 
   const shop = await getShopDetails();
 
@@ -179,11 +187,12 @@ export async function generateReceiptPDF(
       }
     }
     const pcs = row.item.qty || 1;
-    const qtyGrams = s?.weightGrams ? parseFloat(String(s.weightGrams)).toFixed(3) : (sale.weight ? parseFloat(String(sale.weight)).toFixed(3) : '-');
-    const netAmount = Number(row.item.amount || 0);
-    const taxAmount = netAmount * 0.15;
-    const grossAmount = netAmount + taxAmount;
-    return { index: index + 1, stockCode, description, pcs, qtyGrams, netAmount, taxAmount, grossAmount };
+    const weight = row.item.weight ?? s?.weightGrams;
+    const qtyGrams = weight ? parseFloat(String(weight)).toFixed(3) : '-';
+    // Stored amounts, in cents: the invoice must match what was recorded.
+    const netCents = toCents(row.item.amount);
+    const taxCents = row.item.vat15 != null ? toCents(row.item.vat15) : Math.round(netCents * VAT_RATE);
+    return { index: index + 1, stockCode, description, pcs, qtyGrams, netCents, taxCents, grossCents: netCents + taxCents };
   }) : [{
     index: 1,
     stockCode: record.stock?.itemCode || record.stock?.barcode || 'N/A',
@@ -192,15 +201,15 @@ export async function generateReceiptPDF(
       : (formatItemDetails(sale.itemDetails) || 'Article Bijouterie'),
     pcs: sale.qty || 1,
     qtyGrams: sale.weight ? parseFloat(String(sale.weight)).toFixed(3) : '-',
-    netAmount: Number(sale.amount || 0),
-    taxAmount: Number(sale.vat15 || 0),
-    grossAmount: Number(sale.amount || 0) + Number(sale.vat15 || 0)
+    netCents: toCents(sale.amount),
+    taxCents: toCents(sale.vat15),
+    grossCents: toCents(sale.amount) + toCents(sale.vat15),
   }];
 
   let currentRowY = tableHeaderY + headerHeight;
-  let totalNetSum = 0;
-  let totalTaxSum = 0;
-  let totalGrossSum = 0;
+  let totalNetCents = 0;
+  let totalTaxCents = 0;
+  let totalGrossCents = 0;
   let totalPcsSum = 0;
 
   for (const rowData of renderedRows) {
@@ -213,10 +222,10 @@ export async function generateReceiptPDF(
     doc.text(rowData.description, columns[2].x, currentRowY + 5, { width: columns[2].w, align: 'left' });
     doc.text(String(rowData.pcs), columns[3].x, currentRowY + (rowHeight - 8) / 2, { width: columns[3].w, align: 'center' });
     doc.text(String(rowData.qtyGrams), columns[4].x, currentRowY + (rowHeight - 8) / 2, { width: columns[4].w, align: 'right' });
-    doc.text(formatCurrency(rowData.netAmount), columns[5].x, currentRowY + (rowHeight - 8) / 2, { width: columns[5].w, align: 'right' });
+    doc.text(formatCurrency(rowData.netCents / 100), columns[5].x, currentRowY + (rowHeight - 8) / 2, { width: columns[5].w, align: 'right' });
     doc.text('15.00', columns[6].x, currentRowY + (rowHeight - 8) / 2, { width: columns[6].w, align: 'center' });
-    doc.text(formatCurrency(rowData.taxAmount), columns[7].x, currentRowY + (rowHeight - 8) / 2, { width: columns[7].w, align: 'right' });
-    doc.text(formatCurrency(rowData.grossAmount), columns[8].x, currentRowY + (rowHeight - 8) / 2, { width: columns[8].w, align: 'right' });
+    doc.text(formatCurrency(rowData.taxCents / 100), columns[7].x, currentRowY + (rowHeight - 8) / 2, { width: columns[7].w, align: 'right' });
+    doc.text(formatCurrency(rowData.grossCents / 100), columns[8].x, currentRowY + (rowHeight - 8) / 2, { width: columns[8].w, align: 'right' });
 
     doc.rect(40, currentRowY, 515, rowHeight).strokeColor('#000000').lineWidth(1).stroke();
     columns.forEach((col, idx) => {
@@ -226,9 +235,9 @@ export async function generateReceiptPDF(
     });
 
     currentRowY += rowHeight;
-    totalNetSum += rowData.netAmount;
-    totalTaxSum += rowData.taxAmount;
-    totalGrossSum += rowData.grossAmount;
+    totalNetCents += rowData.netCents;
+    totalTaxCents += rowData.taxCents;
+    totalGrossCents += rowData.grossCents;
     totalPcsSum += Number(rowData.pcs);
   }
 
@@ -242,9 +251,9 @@ export async function generateReceiptPDF(
   doc.font('Helvetica-Bold').fontSize(8);
 
   doc.text(`Total (${totalPcsSum} Items)`, 45, totalRowY + 6, { width: columns[5].x - 45, align: 'right' });
-  doc.text(formatCurrency(totalNetSum), columns[5].x, totalRowY + 6, { width: columns[5].w, align: 'right' });
-  doc.text(formatCurrency(totalTaxSum), columns[7].x, totalRowY + 6, { width: columns[7].w, align: 'right' });
-  doc.text(formatCurrency(totalGrossSum), columns[8].x, totalRowY + 6, { width: columns[8].w, align: 'right' });
+  doc.text(formatCurrency(totalNetCents / 100), columns[5].x, totalRowY + 6, { width: columns[5].w, align: 'right' });
+  doc.text(formatCurrency(totalTaxCents / 100), columns[7].x, totalRowY + 6, { width: columns[7].w, align: 'right' });
+  doc.text(formatCurrency(totalGrossCents / 100), columns[8].x, totalRowY + 6, { width: columns[8].w, align: 'right' });
 
   doc.moveTo(columns[5].x, totalRowY).lineTo(columns[5].x, totalRowY + totalRowHeight).stroke();
   doc.moveTo(columns[6].x, totalRowY).lineTo(columns[6].x, totalRowY + totalRowHeight).stroke();
@@ -254,12 +263,12 @@ export async function generateReceiptPDF(
   currentY = totalRowY + totalRowHeight;
 
   // Summary and calculations with integrated Scrap Exchange
-  const scrapExchangeValue = linkedOdf ? Number(linkedOdf.amount || 0) : 0;
-  const depositValue = Number(order?.deposit || 0) + Number(linkedCommande?.deposit || 0);
-  
-  const finalNetAmount = Math.max(0, totalGrossSum - scrapExchangeValue - depositValue);
-  const totalBeforeVat = finalNetAmount / 1.15;
-  const totalVatFinal = finalNetAmount - totalBeforeVat;
+  const scrapCents = linkedOdf ? toCents(linkedOdf.amount) : 0;
+  const depositCents = toCents(order?.deposit) + toCents(linkedCommande?.deposit);
+
+  // Trade-in value and deposit are deducted from the VAT-inclusive total; the
+  // amount still due is then split into its net and VAT parts.
+  const due = splitGross(Math.max(0, totalGrossCents - scrapCents - depositCents));
 
   const drawFinalTotalsRow = (label: string, value: string, isBig = false, valueColor = '#000000') => {
     const rowHeight = isBig ? 24 : 18;
@@ -277,22 +286,22 @@ export async function generateReceiptPDF(
     currentY += rowHeight;
   };
 
-  if (scrapExchangeValue > 0) {
-    drawFinalTotalsRow('Scrap Exchange / Trade-in', `-${formatCurrency(scrapExchangeValue)}`, false, '#ff0000');
+  if (scrapCents > 0) {
+    drawFinalTotalsRow('Scrap Exchange / Trade-in', `-${formatCurrency(scrapCents / 100)}`, false, '#ff0000');
   }
 
-  if (depositValue > 0) {
-    drawFinalTotalsRow('Deposit / Acompte Paid', `-${formatCurrency(depositValue)}`, false, '#0000ff');
+  if (depositCents > 0) {
+    drawFinalTotalsRow('Deposit / Acompte Paid', `-${formatCurrency(depositCents / 100)}`, false, '#0000ff');
   }
 
-  drawFinalTotalsRow('Total Before VAT', formatCurrency(totalBeforeVat));
-  drawFinalTotalsRow('Total VAT (15%)', formatCurrency(totalVatFinal));
-  drawFinalTotalsRow('Net Amount To Pay (Rs)', formatCurrency(finalNetAmount), true);
+  drawFinalTotalsRow('Total Before VAT', formatCurrency(due.netCents / 100));
+  drawFinalTotalsRow('Total VAT (15%)', formatCurrency(due.vatCents / 100));
+  drawFinalTotalsRow('Net Amount To Pay (Rs)', formatCurrency(due.grossCents / 100), true);
 
   // Amount in Words
   doc.moveDown(1.5);
   doc.fillColor('#000000').font('Helvetica-BoldOblique').fontSize(10);
-  const amountWords = `${numberToWords(finalNetAmount)} Mauritian Rupees Only.`;
+  const amountWords = `${numberToWords(due.grossCents / 100)} Mauritian Rupees Only.`;
   doc.text(amountWords, 40, doc.y);
   
   doc.font('Helvetica-Bold').fontSize(9);
@@ -368,13 +377,7 @@ export async function generateReceiptPDF(
   if (shop.address) doc.text(shop.address, 40, storeY + 15, { align: 'center' });
   if (shop.phone) doc.text(`Tel: ${shop.phone}`, 40, storeY + 28, { align: 'center' });
 
-  if (countAsPrint) {
-    await db.update(receipts)
-      .set({ printCount: receipt.printCount + 1 })
-      .where(eq(receipts.id, receipt.id));
-
-    if (receipt.printCount > 0) addWatermark(doc, 'COPIE');
-  }
+  if (isCopy) addWatermark(doc, 'COPIE');
 
   return { doc, receipt };
 }

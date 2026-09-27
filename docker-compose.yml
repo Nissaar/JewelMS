@@ -32,6 +32,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
+      # Creates the schema on a fresh (empty) volume only; generated from drizzle/.
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
       - postgres_data:/var/lib/postgresql/data
     healthcheck:

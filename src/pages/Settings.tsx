@@ -33,6 +33,9 @@ const Settings = () => {
 
   // Permissions state
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]); // format: "funcId:action"
+  // Saving is only allowed once the edited user's own permissions have loaded.
+  const [permissionsState, setPermissionsState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [resetPassword, setResetPassword] = useState('');
 
   const functionalities = FUNCTIONALITIES;
 
@@ -96,14 +99,16 @@ const Settings = () => {
       setShowAddUser(false);
       setNewUser({ username: '', email: '', password: '', role: 'User' });
       fetchData();
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Erreur lors de la création' });
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.response?.data?.error || 'Erreur lors de la création' });
     } finally {
       setIsSaving(false);
     }
   };
 
   const fetchPermissions = async (userId: number) => {
+    setSelectedPermissions([]);
+    setPermissionsState('loading');
     try {
       const res = await axios.get(`/api/users/${userId}/permissions`, { headers: { Authorization: `Bearer ${token}` } });
       const perms: string[] = [];
@@ -114,20 +119,22 @@ const Settings = () => {
         if (p.canDelete) perms.push(`${p.functionality}:canDelete`);
       });
       setSelectedPermissions(perms);
+      setPermissionsState('ready');
     } catch (err) {
-      console.error(err);
+      setPermissionsState('error');
     }
   };
 
   const handleEditUser = (user: any) => {
     setEditingUser(user);
+    setResetPassword('');
     fetchPermissions(user.id);
     setIsEditModalOpen(true);
   };
 
   const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingUser) return;
+    if (!editingUser || permissionsState !== 'ready') return;
     setIsSaving(true);
     try {
       // 1. Update basic info (role/email)
@@ -155,11 +162,26 @@ const Settings = () => {
       setMessage({ type: 'success', text: 'Utilisateur mis à jour' });
       setIsEditModalOpen(false);
       fetchData();
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Erreur lors de la mise à jour' });
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.response?.data?.error || 'Erreur lors de la mise à jour' });
     } finally {
       setIsSaving(false);
       setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!editingUser) return;
+    setIsSaving(true);
+    try {
+      const res = await axios.post(`/api/users/${editingUser.id}/reset-password`, { password: resetPassword });
+      setResetPassword('');
+      setMessage({ type: 'success', text: res.data.message });
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.response?.data?.error || 'Erreur lors de la réinitialisation' });
+    } finally {
+      setIsSaving(false);
+      setTimeout(() => setMessage({ type: '', text: '' }), 4000);
     }
   };
 
@@ -539,7 +561,13 @@ const Settings = () => {
                       <div className="h-1 flex-1 mx-6 bg-slate-100 rounded-full hidden sm:block"></div>
                     </div>
                     
-                    <div className="bg-white rounded-3xl border-2 border-slate-50 overflow-x-auto shadow-inner">
+                    {permissionsState === 'loading' && (
+                      <p className="text-sm font-bold text-slate-400 flex items-center gap-2"><Loader2 className="animate-spin" size={16} /> Chargement des permissions…</p>
+                    )}
+                    {permissionsState === 'error' && (
+                      <p role="alert" className="text-sm font-bold text-red-600">Impossible de charger les permissions de cet utilisateur. Fermez et réessayez avant d'enregistrer.</p>
+                    )}
+                    <div className={`bg-white rounded-3xl border-2 border-slate-50 overflow-x-auto shadow-inner ${permissionsState !== 'ready' ? 'opacity-40 pointer-events-none' : ''}`}>
                       <table className="w-full min-w-[600px] border-collapse">
                         <thead>
                           <tr className="bg-slate-50/50">
@@ -582,6 +610,29 @@ const Settings = () => {
                     </div>
                   </div>
 
+                  <div className="space-y-2">
+                    <label htmlFor="reset-password" className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Réinitialiser le mot de passe</label>
+                    <div className="flex gap-3">
+                      <input
+                        id="reset-password"
+                        type="password"
+                        autoComplete="new-password"
+                        placeholder="Nouveau mot de passe (10 caractères min.)"
+                        value={resetPassword}
+                        onChange={(e) => setResetPassword(e.target.value)}
+                        className="flex-1 bg-white border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-amber-400 font-bold"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleResetPassword}
+                        disabled={isSaving || resetPassword.length < 10}
+                        className="bg-slate-100 text-slate-700 font-black px-6 rounded-2xl hover:bg-slate-200 transition-all disabled:opacity-50"
+                      >
+                        Réinitialiser
+                      </button>
+                    </div>
+                  </div>
+
                   <div className="flex gap-4 pt-4">
                     <button
                       type="button"
@@ -592,7 +643,7 @@ const Settings = () => {
                     </button>
                     <button
                       type="submit"
-                      disabled={isSaving}
+                      disabled={isSaving || permissionsState !== 'ready'}
                       className="flex-[2] bg-slate-900 text-white font-black py-4 rounded-2xl shadow-xl shadow-slate-900/10 hover:bg-slate-800 transition-all flex items-center justify-center space-x-3"
                     >
                       {isSaving ? <Loader2 className="animate-spin" size={24} /> : (

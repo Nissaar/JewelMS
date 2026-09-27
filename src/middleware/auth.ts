@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { db } from '../db/index';
-import { rolesPermissions } from '../db/schema';
+import { rolesPermissions, users } from '../db/schema';
 import { eq } from 'drizzle-orm';
 import { JWT_SECRET } from '../config';
 import { hasPermission, type Functionality, type PermissionAction, type PermissionRow, type PermissionSubject, type Requirement } from '../shared/permissions';
@@ -15,22 +15,40 @@ export interface AuthRequest extends Request {
   permissions?: PermissionRow[];
 }
 
-export const authenticateToken = (req: AuthRequest, res: Response, next: NextFunction) => {
-  const authHeader = req.headers['authorization'];
-  let token = authHeader && authHeader.split(' ')[1];
+/**
+ * Accepts only "Authorization: Bearer <token>" (never a query string, which
+ * ends up in logs and browser history). The user is re-read from the database
+ * on every request, so a role change, deletion or logout takes effect
+ * immediately instead of when the token expires.
+ */
+export const authenticateToken = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  const [scheme, token] = (req.headers.authorization || '').split(' ');
+  if (scheme !== 'Bearer' || !token) return res.status(401).json({ error: 'Access token required' });
 
-  // Also support token in query params for direct links like PDF views
-  if (!token && req.query.token) {
-    token = req.query.token as string;
+  let payload: any;
+  try {
+    payload = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
+  } catch {
+    return res.status(401).json({ error: 'Invalid or expired token' });
   }
 
-  if (!token) return res.status(401).json({ error: 'Access token required' });
+  try {
+    const [user] = await db.select({
+      id: users.id,
+      username: users.username,
+      role: users.role,
+      tokenVersion: users.tokenVersion,
+    }).from(users).where(eq(users.id, Number(payload.id))).limit(1);
 
-  jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
-    if (err) return res.status(403).json({ error: 'Invalid or expired token' });
-    req.user = user;
+    if (!user || user.tokenVersion !== (payload.tv ?? 0)) {
+      return res.status(401).json({ error: 'Session expired, please sign in again' });
+    }
+    req.user = { id: user.id, username: user.username, role: user.role };
     next();
-  });
+  } catch (error) {
+    console.error('Auth Error:', error);
+    res.status(500).json({ error: 'Internal server error during authentication' });
+  }
 };
 
 /** The caller's permission rows, loaded once per request. */

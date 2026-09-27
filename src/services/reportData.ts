@@ -2,6 +2,7 @@ import { and, eq, ilike, inArray, or, sql, type SQL } from 'drizzle-orm';
 import { db } from '../db';
 import { customers, odf, odfItems, receipts, saleItems, sales } from '../db/schema';
 import { badRequest } from '../lib/errors';
+import { inShopTime } from '../lib/time';
 
 /**
  * Report queries shared by the on-screen reports and their PDF versions, so
@@ -20,10 +21,14 @@ const completed = eq(sales.status, 'Completed');
 export const saleBarcodes = sql<string>`(SELECT STRING_AGG(si.barcode, ', ' ORDER BY si.id)
   FROM sale_items si WHERE si.sale_id = sales.id)`;
 
-/** Parses an optional YYYY-MM-DD query value, rejecting garbage with a 400. */
+/**
+ * Parses an optional YYYY-MM-DD query value as the start of that day in shop
+ * time (new Date('2026-09-01') would be midnight UTC, 4 a.m. in Mauritius).
+ */
 export function parseDateParam(value: unknown, name: string): Date | undefined {
   if (value === undefined || value === null || value === '') return undefined;
-  const d = new Date(String(value));
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value));
+  const d = match ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])) : new Date(String(value));
   if (isNaN(d.getTime())) throw badRequest(`${name}: invalid date`);
   return d;
 }
@@ -58,9 +63,9 @@ export async function vatReportRows(filters: { day?: string; month?: string; yea
   const year = intParam(filters.year, 'year', 2000, 2100);
   const month = intParam(filters.month, 'month', 1, 12);
   const day = intParam(filters.day, 'day', 1, 31);
-  if (year) conditions.push(sql`EXTRACT(YEAR FROM ${sales.createdAt}) = ${year}`);
-  if (month) conditions.push(sql`EXTRACT(MONTH FROM ${sales.createdAt}) = ${month}`);
-  if (day) conditions.push(sql`EXTRACT(DAY FROM ${sales.createdAt}) = ${day}`);
+  if (year) conditions.push(sql`EXTRACT(YEAR FROM ${inShopTime(sales.createdAt)}) = ${year}`);
+  if (month) conditions.push(sql`EXTRACT(MONTH FROM ${inShopTime(sales.createdAt)}) = ${month}`);
+  if (day) conditions.push(sql`EXTRACT(DAY FROM ${inShopTime(sales.createdAt)}) = ${day}`);
 
   const rows = await db.select({
     saleId: sales.id,
@@ -87,9 +92,9 @@ export async function vatReportRows(filters: { day?: string; month?: string; yea
 
 // --- Sales by metal (per item) ---------------------------------------------
 
-/** An item's share of its sale's VAT, so item shares add up to the sale's VAT. */
-const itemVat = sql<string>`CASE WHEN COALESCE(${sales.amount}, 0) = 0 THEN 0
-  ELSE ROUND(${saleVat} * ${saleItems.amount} / ${sales.amount}, 2) END`;
+/** The line's stored VAT; for rows without one, its share of the sale's VAT. */
+const itemVat = sql<string>`COALESCE(${saleItems.vat15}, CASE WHEN COALESCE(${sales.amount}, 0) = 0 THEN 0
+  ELSE ROUND(${saleVat} * ${saleItems.amount} / ${sales.amount}, 2) END)`;
 
 function metalCondition(metalType: string): SQL | undefined {
   const m = metalType.toLowerCase().trim();

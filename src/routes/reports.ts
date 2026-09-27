@@ -6,20 +6,21 @@ import { authenticateToken, checkPermission, userCan } from "../middleware/auth"
 import { sendError } from "../lib/errors";
 import { discountRows, salesByMetalRows, tradeInRows, vatReportRows } from "../services/reportData";
 import { escapeLike } from "../lib/sql";
+import { isShopToday } from "../lib/time";
 
 export function registerReportsRoutes(app: Express) {
 
   app.get("/api/reports/dashboard-summary", authenticateToken, checkPermission('reports', 'view'), async (req: any, res) => {
     try {
-      // Use PostgreSQL's CURRENT_DATE for more reliable "today" filtering
+      // "Today" is the shop's local day, whatever the database session's time zone.
       const [todaySalesRes, newClientsRes, stockCountRes, pendingOrdersRes, recentSalesRes] = await Promise.all([
         db.select({ total: sql<string>`SUM(${sales.amount})` })
           .from(sales)
-          .where(and(eq(sales.status, 'Completed'), sql`DATE(${sales.datetime} AT TIME ZONE 'UTC') = CURRENT_DATE`)),
+          .where(and(eq(sales.status, 'Completed'), isShopToday(sales.datetime))),
         
         db.select({ count: sql<number>`COUNT(${customers.id})`.mapWith(Number) })
           .from(customers)
-          .where(sql`DATE(${customers.createdAt} AT TIME ZONE 'UTC') = CURRENT_DATE`),
+          .where(isShopToday(customers.createdAt)),
         
         db.select({ 
           count: sql<number>`COUNT(${stock.id})`.mapWith(Number),

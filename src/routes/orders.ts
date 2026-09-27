@@ -113,6 +113,7 @@ export function registerOrdersRoutes(app: Express) {
           qty: 1,
           unitSalesPrice: centsToDecimal(netCents),
           amount: centsToDecimal(netCents),
+          vat15: centsToDecimal(vatCents),
           weight: finalWeight?.toFixed(3) ?? null,
         });
         await tx.insert(receipts).values({ saleId: newSale.id });

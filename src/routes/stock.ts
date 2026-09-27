@@ -7,6 +7,7 @@ import { authenticateToken, checkAnyPermission, checkPermission } from "../middl
 import { idParam, stockBulkEditSchema, stockCreateSchema, stockUpdateSchema } from "../lib/schemas";
 import { badRequest, notFound, sendError } from "../lib/errors";
 import { escapeLike } from "../lib/sql";
+import { centsToDecimal, splitGross, toCents } from "../shared/money";
 
 type StockFields = Partial<z.infer<typeof stockUpdateSchema>>;
 
@@ -21,11 +22,10 @@ function toStockColumns(input: StockFields): Record<string, unknown> {
 
   if (weightGrams !== undefined) columns.weightGrams = weightGrams === null ? null : weightGrams.toFixed(3);
   if (price !== undefined) {
-    const gross = price ?? 0;
-    const net = gross / 1.15;
-    columns.price = gross.toFixed(2);
-    columns.priceNet = net.toFixed(2);
-    columns.priceVat = (gross - net).toFixed(2);
+    const { grossCents, netCents, vatCents } = splitGross(toCents(price ?? 0));
+    columns.price = centsToDecimal(grossCents);
+    columns.priceNet = centsToDecimal(netCents);
+    columns.priceVat = centsToDecimal(vatCents);
   }
   if (input.category === 'Jewellery') columns.brand = null;
   return columns;

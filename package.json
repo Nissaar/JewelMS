@@ -9,7 +9,8 @@
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "db:push": "drizzle-kit push",
+    "db:generate": "drizzle-kit generate",
+    "db:init-sql": "node scripts/generate-init-sql.mjs",
     "test:e2e": "playwright test",
     "generate-pdf-report": "node generate-pdf-report.js"
   },

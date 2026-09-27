@@ -156,6 +156,23 @@ export const odfCreateSchema = z.object({
 
 // --- Admin -----------------------------------------------------------------
 
+const password = z.string().min(10, 'Le mot de passe doit contenir au moins 10 caractères').max(200);
+const role = z.enum(['Admin', 'User']);
+
+export const userCreateSchema = z.object({
+  username: z.preprocess(trimmed, z.string().min(3).max(50).regex(/^[A-Za-z0-9._-]+$/, 'Lettres, chiffres, . _ - uniquement')),
+  email: z.preprocess(trimmed, z.string().email('Invalid email').max(100)),
+  password,
+  role: role.default('User'),
+});
+
+export const userUpdateSchema = z.object({
+  email: z.preprocess(trimmed, z.string().email('Invalid email').max(100)).optional(),
+  role: role.optional(),
+});
+
+export const passwordResetSchema = z.object({ password });
+
 export const settingUpdateSchema = z.object({
   value: z.string().max(20000),
 });

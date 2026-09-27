@@ -126,6 +126,7 @@ export function registerSalesRoutes(app: Express) {
             qty: 1,
             unitSalesPrice: centsToDecimal(line.netCents),
             amount: centsToDecimal(line.netCents),
+            vat15: centsToDecimal(line.vatCents),
             weight: stockItem.weightGrams,
             fineness: stockItem.fineness,
             metalType: stockItem.metalType,

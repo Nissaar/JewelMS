@@ -10,6 +10,8 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { formatCurrency, formatWeight } from '../lib/utils';
 import { sendErrorMessage } from '../lib/sendErrors';
+import { sendDocumentAndWait } from '../lib/sendDocument';
+import { downloadCsv } from '../lib/csv';
 
 const Reports = () => {
   const { token, user } = useAuth();
@@ -146,10 +148,9 @@ const Reports = () => {
 
   const handleResend = async (saleId: number, method: 'whatsapp' | 'email') => {
     try {
-      await axios.post(`/api/receipts/${saleId}/send`, { method }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setMessage({ type: 'success', text: `Reçu envoyé via ${method}` });
+      setMessage({ type: 'success', text: 'Envoi en cours…' });
+      const result = await sendDocumentAndWait('receipt', saleId, method);
+      setMessage({ type: result.ok ? 'success' : 'error', text: result.text });
     } catch (err: any) {
       setMessage({ type: 'error', text: sendErrorMessage(err) });
     }
@@ -239,26 +240,16 @@ const Reports = () => {
       const headers = ['DATE', 'DESCRIPTION', 'NAME', 'NIC', 'ADDRESS', 'IN (Mass/g)', 'FINENESS', 'INV. NO.', 'OUT'];
       const rows = tradeInData.map(row => [
         row.date ? new Date(row.date).toLocaleDateString('fr-FR') : 'N/A',
-        `"${(row.description || '').replace(/"/g, '""')}"`,
-        `"${(row.customerName || '').replace(/"/g, '""')}"`,
-        `"${(row.customerNIC || '').replace(/"/g, '""')}"`,
-        `"${(row.customerAddress || '').replace(/"/g, '""')}"`,
+        row.description || '',
+        row.customerName || '',
+        row.customerNIC || '',
+        row.customerAddress || '',
         row.weight ? parseFloat(row.weight).toFixed(3) : '0.000',
         row.fineness || '-',
         row.invNo || '-',
         row.out || '-'
       ]);
-
-      const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `registre_tradein_${tradeInFilters.startDate || 'all'}_to_${tradeInFilters.endDate || 'all'}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      downloadCsv(`registre_tradein_${tradeInFilters.startDate || 'all'}_to_${tradeInFilters.endDate || 'all'}.csv`, headers, rows);
 
       setMessage({ type: 'success', text: 'Registre Trade-In CSV (Excel) exporté avec succès' });
     } catch (err) {
@@ -281,25 +272,15 @@ const Reports = () => {
       const rows = salesByMetalData.map(row => [
         row.createdAt ? new Date(row.createdAt).toLocaleDateString('fr-FR') : 'N/A',
         row.receiptNo ? `#FS-${row.receiptNo}` : `Ref #${row.id}`,
-        `"${(row.customerName || '').replace(/"/g, '""')}"`,
-        `"${(row.itemDetails || '').replace(/"/g, '""')}"`,
+        row.customerName || '',
+        row.itemDetails || '',
         row.metalType || '-',
         row.fineness || '-',
         row.weight ? parseFloat(row.weight).toFixed(3) : '0.000',
         row.amount ? parseFloat(row.amount).toFixed(2) : '0.00',
         row.totalWithVat ? parseFloat(row.totalWithVat).toFixed(2) : '0.00'
       ]);
-
-      const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `rapport_ventes_metal_${metalFilters.metalType}_${metalFilters.fineness}_${metalFilters.startDate}_to_${metalFilters.endDate}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      downloadCsv(`rapport_ventes_metal_${metalFilters.metalType}_${metalFilters.fineness}_${metalFilters.startDate}_to_${metalFilters.endDate}.csv`, headers, rows);
 
       setMessage({ type: 'success', text: 'Rapport de ventes par métal CSV exporté avec succès' });
     } catch (err) {
@@ -499,7 +480,7 @@ const Reports = () => {
                     value={filters.year}
                     onChange={(e) => setFilters({...filters, year: e.target.value})}
                   >
-                    {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
+                    {Array.from({ length: new Date().getFullYear() - 2023 }, (_, i) => 2024 + i).map(y => <option key={y} value={y}>{y}</option>)}
                   </select>
                 </div>
                 <div className="space-y-2">
