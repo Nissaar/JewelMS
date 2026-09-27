@@ -36,9 +36,7 @@ const DiscountReport: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await axios.get('/api/reports/discounts', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await axios.get('/api/reports/discounts');
       setRecords(res.data.data || []);
     } catch (err: any) {
       console.error("Error fetching discount report:", err);

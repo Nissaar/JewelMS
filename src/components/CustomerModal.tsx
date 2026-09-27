@@ -6,7 +6,6 @@ import {
   X, UserPlus
 } from 'lucide-react';
 import { motion } from 'motion/react';
-import { useAuth } from '../context/AuthContext';
 
 interface CustomerModalProps {
   isOpen: boolean;
@@ -17,7 +16,6 @@ interface CustomerModalProps {
 }
 
 const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSuccess, initialName = '', customerToEdit = null }) => {
-  const { token } = useAuth();
   const [newCustomer, setNewCustomer] = useState({
     name: '',
     email: '',
@@ -78,13 +76,9 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSucces
     try {
       let res;
       if (customerToEdit) {
-        res = await axios.put(`/api/customers/${customerToEdit.id}`, newCustomer, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        res = await axios.put(`/api/customers/${customerToEdit.id}`, newCustomer);
       } else {
-        res = await axios.post('/api/customers', newCustomer, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        res = await axios.post('/api/customers', newCustomer);
       }
       onSuccess(res.data);
       onClose();

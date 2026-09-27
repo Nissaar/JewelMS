@@ -22,9 +22,7 @@ const Dashboard = () => {
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
-        const response = await axios.get('/api/reports/dashboard-summary', {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const response = await axios.get('/api/reports/dashboard-summary');
         setData(response.data);
       } catch (error) {
         console.error("Error fetching dashboard data:", error);

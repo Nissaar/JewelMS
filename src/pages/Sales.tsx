@@ -6,7 +6,7 @@ import {
   ShoppingCart, Barcode, User, CreditCard, Search,
   Plus, Check, AlertCircle, Loader2, Banknote,
   Smartphone, Mail, Download, History, X,
-   Tag, Camera, ArrowLeft, FileText, Trash2
+  Tag, Camera, ArrowLeft, FileText, Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import BarcodeScanner from '../components/BarcodeScanner';
@@ -16,6 +16,7 @@ import { sendErrorMessage } from '../lib/sendErrors';
 import { sendDocumentAndWait } from '../lib/sendDocument';
 import { sumLines, toCents } from '../shared/money';
 import { priceCartLine } from '../lib/cartPricing';
+import { openAuthenticatedFile } from '../lib/openFile';
 
 const Sales = () => {
   const navigate = useNavigate();
@@ -106,9 +107,9 @@ const Sales = () => {
       const loadDocuments = async () => {
         try {
           const [odfsRes, ordersRes, custsRes] = await Promise.all([
-            axios.get('/api/odf', { headers: { Authorization: `Bearer ${token}` } }),
-            axios.get('/api/orders', { headers: { Authorization: `Bearer ${token}` } }),
-            axios.get('/api/customers', { headers: { Authorization: `Bearer ${token}` } })
+            axios.get('/api/odf'),
+            axios.get('/api/orders'),
+            axios.get('/api/customers')
           ]);
           setOdfsList(odfsRes.data);
           setCommandesList(ordersRes.data);
@@ -188,9 +189,7 @@ const Sales = () => {
 
   const handleStockSearch = async () => {
     try {
-      const res = await axios.get(`/api/stock/autocomplete?q=${encodeURIComponent(barcode)}`, { 
-        headers: { Authorization: `Bearer ${token}` } 
-      });
+      const res = await axios.get(`/api/stock/autocomplete?q=${encodeURIComponent(barcode)}`);
       setStockSearchResults(res.data);
     } catch (err) {
       console.error(err);
@@ -207,7 +206,7 @@ const Sales = () => {
     
     setIsLoading(true);
     try {
-      const res = await axios.get(`/api/stock/${codeToFetch}`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await axios.get(`/api/stock/${codeToFetch}`);
       handleAddToCart(res.data);
       setIsScannerOpen(false);
     } catch (err: any) {
@@ -225,7 +224,7 @@ const Sales = () => {
   const handleCustomerSearch = async (query?: string) => {
     const q = query !== undefined ? query : customerSearch;
     try {
-      const res = await axios.get(`/api/customers?search=${encodeURIComponent(q)}`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await axios.get(`/api/customers?search=${encodeURIComponent(q)}`);
       setSearchResults(res.data);
     } catch (err) {
       console.error(err);
@@ -269,7 +268,7 @@ const Sales = () => {
         linkedCommandeId: linkedCommande?.id || null,
       };
       
-      const res = await axios.post('/api/sales', salePayload, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await axios.post('/api/sales', salePayload);
       setCompletedSale(res.data.sale);
       setSaleStep('completed');
     } catch (err: any) {
@@ -283,13 +282,7 @@ const Sales = () => {
     if (!completedSale) return;
     setIsGeneratingPDF(true);
     try {
-      const response = await axios.get(`/api/receipts/${completedSale.id}/pdf`, {
-        headers: { Authorization: `Bearer ${token}` },
-        responseType: 'blob'
-      });
-      
-      const blobUrl = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
-      window.open(blobUrl, '_blank');
+      await openAuthenticatedFile(`/api/receipts/${completedSale.id}/pdf`);
     } catch (err) {
       console.error(err);
       setMessage({ type: 'error', text: 'Échec de la génération du PDF' });
@@ -302,13 +295,7 @@ const Sales = () => {
     if (!completedSale) return;
     setIsGeneratingDecl(true);
     try {
-      const response = await axios.get(`/api/receipts/${completedSale.id}/declaration-pdf`, {
-        headers: { Authorization: `Bearer ${token}` },
-        responseType: 'blob'
-      });
-      
-      const blobUrl = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
-      window.open(blobUrl, '_blank');
+      await openAuthenticatedFile(`/api/receipts/${completedSale.id}/declaration-pdf`);
     } catch (err) {
       console.error(err);
       setMessage({ type: 'error', text: 'Échec de la génération de la Déclaration PDF' });

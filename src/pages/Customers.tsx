@@ -1,67 +1,37 @@
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
+import React, { useState } from 'react';
 import axios from 'axios';
 import {
   Users, Search, Plus, MapPin, Phone,
-   History, Package,
-   X, Loader2, User, ChevronRight,
+  History, Package,
+  X, Loader2, User, ChevronRight,
   TrendingDown, TrendingUp,
-    Mail, Edit2
+  Mail, Edit2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatCurrency, getItemFullDescription } from '../lib/utils';
 import CustomerModal from '../components/CustomerModal';
+import { useSearchParams } from 'react-router-dom';
+import { usePagedList } from '../hooks/usePagedList';
+import { Pager } from '../components/Pager';
 
 const Customers = () => {
-  const { token } = useAuth();
-  const [customers, setCustomers] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [search, setSearch] = useState('');
+  const [searchParams] = useSearchParams();
+  const [search, setSearch] = useState(searchParams.get('q') || '');
+  // Searched (name or ID number) and paged on the server.
+  const list = usePagedList<any>('/api/customers', { q: search }, 24);
+  const { items: customers, isLoading } = list;
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [editingCustomer, setEditingCustomer] = useState<any>(null);
   const [history, setHistory] = useState<any>(null);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
-  
+
   // New Customer Form State
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [isSearching, setIsSearching] = useState(false);
-
-  // Debounce Search
-  useEffect(() => {
-    if (search === '') {
-      fetchCustomers();
-      return;
-    }
-    
-    setIsSearching(true);
-    const timer = setTimeout(() => {
-      fetchCustomers(search);
-      setIsSearching(false);
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [search]);
-
-  const fetchCustomers = async (query = '') => {
-    setIsLoading(true);
-    try {
-      const res = await axios.get(`/api/customers${query ? `?search=${query}` : ''}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setCustomers(res.data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const fetchCustomerHistory = async (id: number) => {
     setIsHistoryLoading(true);
     try {
-      const res = await axios.get(`/api/customers/${id}/history`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await axios.get(`/api/customers/${id}/history`);
       setHistory(res.data);
     } catch (err) {
       console.error(err);
@@ -98,7 +68,7 @@ const Customers = () => {
         <div className="flex gap-4">
           <div className="flex gap-2">
             <div className="relative">
-              {isSearching || isLoading ? (
+              {isLoading ? (
                 <Loader2 className="absolute left-4 top-1/2 -translate-y-1/2 text-amber-500 animate-spin" size={20} />
               ) : (
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
@@ -199,6 +169,7 @@ const Customers = () => {
           ))
         )}
       </div>
+      <Pager page={list.page} pageCount={list.pageCount} total={list.total} isLoading={isLoading} onPage={list.setPage} noun="clients" />
 
       {/* Customer Modal (Create/Edit) */}
       <CustomerModal 
@@ -208,7 +179,7 @@ const Customers = () => {
           setEditingCustomer(null);
         }}
         onSuccess={() => {
-          fetchCustomers(search);
+          list.reload();
           setIsCreateModalOpen(false);
           setEditingCustomer(null);
         }}

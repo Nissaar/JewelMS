@@ -22,7 +22,10 @@ import Orders from './pages/Orders';
 import StockReports from './pages/StockReports';
 import Customers from './pages/Customers';
 
-// Placeholders for other pages
+/** Guarded page: `page` names its PAGE_ACCESS entry, `admin` requires the Admin role. */
+const guard = (element: React.ReactNode, opts: { page?: string; admin?: boolean } = {}) => (
+  <ProtectedRoute page={opts.page} requiredRole={opts.admin ? 'Admin' : undefined}>{element}</ProtectedRoute>
+);
 
 const App: React.FC = () => {
   return (
@@ -31,115 +34,28 @@ const App: React.FC = () => {
         <UpdateBanner />
         <Router>
           <Routes>
-          <Route path="/login" element={<Login />} />
-          
-          <Route path="/" element={
-            <ProtectedRoute>
-              <Layout>
-                <Dashboard />
-              </Layout>
-            </ProtectedRoute>
-          } />
+            <Route path="/login" element={<Login />} />
 
-          <Route path="/stock/*" element={
-            <ProtectedRoute page="/stock">
-              <Layout>
-                <Stock />
-              </Layout>
-            </ProtectedRoute>
-          } />
+            {/* One shell for every signed-in page, so it isn't rebuilt on navigation. */}
+            <Route element={guard(<Layout />)}>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/stock/sold" element={guard(<SoldItems />, { page: '/stock/sold' })} />
+              <Route path="/stock/*" element={guard(<Stock />, { page: '/stock' })} />
+              <Route path="/customers/*" element={guard(<Customers />, { page: '/customers' })} />
+              <Route path="/sales/*" element={guard(<Sales />, { page: '/sales' })} />
+              <Route path="/sales-history" element={guard(<SalesHistory />, { page: '/sales-history' })} />
+              <Route path="/orders/*" element={guard(<Orders />, { page: '/orders' })} />
+              <Route path="/odf/*" element={guard(<ODF />, { page: '/odf' })} />
+              <Route path="/reports/discounts" element={guard(<DiscountReport />, { page: '/reports/discounts' })} />
+              <Route path="/reports/*" element={guard(<Reports />, { page: '/reports' })} />
+              <Route path="/stock-reports" element={guard(<StockReports />, { admin: true })} />
+              <Route path="/settings" element={guard(<Settings />, { admin: true })} />
+              <Route path="/audit-logs" element={guard(<AuditLogs />, { admin: true })} />
+            </Route>
 
-          <Route path="/customers/*" element={
-            <ProtectedRoute page="/customers">
-              <Layout>
-                <Customers />
-              </Layout>
-            </ProtectedRoute>
-          } />
-
-          <Route path="/sales/*" element={
-            <ProtectedRoute page="/sales">
-              <Layout>
-                <Sales />
-              </Layout>
-            </ProtectedRoute>
-          } />
-
-          <Route path="/sales-history" element={
-            <ProtectedRoute page="/sales-history">
-              <Layout>
-                <SalesHistory />
-              </Layout>
-            </ProtectedRoute>
-          } />
-
-          <Route path="/stock/sold" element={
-            <ProtectedRoute page="/stock/sold">
-              <Layout>
-                <SoldItems />
-              </Layout>
-            </ProtectedRoute>
-          } />
-
-          <Route path="/orders/*" element={
-            <ProtectedRoute page="/orders">
-              <Layout>
-                <Orders />
-              </Layout>
-            </ProtectedRoute>
-          } />
-
-          <Route path="/odf/*" element={
-            <ProtectedRoute page="/odf">
-              <Layout>
-                <ODF />
-              </Layout>
-            </ProtectedRoute>
-          } />
-
-          <Route path="/reports/*" element={
-            <ProtectedRoute page="/reports">
-              <Layout>
-                <Reports />
-              </Layout>
-            </ProtectedRoute>
-          } />
-
-          <Route path="/reports/discounts" element={
-            <ProtectedRoute page="/reports/discounts">
-              <Layout>
-                <DiscountReport />
-              </Layout>
-            </ProtectedRoute>
-          } />
-
-          <Route path="/stock-reports" element={
-            <ProtectedRoute requiredRole="Admin">
-              <Layout>
-                <StockReports />
-              </Layout>
-            </ProtectedRoute>
-          } />
-
-          <Route path="/settings" element={
-            <ProtectedRoute requiredRole="Admin">
-              <Layout>
-                <Settings />
-              </Layout>
-            </ProtectedRoute>
-          } />
-
-          <Route path="/audit-logs" element={
-            <ProtectedRoute requiredRole="Admin">
-              <Layout>
-                <AuditLogs />
-              </Layout>
-            </ProtectedRoute>
-          } />
-
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Router>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Router>
       </PWAProvider>
     </AuthProvider>
   );

@@ -1,42 +1,25 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Search, User, LogOut, Package, Users, ShoppingCart, FileText, Settings, Menu, X, PlusCircle, Fingerprint, BarChart3, Download, History, Percent } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { usePWA } from '../context/PWAContext';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'motion/react';
 import { getCleanDisplayLabel } from '../lib/utils';
 import { PAGE_ACCESS, hasPermission } from '../shared/permissions';
 
-export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, token, logout } = useAuth();
+/** App shell: sidebar, global search, and the current page (rendered by <Outlet />). */
+export const Layout: React.FC = () => {
+  const { user, logout } = useAuth();
+  const { isInstallable, installApp } = usePWA();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
-  const [showInstallBtn, setShowInstallBtn] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
-
-  useEffect(() => {
-    window.addEventListener('beforeinstallprompt', (e) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-      setShowInstallBtn(true);
-    });
-  }, []);
-
-  const handleInstallClick = async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') {
-      setDeferredPrompt(null);
-      setShowInstallBtn(false);
-    }
-  };
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -48,24 +31,37 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Search only when something is typed; a newer query cancels the previous one.
   useEffect(() => {
+    const q = searchQuery.trim();
+    if (!q) {
+      setSearchResults(null);
+      setIsSearchOpen(false);
+      return;
+    }
+    const controller = new AbortController();
     const delayDebounceFn = setTimeout(async () => {
       setIsSearching(true);
       setIsSearchOpen(true);
       try {
-        const response = await axios.get(`/api/search?q=${encodeURIComponent(searchQuery)}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const response = await axios.get('/api/search', { params: { q }, signal: controller.signal });
         setSearchResults(response.data);
       } catch (error) {
-        console.error("Search failed:", error);
+        if (!axios.isCancel(error)) console.error("Search failed:", error);
       } finally {
-        setIsSearching(false);
+        if (!controller.signal.aborted) setIsSearching(false);
       }
     }, 300);
 
-    return () => clearTimeout(delayDebounceFn);
-  }, [searchQuery, token]);
+    return () => { clearTimeout(delayDebounceFn); controller.abort(); };
+  }, [searchQuery]);
+
+  // Search results open the page, filtered to that record.
+  const openResult = (path: string, q: string) => {
+    navigate(`${path}?q=${encodeURIComponent(q)}`);
+    setIsSearchOpen(false);
+    setSearchQuery('');
+  };
 
   const canOpen = (path: string) => {
     const requirement = PAGE_ACCESS[path];
@@ -123,9 +119,10 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
           </nav>
 
           <div className="p-6 border-t border-slate-800 shrink-0">
-            {showInstallBtn && (
-              <button 
-                onClick={handleInstallClick}
+            {isInstallable && (
+              <button
+                type="button"
+                onClick={installApp}
                 className="flex items-center space-x-3 px-4 py-3 mb-6 w-full bg-amber-500 text-slate-900 rounded-xl font-bold text-sm shadow-lg shadow-amber-500/20 hover:bg-amber-400 transition-all active:scale-95"
               >
                 <Download size={18} />
@@ -193,14 +190,14 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
                           <div>
                             <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Stock</h3>
                             {searchResults.stock.slice(0, 5).map((item: any) => (
-                              <div key={item.id} className="p-3 hover:bg-slate-50 rounded-lg cursor-pointer flex justify-between items-center" onClick={() => { navigate(`/stock/${item.id}`); setIsSearchOpen(false); }}>
+                              <button type="button" key={item.id} className="w-full text-left p-3 hover:bg-slate-50 focus:bg-slate-50 rounded-lg flex justify-between items-center" onClick={() => openResult('/stock', item.barcode)}>
                                 <div>
                                   <p className="font-semibold text-sm text-slate-900">{getCleanDisplayLabel(item)}</p>
                                 </div>
                                 <div className="text-right ml-4">
                                   <p className="text-xs font-bold text-amber-600">{item.weightGrams ? `${item.weightGrams}g` : ''}</p>
                                 </div>
-                              </div>
+                              </button>
                             ))}
                           </div>
                         )}
@@ -208,14 +205,14 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
                           <div>
                             <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Clients</h3>
                             {searchResults.customers.slice(0, 5).map((item: any) => (
-                              <div key={item.id} className="p-2 hover:bg-slate-50 rounded-lg cursor-pointer" onClick={() => { navigate(`/customers/${item.id}`); setIsSearchOpen(false); }}>
+                              <button type="button" key={item.id} className="w-full text-left p-2 hover:bg-slate-50 focus:bg-slate-50 rounded-lg" onClick={() => openResult('/customers', item.name)}>
                                 <p className="font-medium text-sm text-slate-900">{item.name}</p>
                                 <p className="text-xs text-slate-500">{item.idNumber}</p>
-                              </div>
+                              </button>
                             ))}
                           </div>
                         )}
-                        {(!searchResults || (searchResults.stock.length === 0 && searchResults.customers.length === 0)) && (
+                        {(!searchResults || (searchResults.stock.length === 0 && searchResults.customers.length === 0)) && !isSearching && (
                           <div className="text-center py-8 text-slate-500 text-sm">
                             Aucun résultat trouvé pour "{searchQuery}"
                           </div>
@@ -243,7 +240,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3 }}
           >
-            {children}
+            <Outlet />
           </motion.div>
         </main>
       </div>

@@ -1,46 +1,20 @@
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
-import axios from 'axios';
+import React, { useState } from 'react';
 import {
   History, Search, Loader2, ArrowLeft,
   Barcode, User, Scale, Calendar
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { usePagedList } from '../hooks/usePagedList';
+import { Pager } from '../components/Pager';
 import { formatCurrency, formatWeight, formatItemDetails } from '../lib/utils';
 
 const SoldItems = () => {
-  const { token } = useAuth();
   const navigate = useNavigate();
-  const [soldItems, setSoldItems] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-
-  useEffect(() => {
-    fetchSoldItems();
-  }, []);
-
-  const fetchSoldItems = async () => {
-    setIsLoading(true);
-    try {
-      const res = await axios.get('/api/stock/sold', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setSoldItems(res.data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const filteredItems = (soldItems || []).filter(item => {
-    const search = String(searchQuery || '').toLowerCase();
-    const barcode = String(item?.barcode || '').toLowerCase();
-    const customer = String(item?.customerName || '').toLowerCase();
-    const category = String(item?.category || '').toLowerCase();
-    
-    return barcode.includes(search) || customer.includes(search) || category.includes(search);
-  });
+  const [searchParams] = useSearchParams();
+  const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '');
+  // Searched and paged on the server.
+  const list = usePagedList<any>('/api/stock/sold', { q: searchQuery });
+  const { items: filteredItems, isLoading } = list;
 
   return (
     <div className="max-w-7xl mx-auto space-y-8">
@@ -137,6 +111,7 @@ const SoldItems = () => {
             </tbody>
           </table>
         </div>
+        <Pager page={list.page} pageCount={list.pageCount} total={list.total} isLoading={isLoading} onPage={list.setPage} noun="articles vendus" />
       </div>
     </div>
   );

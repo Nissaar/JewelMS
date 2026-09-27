@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 import {
   Package, User, Plus, Check, AlertCircle,
@@ -8,22 +7,26 @@ import {
   Smartphone, Mail, Download, History, Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { formatCurrency, formatItemDetails } from '../lib/utils';
 import CustomerModal from '../components/CustomerModal';
 import { sendErrorMessage } from '../lib/sendErrors';
 import { sendDocumentAndWait } from '../lib/sendDocument';
+import { openAuthenticatedFile } from '../lib/openFile';
+import { usePagedList } from '../hooks/usePagedList';
+import { Pager } from '../components/Pager';
 
 const Orders = () => {
   const navigate = useNavigate();
-  const { token } = useAuth();
   const [view, setView] = useState<'list' | 'create'>('list');
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
 
   // List State
-  const [orders, setOrders] = useState<any[]>([]);
-  const [orderSearch, setOrderSearch] = useState('');
+  const [searchParams] = useSearchParams();
+  const [orderSearch, setOrderSearch] = useState(searchParams.get('q') || '');
+  // Searched (customer, description, order number) and paged on the server.
+  const list = usePagedList<any>('/api/orders', { q: orderSearch }, 24);
 
   // Create State
   const [customerSearch, setCustomerSearch] = useState('');
@@ -55,10 +58,8 @@ const Orders = () => {
   const handleDeleteOrder = async (orderId: number) => {
     setIsDeleting(true);
     try {
-      await axios.delete(`/api/orders/${orderId}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setOrders(prev => prev.filter(o => o.id !== orderId));
+      await axios.delete(`/api/orders/${orderId}`);
+      list.reload();
       setMessage({ type: 'success', text: "Commande supprimée avec succès" });
       setOrderToDelete(null);
       // Auto clear message after 4s
@@ -73,26 +74,15 @@ const Orders = () => {
     }
   };
 
+  // Coming back to the list shows orders created or finalized meanwhile.
   useEffect(() => {
-    if (view === 'list') fetchOrders();
+    if (view === 'list') list.reload();
   }, [view]);
-
-  const fetchOrders = async () => {
-    setIsLoading(true);
-    try {
-      const res = await axios.get('/api/orders', { headers: { Authorization: `Bearer ${token}` } });
-      setOrders(res.data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handleCustomerSearch = async (query?: string) => {
     const q = query !== undefined ? query : customerSearch;
     try {
-      const res = await axios.get(`/api/customers?search=${encodeURIComponent(q)}`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await axios.get(`/api/customers?search=${encodeURIComponent(q)}`);
       setSearchResults(res.data);
     } catch (err) {
       console.error(err);
@@ -115,7 +105,7 @@ const Orders = () => {
         estimatedPrice,
         deposit,
         createdAt: orderDate
-      }, { headers: { Authorization: `Bearer ${token}` } });
+      });
       
       setLastCreatedOrderId(res.data.id);
       setMessage({ type: 'success', text: 'Commande enregistrée avec succès!' });
@@ -143,11 +133,11 @@ const Orders = () => {
         finalWeight,
         finalPrice,
         paymentMode
-      }, { headers: { Authorization: `Bearer ${token}` } });
+      });
       
       setCompletedOrderSaleId(res.data.saleId);
       setMessage({ type: 'success', text: 'Commande finalisée avec succès!' });
-      fetchOrders();
+      list.reload();
     } catch (err: any) {
       setMessage({ type: 'error', text: err.response?.data?.error || 'Erreur lors de la finalisation' });
     } finally {
@@ -159,12 +149,7 @@ const Orders = () => {
     if (!completedOrderSaleId) return;
     setIsGeneratingPDF(true);
     try {
-      const response = await axios.get(`/api/receipts/${completedOrderSaleId}/pdf`, {
-        headers: { Authorization: `Bearer ${token}` },
-        responseType: 'blob'
-      });
-      const blobUrl = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
-      window.open(blobUrl, '_blank');
+      await openAuthenticatedFile(`/api/receipts/${completedOrderSaleId}/pdf`);
     } catch (err) {
       console.error(err);
       setMessage({ type: 'error', text: 'Échec de la génération du PDF' });
@@ -187,21 +172,11 @@ const Orders = () => {
     }
   };
 
-  const filteredOrders = (orders || []).filter(o => {
-    const search = String(orderSearch || '').toLowerCase();
-    const cName = String(o?.customerName || '').toLowerCase();
-    const desc = String(o?.itemDescription || '').toLowerCase();
-    return cName.includes(search) || desc.includes(search);
-  });
+  const filteredOrders = list.items;
 
   const handlePrintOrder = async (orderId: number) => {
     try {
-      const response = await axios.get(`/api/orders/${orderId}/pdf`, {
-        headers: { Authorization: `Bearer ${token}` },
-        responseType: 'blob'
-      });
-      const blobUrl = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
-      window.open(blobUrl, '_blank');
+      await openAuthenticatedFile(`/api/orders/${orderId}/pdf`);
     } catch (err) {
       console.error(err);
       setMessage({ type: 'error', text: 'Échec de la génération du PDF' });
@@ -428,7 +403,7 @@ const Orders = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {isLoading ? (
+              {list.isLoading ? (
                 <div className="col-span-full py-20 text-center"><Loader2 className="animate-spin mx-auto text-amber-500" /></div>
               ) : filteredOrders.length === 0 ? (
                 <div className="col-span-full py-20 text-center text-slate-400">Aucune commande trouvée</div>
@@ -474,6 +449,7 @@ const Orders = () => {
                 ))
               )}
             </div>
+            <Pager page={list.page} pageCount={list.pageCount} total={list.total} isLoading={list.isLoading} onPage={list.setPage} noun="commandes" />
           </motion.div>
         )}
       </AnimatePresence>

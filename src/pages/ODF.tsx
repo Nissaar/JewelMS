@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 import {
   Scale, User, Camera, Plus, Check, AlertCircle,
@@ -13,15 +12,21 @@ import CustomerModal from '../components/CustomerModal';
 import { sendErrorMessage } from '../lib/sendErrors';
 import { sendDocumentAndWait } from '../lib/sendDocument';
 import { openAuthenticatedFile } from '../lib/openFile';
+import { useSearchParams } from 'react-router-dom';
+import { usePagedList } from '../hooks/usePagedList';
+import { Pager } from '../components/Pager';
 
 const ODF = () => {
-  const { token } = useAuth();
   const [view, setView] = useState<'list' | 'create' | 'success'>('list');
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
 
   // List View State
-  const [odfRecords, setOdfRecords] = useState<any[]>([]);
+  const [searchParams] = useSearchParams();
+  const [odfSearch, setOdfSearch] = useState(searchParams.get('q') || '');
+  // Searched (customer, description, ODF number) and paged on the server.
+  const list = usePagedList<any>('/api/odf', { q: odfSearch });
+  const odfRecords = list.items;
 
   // Form State
   const [customerSearch, setCustomerSearch] = useState('');
@@ -67,21 +72,10 @@ const ODF = () => {
     setSuccessData(null);
   };
 
+  // Coming back to the list shows the ODF just created.
   useEffect(() => {
-    if (view === 'list') fetchODFRecords();
+    if (view === 'list') list.reload();
   }, [view]);
-
-  const fetchODFRecords = async () => {
-    setIsLoading(true);
-    try {
-      const res = await axios.get('/api/odf', { headers: { Authorization: `Bearer ${token}` } });
-      setOdfRecords(res.data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   // Real-time Calculations
   let totalWeight = 0;
@@ -113,12 +107,7 @@ const ODF = () => {
 
   const handleExportPDF = async (id: number) => {
     try {
-      const res = await axios.get(`/api/odf/${id}/pdf`, {
-        headers: { Authorization: `Bearer ${token}` },
-        responseType: 'blob'
-      });
-      const blobUrl = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
-      window.open(blobUrl, '_blank');
+      await openAuthenticatedFile(`/api/odf/${id}/pdf`);
     } catch (err) {
       console.error("PDF Export Error:", err);
       alert("Erreur lors de l'export PDF");
@@ -127,12 +116,7 @@ const ODF = () => {
 
   const handlePrintDeclaration = async (id: number) => {
     try {
-      const res = await axios.get(`/api/odfs/${id}/declaration-pdf`, {
-        headers: { Authorization: `Bearer ${token}` },
-        responseType: 'blob'
-      });
-      const blobUrl = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
-      window.open(blobUrl, '_blank');
+      await openAuthenticatedFile(`/api/odfs/${id}/declaration-pdf`);
     } catch (err) {
       console.error("Declaration PDF Export Error:", err);
       alert("Erreur lors de l'export de la déclaration de propriété");
@@ -156,7 +140,7 @@ const ODF = () => {
   const handleCustomerSearch = async (query?: string) => {
     const q = query !== undefined ? query : customerSearch;
     try {
-      const res = await axios.get(`/api/customers?search=${encodeURIComponent(q)}`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await axios.get(`/api/customers?search=${encodeURIComponent(q)}`);
       setSearchResults(res.data);
     } catch (err) {
       console.error(err);
@@ -190,12 +174,7 @@ const ODF = () => {
       payload.append('tradeInItems', JSON.stringify(tradeInItems));
       if (imageFile) payload.append('image', imageFile);
 
-      const res = await axios.post('/api/odf', payload, {
-        headers: { 
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'multipart/form-data'
-        }
-      });
+      const res = await axios.post('/api/odf', payload);
       
       setSuccessData(res.data);
       setView('success');
@@ -579,6 +558,17 @@ const ODF = () => {
             key="list" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
             className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden"
           >
+            <div className="p-4 border-b border-slate-100 flex items-center gap-4">
+              <Search className="text-slate-400" size={20} aria-hidden="true" />
+              <input
+                type="search"
+                aria-label="Rechercher un ODF"
+                placeholder="Rechercher par client, description ou N° ODF..."
+                className="flex-1 bg-transparent border-none outline-none font-medium"
+                value={odfSearch}
+                onChange={(e) => setOdfSearch(e.target.value)}
+              />
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left">
                 <thead className="bg-slate-50 border-b border-slate-100">
@@ -591,7 +581,7 @@ const ODF = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {isLoading ? (
+                  {list.isLoading ? (
                     <tr><td colSpan={5} className="py-20 text-center"><Loader2 className="animate-spin mx-auto text-amber-500" /></td></tr>
                   ) : odfRecords.length === 0 ? (
                     <tr><td colSpan={5} className="py-20 text-center text-slate-400 font-medium">Aucun enregistrement ODF trouvé</td></tr>
@@ -617,7 +607,7 @@ const ODF = () => {
                            <div className="flex items-center gap-3">
                             {record.imageUrl && (
                               <button 
-                                onClick={() => openAuthenticatedFile(record.imageUrl, token).catch(() => setMessage({ type: 'error', text: 'Impossible d’afficher la photo' }))}
+                                onClick={() => openAuthenticatedFile(record.imageUrl).catch(() => setMessage({ type: 'error', text: 'Impossible d’afficher la photo' }))}
                                 className="p-2 bg-slate-50 text-slate-400 hover:text-amber-500 rounded-lg transition-colors"
                                 title="Voir Photo"
                               >
@@ -667,6 +657,7 @@ const ODF = () => {
                 </tbody>
               </table>
             </div>
+            <Pager page={list.page} pageCount={list.pageCount} total={list.total} isLoading={list.isLoading} onPage={list.setPage} noun="rachats" />
           </motion.div>
         )}
       </AnimatePresence>

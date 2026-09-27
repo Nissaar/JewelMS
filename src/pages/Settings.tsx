@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
 import { usePWA } from '../context/PWAContext';
 import axios from 'axios';
 import { Save, UserPlus, Shield, Check, X, AlertCircle, Loader2, Download, Smartphone, Monitor } from 'lucide-react';
@@ -16,7 +15,6 @@ const SHOP_FIELDS = [
 ];
 
 const Settings = () => {
-  const { token } = useAuth();
   const { isInstallable, installApp } = usePWA();
   const [activeTab, setActiveTab] = useState<'general' | 'users' | 'pwa'>('general');
   const [settings, setSettings] = useState<any[]>([]);
@@ -47,10 +45,10 @@ const Settings = () => {
     setIsLoading(true);
     try {
       if (activeTab === 'general') {
-        const res = await axios.get('/api/settings', { headers: { Authorization: `Bearer ${token}` } });
+        const res = await axios.get('/api/settings');
         setSettings(res.data);
       } else {
-        const res = await axios.get('/api/users', { headers: { Authorization: `Bearer ${token}` } });
+        const res = await axios.get('/api/users');
         setUsers(res.data);
       }
     } catch (err) {
@@ -64,7 +62,7 @@ const Settings = () => {
   const handleUpdateSetting = async (key: string, value: string) => {
     setIsSaving(true);
     try {
-      await axios.put(`/api/settings/${key}`, { value }, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.put(`/api/settings/${key}`, { value });
       setMessage({ type: 'success', text: 'Paramètres mis à jour' });
     } catch (err) {
       setMessage({ type: 'error', text: 'Erreur lors de la mise à jour' });
@@ -79,7 +77,7 @@ const Settings = () => {
     try {
       for (const { key } of SHOP_FIELDS) {
         const value = (document.getElementById(key) as HTMLInputElement).value;
-        await axios.put(`/api/settings/${key}`, { value }, { headers: { Authorization: `Bearer ${token}` } });
+        await axios.put(`/api/settings/${key}`, { value });
       }
       setMessage({ type: 'success', text: 'Coordonnées de la boutique mises à jour' });
     } catch (err) {
@@ -94,7 +92,7 @@ const Settings = () => {
     e.preventDefault();
     setIsSaving(true);
     try {
-      await axios.post('/api/users', newUser, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.post('/api/users', newUser);
       setMessage({ type: 'success', text: 'Utilisateur créé' });
       setShowAddUser(false);
       setNewUser({ username: '', email: '', password: '', role: 'User' });
@@ -110,7 +108,7 @@ const Settings = () => {
     setSelectedPermissions([]);
     setPermissionsState('loading');
     try {
-      const res = await axios.get(`/api/users/${userId}/permissions`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await axios.get(`/api/users/${userId}/permissions`);
       const perms: string[] = [];
       res.data.forEach((p: any) => {
         if (p.canView) perms.push(`${p.functionality}:canView`);
@@ -141,7 +139,7 @@ const Settings = () => {
       await axios.put(`/api/users/${editingUser.id}`, {
         email: editingUser.email,
         role: editingUser.role
-      }, { headers: { Authorization: `Bearer ${token}` } });
+      });
 
       // 2. Prepare permissions objects for backend
       const permsToSave = functionalities.map(f => {
@@ -155,9 +153,7 @@ const Settings = () => {
       });
 
       // 3. Update permissions
-      await axios.put(`/api/users/${editingUser.id}/permissions`, { permissions: permsToSave }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await axios.put(`/api/users/${editingUser.id}/permissions`, { permissions: permsToSave });
 
       setMessage({ type: 'success', text: 'Utilisateur mis à jour' });
       setIsEditModalOpen(false);

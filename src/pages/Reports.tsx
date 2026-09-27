@@ -4,7 +4,7 @@ import axios from 'axios';
 import {
   FileText, Download, Calendar, Search,
   RefreshCcw, Smartphone, Mail, ExternalLink,
-   ArrowUpRight, Scale, Banknote,
+  ArrowUpRight, Scale, Banknote,
   Loader2, AlertCircle, Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -12,9 +12,10 @@ import { formatCurrency, formatWeight } from '../lib/utils';
 import { sendErrorMessage } from '../lib/sendErrors';
 import { sendDocumentAndWait } from '../lib/sendDocument';
 import { downloadCsv } from '../lib/csv';
+import { openAuthenticatedFile, downloadAuthenticatedFile } from '../lib/openFile';
 
 const Reports = () => {
-  const { token, user } = useAuth();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'vat' | 'receipts' | 'tradein' | 'metal'>('vat');
   const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState({ type: '', text: '' });
@@ -75,9 +76,7 @@ const Reports = () => {
       if (metalFilters.metalType) params.append('metalType', metalFilters.metalType);
       if (metalFilters.fineness) params.append('fineness', metalFilters.fineness);
 
-      const res = await axios.get(`/api/reports/sales-by-metal?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await axios.get(`/api/reports/sales-by-metal?${params.toString()}`);
       setSalesByMetalData(res.data.items || []);
       setSalesByMetalSummary(res.data.summary || {
         totalWeight: 0,
@@ -100,9 +99,7 @@ const Reports = () => {
       if (tradeInFilters.startDate) params.append('startDate', tradeInFilters.startDate);
       if (tradeInFilters.endDate) params.append('endDate', tradeInFilters.endDate);
 
-      const res = await axios.get(`/api/reports/tradein?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await axios.get(`/api/reports/tradein?${params.toString()}`);
       setTradeInData(res.data);
     } catch (err) {
       console.error(err);
@@ -120,9 +117,7 @@ const Reports = () => {
       if (filters.month) params.append('month', filters.month);
       if (filters.day) params.append('day', filters.day);
 
-      const res = await axios.get(`/api/reports/vat?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await axios.get(`/api/reports/vat?${params.toString()}`);
       setVatData(res.data.data);
       setTotalVat(res.data.summary.totalVat);
     } catch (err) {
@@ -135,9 +130,7 @@ const Reports = () => {
   const fetchReceiptHistory = async () => {
     setIsLoading(true);
     try {
-      const res = await axios.get('/api/receipts', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await axios.get('/api/receipts');
       setReceipts(res.data);
     } catch (err) {
       console.error(err);
@@ -159,12 +152,7 @@ const Reports = () => {
 
   const handleViewPDF = async (saleId: number) => {
     try {
-      const response = await axios.get(`/api/receipts/${saleId}/pdf`, {
-        headers: { Authorization: `Bearer ${token}` },
-        responseType: 'blob'
-      });
-      const blobUrl = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
-      window.open(blobUrl, '_blank');
+      await openAuthenticatedFile(`/api/receipts/${saleId}/pdf`);
     } catch (err) {
       console.error(err);
       setMessage({ type: 'error', text: 'Échec de l\'ouverture du PDF' });
@@ -178,20 +166,7 @@ const Reports = () => {
       if (filters.month) params.append('month', filters.month);
       if (filters.day) params.append('day', filters.day);
 
-      const response = await axios.get(`/api/reports/vat/pdf?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-        responseType: 'blob'
-      });
-      
-      const blob = new Blob([response.data], { type: 'application/pdf' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `rapport_tva_${filters.year || 'all'}_${filters.month || 'all'}_${filters.day || 'all'}.pdf`);
-      document.body.appendChild(link);
-      link.click();
-      link.parentNode?.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      await downloadAuthenticatedFile(`/api/reports/vat/pdf?${params.toString()}`, `rapport_tva_${filters.year || 'all'}_${filters.month || 'all'}_${filters.day || 'all'}.pdf`);
       setMessage({ type: 'success', text: 'Rapport TVA PDF téléchargé avec succès' });
     } catch (err) {
       console.error(err);
@@ -206,20 +181,7 @@ const Reports = () => {
       if (tradeInFilters.startDate) params.append('startDate', tradeInFilters.startDate);
       if (tradeInFilters.endDate) params.append('endDate', tradeInFilters.endDate);
 
-      const response = await axios.get(`/api/reports/tradein/pdf?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-        responseType: 'blob'
-      });
-      
-      const blob = new Blob([response.data], { type: 'application/pdf' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `registre_tradein_${tradeInFilters.startDate || 'all'}_to_${tradeInFilters.endDate || 'all'}.pdf`);
-      document.body.appendChild(link);
-      link.click();
-      link.parentNode?.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      await downloadAuthenticatedFile(`/api/reports/tradein/pdf?${params.toString()}`, `registre_tradein_${tradeInFilters.startDate || 'all'}_to_${tradeInFilters.endDate || 'all'}.pdf`);
       setMessage({ type: 'success', text: 'Registre Trade-In PDF exporté avec succès' });
     } catch (err) {
       console.error(err);
@@ -304,20 +266,7 @@ const Reports = () => {
       if (metalFilters.metalType) params.append('metalType', metalFilters.metalType);
       if (metalFilters.fineness) params.append('fineness', metalFilters.fineness);
 
-      const response = await axios.get(`/api/reports/sales-by-metal/pdf?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-        responseType: 'blob'
-      });
-      
-      const blob = new Blob([response.data], { type: 'application/pdf' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `rapport_ventes_metal_${metalFilters.metalType}_${metalFilters.fineness}_${metalFilters.startDate || 'all'}_to_${metalFilters.endDate || 'all'}.pdf`);
-      document.body.appendChild(link);
-      link.click();
-      link.parentNode?.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      await downloadAuthenticatedFile(`/api/reports/sales-by-metal/pdf?${params.toString()}`, `rapport_ventes_metal_${metalFilters.metalType}_${metalFilters.fineness}_${metalFilters.startDate || 'all'}_to_${metalFilters.endDate || 'all'}.pdf`);
       setMessage({ type: 'success', text: 'Rapport ventes par métal PDF exporté avec succès' });
     } catch (err) {
       console.error(err);
