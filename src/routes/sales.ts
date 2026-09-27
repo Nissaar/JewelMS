@@ -2,37 +2,20 @@ import type { Express } from "express";
 import { db } from "../db/index";
 import { stock, customers, receipts, orders, sales, saleItems, odf, auditLogs } from "../db/schema";
 import { eq, or, ilike, and, sql } from "drizzle-orm";
-import { authenticateToken, checkPermission } from "../middleware/auth";
-import { badRequest, notFound, statusFor } from "../lib/errors";
+import { authenticateToken, checkPermission, requireAdmin } from "../middleware/auth";
+import { badRequest, notFound, sendError } from "../lib/errors";
+import { idParam, saleCreateSchema } from "../lib/schemas";
+import { escapeLike } from "../lib/sql";
 
 export function registerSalesRoutes(app: Express) {
 
   // --- Sales Recording Endpoint ---
   app.post("/api/sales", authenticateToken, checkPermission('sales', 'create'), async (req, res) => {
-    const { 
-      customerId, 
-      paymentMode, 
-      chequeNumber, 
-      orderId, 
-      linkedOdfId, 
-      linkedCommandeId,
-      items: inputItems,
-      stock_ids,
-      // fallback single item fields:
-      barcode,
-      qty,
-      amount,
-      unitSalesPrice,
-      discountAmount,
-      discountPercentage,
-      itemDetails
-    } = req.body;
-
     try {
-      const result = await db.transaction(async (tx) => {
-        const lOdfId = linkedOdfId ? parseInt(linkedOdfId) : null;
-        const lCommandeId = linkedCommandeId ? parseInt(linkedCommandeId) : null;
+      const { customerId, paymentMode, chequeNumber, orderId, linkedOdfId: lOdfId, linkedCommandeId: lCommandeId, items: rawItemsList, discountPercentage } =
+        saleCreateSchema.parse(req.body);
 
+      const result = await db.transaction(async (tx) => {
         // Verify linked ODF has a completed Declaration of Ownership (Customer profile details filled)
         if (lOdfId) {
           const odfRecords = await tx.select().from(odf).where(eq(odf.id, lOdfId)).limit(1);
@@ -59,28 +42,6 @@ export function registerSalesRoutes(app: Express) {
           if (orderRecords.length === 0) {
             throw notFound("La commande liée est introuvable");
           }
-        }
-
-        // Standardize items list
-        let rawItemsList: any[] = [];
-        if (Array.isArray(inputItems) && inputItems.length > 0) {
-          rawItemsList = inputItems;
-        } else if (Array.isArray(stock_ids) && stock_ids.length > 0) {
-          rawItemsList = stock_ids.map((sId: any) => ({ stockId: typeof sId === 'object' ? sId.id || sId.stockId : sId }));
-        } else if (barcode) {
-          rawItemsList = [{
-            barcode,
-            qty: qty || 1,
-            amount,
-            unitSalesPrice,
-            discountAmount,
-            discountPercentage,
-            itemDetails
-          }];
-        }
-
-        if (rawItemsList.length === 0) {
-          throw badRequest("Aucun article spécifié pour la vente.");
         }
 
         // Process each item in cart
@@ -200,19 +161,15 @@ export function registerSalesRoutes(app: Express) {
         sale: result,
         receipt: result.receipt
       });
-    } catch (error: any) {
-      if (statusFor(error) === 500) console.error("Sales Recording Error:", error);
-      res.status(statusFor(error)).json({ error: error.message || "Failed to record sale" });
+    } catch (error) {
+      sendError(res, error, "Failed to record sale", "Sales Recording Error");
     }
   });
 
 
-  app.post("/api/sales/:id/cancel", authenticateToken, async (req: any, res) => {
-    if (req.user?.role !== 'Admin') return res.status(403).json({ error: "Admin access required" });
-    
-    const saleId = parseInt(req.params.id);
-
+  app.post("/api/sales/:id/cancel", authenticateToken, requireAdmin, async (req: any, res) => {
     try {
+      const saleId = idParam.parse(req.params.id);
       await db.transaction(async (tx) => {
         const saleRecords = await tx.select().from(sales).where(eq(sales.id, saleId)).limit(1);
         if (saleRecords.length === 0) throw notFound("Vente non trouvée");
@@ -258,23 +215,19 @@ export function registerSalesRoutes(app: Express) {
       });
 
       res.json({ message: "Vente annulée avec succès. Les articles sont de nouveau en stock." });
-    } catch (error: any) {
-      console.error("Sale Cancellation Error:", error);
-      res.status(statusFor(error)).json({ error: error.message || "Erreur lors de l'annulation de la vente" });
+    } catch (error) {
+      sendError(res, error, "Erreur lors de l'annulation de la vente", "Sale Cancellation Error");
     }
   });
 
-  // --- Stock Endpoints ---
-
-
-  app.get("/api/sales/history", authenticateToken, async (req, res) => {
+  app.get("/api/sales/history", authenticateToken, checkPermission('sales', 'view'), async (req, res) => {
     try {
       const { search, query, q } = req.query;
       const searchTerm = (search || query || q)?.toString();
 
       let conditions = [];
       if (searchTerm) {
-        conditions.push(ilike(sales.itemDetails, `%${searchTerm}%`));
+        conditions.push(ilike(sales.itemDetails, `%${escapeLike(searchTerm)}%`));
       }
 
       const history = await db.select({
@@ -312,8 +265,7 @@ export function registerSalesRoutes(app: Express) {
 
       res.json(history);
     } catch (error) {
-      console.error("Sales History Error:", error);
-      res.status(500).json({ error: "Failed to fetch sales history" });
+      sendError(res, error, "Failed to fetch sales history", "Sales History Error");
     }
   });
 }

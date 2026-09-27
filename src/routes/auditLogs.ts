@@ -2,12 +2,11 @@ import type { Express } from "express";
 import { db } from "../db/index";
 import { users, auditLogs } from "../db/schema";
 import { eq } from "drizzle-orm";
-import { authenticateToken } from "../middleware/auth";
+import { authenticateToken, requireAdmin } from "../middleware/auth";
 
 export function registerAuditLogsRoutes(app: Express) {
 
-  app.get("/api/audit-logs", authenticateToken, async (req: any, res) => {
-    if (req.user?.role !== 'Admin') return res.status(403).json({ error: "Admin access required" });
+  app.get("/api/audit-logs", authenticateToken, requireAdmin, async (req: any, res) => {
     try {
       const logs = await db.select({
         id: auditLogs.id,
@@ -28,5 +27,4 @@ export function registerAuditLogsRoutes(app: Express) {
     }
   });
 
-  // --- ODF (Trade-ins) Endpoints ---
 }

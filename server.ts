@@ -7,6 +7,7 @@ import cors from "cors";
 import multer from "multer";
 import { runMigrations } from "./src/db/migrations";
 import { auditLogger } from "./src/middleware/audit";
+import { MAX_IMAGE_BYTES } from "./src/services/storage";
 
 import { registerHealthRoutes } from "./src/routes/health";
 import { registerAuthRoutes } from "./src/routes/auth";
@@ -68,29 +69,15 @@ async function startServer() {
     message: { error: "Trop de tentatives de connexion. Réessayez dans quelques minutes." },
   });
 
-  // Static folder for uploads
-  const fs = await import("fs");
-  const uploadDirs = ["uploads", "uploads/receipts", "uploads/odf"];
-  uploadDirs.forEach(dir => {
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
+  // Uploaded photos are held in memory, checked, then written by the storage
+  // service under a random name. Customer files are never served statically.
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: MAX_IMAGE_BYTES, files: 1, fields: 20 },
   });
-  app.use('/uploads', express.static('uploads'));
-
-  // Multer setup
-  const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-      cb(null, 'uploads/');
-    },
-    filename: (req, file, cb) => {
-      cb(null, `${Date.now()}-${file.originalname}`);
-    },
-  });
-  const upload = multer({ storage });
 
   // JSON middleware
-  app.use(express.json({ limit: '10kb' }));
+  app.use(express.json({ limit: '100kb' }));
 
   // Audit Logging Middleware
   app.use(auditLogger);
@@ -105,10 +92,28 @@ async function startServer() {
   registerCustomersRoutes(app);
   registerReportsRoutes(app);
   registerSettingsRoutes(app);
-  registerReceiptsRoutes(app, upload);
+  registerReceiptsRoutes(app);
   registerOdfRoutes(app, upload);
   registerOrdersRoutes(app);
   registerAuditLogsRoutes(app);
+
+  // Errors passed to next() (multer limits, malformed JSON) get a JSON reply
+  // instead of Express's default HTML page.
+  app.use("/api", (err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (res.headersSent) return next(err);
+    if (err instanceof multer.MulterError) {
+      const message = err.code === "LIMIT_FILE_SIZE" ? "La photo dépasse 5 Mo." : `Upload refusé (${err.code}).`;
+      return res.status(400).json({ error: message });
+    }
+    if (err?.type === "entity.parse.failed") return res.status(400).json({ error: "Invalid JSON body" });
+    if (err?.type === "entity.too.large") return res.status(413).json({ error: "Request body too large" });
+    console.error("Unhandled API error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  });
+
+  // Customer files are only reachable through the authenticated API. The
+  // Vite dev server would otherwise serve the uploads folder as static files.
+  app.use("/uploads", (req, res) => res.status(404).end());
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {

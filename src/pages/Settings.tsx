@@ -4,6 +4,7 @@ import { usePWA } from '../context/PWAContext';
 import axios from 'axios';
 import { Save, UserPlus, Shield, Check, X, AlertCircle, Loader2, Download, Smartphone, Monitor } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { FUNCTIONALITIES } from '../shared/permissions';
 
 const Settings = () => {
   const { token, user: currentUser } = useAuth();
@@ -24,13 +25,7 @@ const Settings = () => {
   // Permissions state
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]); // format: "funcId:action"
 
-  const functionalities = [
-    { id: 'stock', name: 'Gestion du Stock' },
-    { id: 'customers', name: 'Fichier Clients (KYC)' },
-    { id: 'sales', name: 'Enregistrement des Ventes' },
-    { id: 'orders', name: 'Commandes Spéciales' },
-    { id: 'reports', name: 'Rapports' },
-  ];
+  const functionalities = FUNCTIONALITIES;
 
   useEffect(() => {
     fetchData();

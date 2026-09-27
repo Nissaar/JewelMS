@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'motion/react';
 import { getCleanDisplayLabel } from '../lib/utils';
+import { PAGE_ACCESS, hasPermission } from '../shared/permissions';
 
 export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, token, logout } = useAuth();
@@ -66,21 +67,21 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
     return () => clearTimeout(delayDebounceFn);
   }, [searchQuery, token]);
 
-  const hasPermission = (funcId: string, action: 'canView' | 'canCreate' | 'canEdit' | 'canDelete' = 'canView') => {
-    if (user?.role === 'Admin') return true;
-    return user?.permissions?.some(p => p.functionality === funcId && p[action]);
+  const canOpen = (path: string) => {
+    const requirement = PAGE_ACCESS[path];
+    return !requirement || hasPermission(user, ...requirement);
   };
 
   const navItems = [
     { name: 'Dashboard', icon: Menu, path: '/', show: true },
-    { name: 'Stock', icon: Package, path: '/stock', show: hasPermission('stock') },
-    { name: 'Clients', icon: Users, path: '/customers', show: hasPermission('customers') },
-    { name: 'Ventes', icon: ShoppingCart, path: '/sales', show: hasPermission('sales') },
-    { name: 'Historique des Ventes', icon: History, path: '/sales-history', show: hasPermission('sales') },
-    { name: 'Commandes', icon: FileText, path: '/orders', show: hasPermission('orders') },
-    { name: 'Trade-ins (ODF)', icon: PlusCircle, path: '/odf', show: hasPermission('odf') },
-    { name: 'Rapports', icon: FileText, path: '/reports', show: hasPermission('reports') },
-    { name: 'Audit Remises', icon: Percent, path: '/reports/discounts', show: hasPermission('reports') },
+    { name: 'Stock', icon: Package, path: '/stock', show: canOpen('/stock') },
+    { name: 'Clients', icon: Users, path: '/customers', show: canOpen('/customers') },
+    { name: 'Ventes', icon: ShoppingCart, path: '/sales', show: canOpen('/sales') },
+    { name: 'Historique des Ventes', icon: History, path: '/sales-history', show: canOpen('/sales-history') },
+    { name: 'Commandes', icon: FileText, path: '/orders', show: canOpen('/orders') },
+    { name: 'Trade-ins (ODF)', icon: PlusCircle, path: '/odf', show: canOpen('/odf') },
+    { name: 'Rapports', icon: FileText, path: '/reports', show: canOpen('/reports') },
+    { name: 'Audit Remises', icon: Percent, path: '/reports/discounts', show: canOpen('/reports/discounts') },
   ];
 
   if (user?.role === 'Admin') {

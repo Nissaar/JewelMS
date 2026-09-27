@@ -10,6 +10,8 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { formatCurrency, formatWeight, formatItemDetails } from '../lib/utils';
 import CustomerModal from '../components/CustomerModal';
+import { sendErrorMessage } from '../lib/sendErrors';
+import { openAuthenticatedFile } from '../lib/openFile';
 
 const ODF = () => {
   const { token } = useAuth();
@@ -184,33 +186,13 @@ const ODF = () => {
   const handleSendFull = async (id: number, method: 'whatsapp' | 'email' | 'both') => {
     setIsProcessing(true);
     try {
-      // 1. Save locally first
-      await axios.post(`/api/odf/${id}/upload`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      // 2. Send
       await axios.post(`/api/odf/${id}/send`, { method }, {
         headers: { Authorization: `Bearer ${token}` }
       });
       
       setMessage({ type: 'success', text: `Document envoyé par ${method === 'both' ? 'Email & WhatsApp' : method === 'whatsapp' ? 'WhatsApp' : 'Email'}!` });
     } catch (err: any) {
-      console.error("Send Error:", err);
-      if (err.response?.status === 412) {
-        setMessage({ 
-          type: 'error', 
-          text: 'Configuration manquante — Veuillez configurer vos paramètres Email/WhatsApp dans les réglages.' 
-        });
-      } else if (err.response?.status === 400) {
-        if (err.response.data?.error === 'CLIENT_EMAIL_MISSING') {
-          setMessage({ type: 'error', text: 'Erreur : Veuillez ajouter une adresse email au profil de ce client.' });
-        } else {
-          setMessage({ type: 'error', text: "Erreur d'envoi. Vérifiez la configuration Brevo." });
-        }
-      } else {
-        setMessage({ type: 'error', text: "Erreur lors de l'envoi" });
-      }
+      setMessage({ type: 'error', text: sendErrorMessage(err) });
     } finally {
       setIsProcessing(false);
       setTimeout(() => setMessage({ type: '', text: '' }), 5000); // Increased timeout for reading
@@ -670,7 +652,7 @@ const ODF = () => {
                            <div className="flex items-center gap-3">
                             {record.imageUrl && (
                               <button 
-                                onClick={() => window.open(record.imageUrl, '_blank')}
+                                onClick={() => openAuthenticatedFile(record.imageUrl, token).catch(() => setMessage({ type: 'error', text: 'Impossible d’afficher la photo' }))}
                                 className="p-2 bg-slate-50 text-slate-400 hover:text-amber-500 rounded-lg transition-colors"
                                 title="Voir Photo"
                               >

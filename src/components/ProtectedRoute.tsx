@@ -2,17 +2,16 @@ import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Unauthorized from '../pages/Unauthorized';
+import { PAGE_ACCESS, hasPermission } from '../shared/permissions';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
   requiredRole?: 'Admin' | 'User';
-  requiredPermission?: {
-    functionality: string;
-    action: 'canView' | 'canCreate' | 'canEdit' | 'canDelete';
-  };
+  /** Page path whose permission (from PAGE_ACCESS) the user must hold. */
+  page?: string;
 }
 
-export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requiredRole, requiredPermission }) => {
+export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requiredRole, page }) => {
   const { user, isLoading } = useAuth();
   const location = useLocation();
 
@@ -36,15 +35,9 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requir
     return <Unauthorized />;
   }
 
-  // Check granular permission
-  if (requiredPermission) {
-    const hasPermission = user.permissions?.find(
-      p => p.functionality === requiredPermission.functionality && p[requiredPermission.action]
-    );
-
-    if (!hasPermission) {
-      return <Unauthorized />;
-    }
+  const requirement = page ? PAGE_ACCESS[page] : undefined;
+  if (requirement && !hasPermission(user, ...requirement)) {
+    return <Unauthorized />;
   }
 
   return <>{children}</>;

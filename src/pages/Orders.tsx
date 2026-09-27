@@ -11,6 +11,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { formatCurrency, formatItemDetails } from '../lib/utils';
 import CustomerModal from '../components/CustomerModal';
+import { sendErrorMessage } from '../lib/sendErrors';
 
 const Orders = () => {
   const navigate = useNavigate();
@@ -167,24 +168,10 @@ const Orders = () => {
     if (!completedOrderSaleId) return;
     setIsSending(true);
     try {
-      await axios.post(`/api/receipts/${completedOrderSaleId}/upload`, {}, { headers: { Authorization: `Bearer ${token}` } });
-      await axios.post(`/api/notifications/send-receipt`, { 
-        saleId: completedOrderSaleId, 
-        method 
-      }, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.post(`/api/receipts/${completedOrderSaleId}/send`, { method }, { headers: { Authorization: `Bearer ${token}` } });
       setMessage({ type: 'success', text: 'Reçu envoyé avec succès!' });
     } catch (err: any) {
-      if (err.response?.status === 412) {
-        setMessage({ type: 'error', text: 'Configuration manquante — Veuillez configurer vos paramètres Email/WhatsApp.' });
-      } else if (err.response?.status === 400) {
-        if (err.response.data?.error === 'CLIENT_EMAIL_MISSING') {
-          setMessage({ type: 'error', text: 'Erreur : Veuillez ajouter une adresse email au profil de ce client.' });
-        } else {
-          setMessage({ type: 'error', text: "Erreur d'envoi. Vérifiez la configuration Brevo." });
-        }
-      } else {
-        setMessage({ type: 'error', text: 'Erreur lors de l\'envoi du reçu.' });
-      }
+      setMessage({ type: 'error', text: sendErrorMessage(err) });
     } finally {
       setIsSending(false);
     }

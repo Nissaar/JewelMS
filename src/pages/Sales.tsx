@@ -12,6 +12,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import BarcodeScanner from '../components/BarcodeScanner';
 import { formatCurrency, formatItemDetails, getCleanDisplayLabel, getItemFullDescription } from '../lib/utils';
 import CustomerModal from '../components/CustomerModal';
+import { sendErrorMessage } from '../lib/sendErrors';
 
 const Sales = () => {
   const navigate = useNavigate();
@@ -359,31 +360,11 @@ const Sales = () => {
     if (!completedSale) return;
     setIsSending(true);
     try {
-      // 1. Upload if not already (backend logic handles it better if we just call the upload endpoint)
-      await axios.post(`/api/receipts/${completedSale.id}/upload`, {}, { headers: { Authorization: `Bearer ${token}` } });
-      
-      // 2. Send (using the unified notification endpoint or the specific one, both have the guard now)
-      await axios.post(`/api/notifications/send-receipt`, { 
-        saleId: completedSale.id, 
-        method 
-      }, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.post(`/api/receipts/${completedSale.id}/send`, { method }, { headers: { Authorization: `Bearer ${token}` } });
       
       setMessage({ type: 'success', text: 'Reçu envoyé avec succès!' });
     } catch (err: any) {
-      if (err.response?.status === 412) {
-        setMessage({ 
-          type: 'error', 
-          text: 'Configuration manquante — Veuillez configurer vos paramètres Email/WhatsApp dans les réglages.' 
-        });
-      } else if (err.response?.status === 400) {
-        if (err.response.data?.error === 'CLIENT_EMAIL_MISSING') {
-          setMessage({ type: 'error', text: 'Erreur : Veuillez ajouter une adresse email au profil de ce client.' });
-        } else {
-          setMessage({ type: 'error', text: "Erreur d'envoi. Vérifiez la configuration Brevo." });
-        }
-      } else {
-        setMessage({ type: 'error', text: 'Erreur lors de l\'envoi du reçu.' });
-      }
+      setMessage({ type: 'error', text: sendErrorMessage(err) });
     } finally {
       setIsSending(false);
     }

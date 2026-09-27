@@ -2,11 +2,13 @@ import type { Express } from "express";
 import { db } from "../db/index";
 import { settings } from "../db/schema";
 import { eq } from "drizzle-orm";
-import { authenticateToken } from "../middleware/auth";
+import { authenticateToken, requireAdmin } from "../middleware/auth";
+import { settingUpdateSchema } from "../lib/schemas";
+import { notFound, sendError } from "../lib/errors";
 
 export function registerSettingsRoutes(app: Express) {
 
-  // Settings Endpoints (Admin only)
+  // Settings: readable by any signed-in user (category lists, receipt wording), writable by admins.
   app.get("/api/settings", authenticateToken, async (req, res) => {
     try {
       const allSettings = await db.select().from(settings);
@@ -28,19 +30,18 @@ export function registerSettingsRoutes(app: Express) {
   });
 
 
-  app.put("/api/settings/:key", authenticateToken, async (req: any, res) => {
-    if (req.user?.role !== 'Admin') return res.status(403).json({ error: "Admin access required" });
-    
-    const { value } = req.body;
+  app.put("/api/settings/:key", authenticateToken, requireAdmin, async (req: any, res) => {
     try {
-      await db.update(settings)
+      const { value } = settingUpdateSchema.parse(req.body);
+      const updated = await db.update(settings)
         .set({ value, updatedAt: new Date() })
-        .where(eq(settings.key, req.params.key));
+        .where(eq(settings.key, req.params.key))
+        .returning();
+      if (updated.length === 0) throw notFound(`Setting ${req.params.key} not found`);
       res.json({ message: `Setting ${req.params.key} updated successfully` });
     } catch (error) {
-      res.status(500).json({ error: "Failed to update setting" });
+      sendError(res, error, "Failed to update setting");
     }
   });
 
-  // --- Receipt PDF Generation ---
 }

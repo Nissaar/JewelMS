@@ -5,7 +5,15 @@ import { eq } from 'drizzle-orm';
 import { formatCurrency, formatItemDetails } from '../../lib/utils';
 import { numberToWords, addWatermark } from './common';
 
-export async function generateReceiptPDF(saleId: number): Promise<{ doc: PDFKit.PDFDocument, receipt: any }> {
+/**
+ * Builds the tax invoice. A counted print increments the receipt's print count,
+ * and every print after the first is watermarked COPIE. Stored copies sent to
+ * the customer pass countAsPrint: false and are always the clean original.
+ */
+export async function generateReceiptPDF(
+  saleId: number,
+  { countAsPrint = true }: { countAsPrint?: boolean } = {},
+): Promise<{ doc: PDFKit.PDFDocument, receipt: any }> {
   // 1. Fetch data
   const saleRecords = await db.select({
     sale: sales,
@@ -356,14 +364,12 @@ export async function generateReceiptPDF(saleId: number): Promise<{ doc: PDFKit.
   doc.text('12 Rue de la Corderie, Port Louis, Mauritius', 40, storeY + 15, { align: 'center' });
   doc.text('Tel: +230 212 3456', 40, storeY + 28, { align: 'center' });
 
-  // 3. Increment print count
-  await db.update(receipts)
-    .set({ printCount: receipt.printCount + 1 })
-    .where(eq(receipts.id, receipt.id));
+  if (countAsPrint) {
+    await db.update(receipts)
+      .set({ printCount: receipt.printCount + 1 })
+      .where(eq(receipts.id, receipt.id));
 
-  // Post-processing watermark loop for copies
-  if (receipt.printCount > 0) {
-    addWatermark(doc, 'COPIE');
+    if (receipt.printCount > 0) addWatermark(doc, 'COPIE');
   }
 
   return { doc, receipt };

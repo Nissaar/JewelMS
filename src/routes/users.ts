@@ -2,13 +2,14 @@ import type { Express } from "express";
 import { db } from "../db/index";
 import { users, rolesPermissions } from "../db/schema";
 import { eq, and } from "drizzle-orm";
-import { authenticateToken } from "../middleware/auth";
+import { authenticateToken, requireAdmin } from "../middleware/auth";
+import { idParam, permissionsUpdateSchema } from "../lib/schemas";
+import { sendError } from "../lib/errors";
 
 export function registerUsersRoutes(app: Express) {
 
   // --- User Management Endpoints (Admin Only) ---
-  app.get("/api/users", authenticateToken, async (req: any, res) => {
-    if (req.user?.role !== 'Admin') return res.status(403).json({ error: "Admin access required" });
+  app.get("/api/users", authenticateToken, requireAdmin, async (req: any, res) => {
     try {
       const allUsers = await db.select({
         id: users.id,
@@ -24,8 +25,7 @@ export function registerUsersRoutes(app: Express) {
   });
 
 
-  app.post("/api/users", authenticateToken, async (req: any, res) => {
-    if (req.user?.role !== 'Admin') return res.status(403).json({ error: "Admin access required" });
+  app.post("/api/users", authenticateToken, requireAdmin, async (req: any, res) => {
     const { username, email, password, role } = req.body;
     const { default: bcrypt } = await import("bcryptjs");
 
@@ -46,8 +46,7 @@ export function registerUsersRoutes(app: Express) {
   });
 
 
-  app.put("/api/users/:id", authenticateToken, async (req: any, res) => {
-    if (req.user?.role !== 'Admin') return res.status(403).json({ error: "Admin access required" });
+  app.put("/api/users/:id", authenticateToken, requireAdmin, async (req: any, res) => {
     const { email, role } = req.body;
     const userId = parseInt(req.params.id);
 
@@ -66,8 +65,7 @@ export function registerUsersRoutes(app: Express) {
   });
 
 
-  app.get("/api/users/:id/permissions", authenticateToken, async (req: any, res) => {
-    if (req.user?.role !== 'Admin') return res.status(403).json({ error: "Admin access required" });
+  app.get("/api/users/:id/permissions", authenticateToken, requireAdmin, async (req: any, res) => {
     try {
       const permissions = await db.select().from(rolesPermissions).where(eq(rolesPermissions.userId, parseInt(req.params.id)));
       res.json(permissions);
@@ -77,34 +75,23 @@ export function registerUsersRoutes(app: Express) {
   });
 
 
-  app.put("/api/users/:id/permissions", authenticateToken, async (req: any, res) => {
-    if (req.user?.role !== 'Admin') return res.status(403).json({ error: "Admin access required" });
-    const { permissions } = req.body; // Array of { functionality, canView, canCreate, canEdit, canDelete }
-    const userId = parseInt(req.params.id);
-
+  app.put("/api/users/:id/permissions", authenticateToken, requireAdmin, async (req: any, res) => {
     try {
+      const userId = idParam.parse(req.params.id);
+      const { permissions } = permissionsUpdateSchema.parse(req.body);
       await db.transaction(async (tx) => {
         // Simple approach: delete existing and re-insert
         await tx.delete(rolesPermissions).where(eq(rolesPermissions.userId, userId));
         if (permissions && permissions.length > 0) {
           await tx.insert(rolesPermissions).values(
-            permissions.map((p: any) => ({
-              userId,
-              functionality: p.functionality,
-              canView: p.canView || false,
-              canCreate: p.canCreate || false,
-              canEdit: p.canEdit || false,
-              canDelete: p.canDelete || false
-            }))
+            permissions.map(p => ({ userId, ...p }))
           );
         }
       });
       res.json({ message: "Permissions updated successfully" });
     } catch (error) {
-      console.error("Permission Update Error:", error);
-      res.status(500).json({ error: "Failed to update permissions" });
+      sendError(res, error, "Failed to update permissions", "Permission Update Error");
     }
   });
 
-  // --- Sales Recording Endpoint ---
 }

@@ -2,7 +2,9 @@ import type { Express } from "express";
 import { db } from "../db/index";
 import { stock, customers, receipts, orders, sales, odf, odfItems } from "../db/schema";
 import { eq, or, ilike, and, sql } from "drizzle-orm";
-import { authenticateToken, checkPermission } from "../middleware/auth";
+import { authenticateToken, checkPermission, userCan } from "../middleware/auth";
+import { sendError } from "../lib/errors";
+import { escapeLike } from "../lib/sql";
 
 export function registerReportsRoutes(app: Express) {
 
@@ -58,32 +60,33 @@ export function registerReportsRoutes(app: Express) {
   });
 
 
-  app.get("/api/search", authenticateToken, async (req, res) => {
-    const { q } = req.query;
-    const isDefault = !q || typeof q !== 'string' || q.trim() === '';
-    const searchStr = isDefault ? '' : `%${q}%`;
+  // Global search. Each section is only searched, and returned, when the user
+  // may see that kind of record.
+  app.get("/api/search", authenticateToken, async (req: any, res) => {
+    const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+    const searchStr = `%${escapeLike(q)}%`;
 
     try {
-      if (isDefault) {
+      const [canStock, canCustomers, canSales, canOrders] = await Promise.all([
+        userCan(req, 'stock'), userCan(req, 'customers'), userCan(req, 'sales'), userCan(req, 'orders'),
+      ]);
+      const none = Promise.resolve([]);
+
+      if (!q) {
         const [stockRecent, customersRecent] = await Promise.all([
-          db.select().from(stock).where(eq(stock.status, 'Disponible')).orderBy(sql`${stock.createdAt} DESC`).limit(20),
-          db.select().from(customers).orderBy(sql`${customers.createdAt} DESC`).limit(20)
+          canStock ? db.select().from(stock).where(eq(stock.status, 'Disponible')).orderBy(sql`${stock.createdAt} DESC`).limit(20) : none,
+          canCustomers ? db.select().from(customers).orderBy(sql`${customers.createdAt} DESC`).limit(20) : none,
         ]);
-        return res.json({
-          stock: stockRecent,
-          customers: customersRecent,
-          receipts: [],
-          orders: []
-        });
+        return res.json({ stock: stockRecent, customers: customersRecent, receipts: [], orders: [] });
       }
 
       const [stockResults, customerResults, receiptResults, orderResults] = await Promise.all([
-        db.select().from(stock).where(
+        canStock ? db.select().from(stock).where(
           and(
             eq(stock.status, 'Disponible'),
             or(
-              ilike(stock.barcode, searchStr), 
-              ilike(stock.itemCode, searchStr), 
+              ilike(stock.barcode, searchStr),
+              ilike(stock.itemCode, searchStr),
               ilike(stock.serialNumber, searchStr),
               ilike(stock.category, searchStr),
               ilike(stock.subCategory, searchStr),
@@ -92,21 +95,15 @@ export function registerReportsRoutes(app: Express) {
               ilike(stock.fineness, searchStr)
             )
           )
-        ).limit(20),
-        db.select().from(customers).where(or(ilike(customers.name, searchStr), ilike(customers.idNumber, searchStr))).limit(20),
-        db.select().from(receipts).where(sql`CAST(${receipts.receiptSerialNumber} AS TEXT) ILIKE ${searchStr}`).limit(20),
-        db.select().from(orders).where(sql`CAST(${orders.orderNumber} AS TEXT) ILIKE ${searchStr}`).limit(20)
+        ).limit(20) : none,
+        canCustomers ? db.select().from(customers).where(or(ilike(customers.name, searchStr), ilike(customers.idNumber, searchStr))).limit(20) : none,
+        canSales ? db.select().from(receipts).where(sql`CAST(${receipts.receiptSerialNumber} AS TEXT) ILIKE ${searchStr}`).limit(20) : none,
+        canOrders ? db.select().from(orders).where(sql`CAST(${orders.orderNumber} AS TEXT) ILIKE ${searchStr}`).limit(20) : none,
       ]);
 
-      res.json({
-        stock: stockResults,
-        customers: customerResults,
-        receipts: receiptResults,
-        orders: orderResults
-      });
+      res.json({ stock: stockResults, customers: customerResults, receipts: receiptResults, orders: orderResults });
     } catch (error) {
-      console.error("Search Error:", error);
-      res.status(500).json({ error: "Search failed" });
+      sendError(res, error, "Search failed", "Search Error");
     }
   });
 
@@ -233,7 +230,7 @@ export function registerReportsRoutes(app: Express) {
       doc.end();
     } catch (error: any) {
       console.error("VAT PDF Generation Error:", error);
-      res.status(500).json({ error: error.message || "Failed to generate VAT PDF report" });
+      res.status(500).json({ error: "Failed to generate VAT PDF report" });
     }
   });
 
@@ -339,7 +336,7 @@ export function registerReportsRoutes(app: Express) {
       doc.end();
     } catch (error: any) {
       console.error("Trade-In PDF Generation Error:", error);
-      res.status(500).json({ error: error.message || "Failed to generate Trade-In PDF report" });
+      res.status(500).json({ error: "Failed to generate Trade-In PDF report" });
     }
   });
 
@@ -362,7 +359,7 @@ export function registerReportsRoutes(app: Express) {
       doc.end();
     } catch (error: any) {
       console.error("Sales by Metal PDF Generation Error:", error);
-      res.status(500).json({ error: error.message || "Failed to generate Sales by Metal PDF report" });
+      res.status(500).json({ error: "Failed to generate Sales by Metal PDF report" });
     }
   });
 

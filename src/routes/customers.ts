@@ -2,19 +2,22 @@ import type { Express } from "express";
 import { db } from "../db/index";
 import { stock, customers, receipts, orders, sales, odf } from "../db/schema";
 import { eq, or, ilike, sql } from "drizzle-orm";
-import { authenticateToken, checkPermission } from "../middleware/auth";
+import { authenticateToken, checkAnyPermission, checkPermission } from "../middleware/auth";
+import { customerCreateSchema, customerUpdateSchema, idParam } from "../lib/schemas";
+import { notFound, sendError } from "../lib/errors";
+import { escapeLike } from "../lib/sql";
 
 export function registerCustomersRoutes(app: Express) {
 
-  // --- KYC / Customer Endpoints ---
-  app.get("/api/customers", authenticateToken, checkPermission('customers', 'view'), async (req, res) => {
+  // Selling, orders and trade-ins all need to find or register the customer.
+  const canFindCustomers = checkAnyPermission(['customers', 'view'], ['sales', 'create'], ['orders', 'create'], ['odf', 'create']);
+  const canRegisterCustomers = checkAnyPermission(['customers', 'create'], ['sales', 'create'], ['orders', 'create'], ['odf', 'create']);
+
+  app.get("/api/customers", authenticateToken, canFindCustomers, async (req, res) => {
     const { search } = req.query;
     try {
-      let query = db.select().from(customers);
-      if (search) {
-        const searchStr = `%${search}%`;
-        // Use a conditional or if search is provided
-        // Drizzle ilike needs to be handled
+      if (typeof search === 'string' && search.trim()) {
+        const searchStr = `%${escapeLike(search.trim())}%`;
         const results = await db.select().from(customers).where(
           or(
             ilike(customers.name, searchStr),
@@ -23,74 +26,47 @@ export function registerCustomersRoutes(app: Express) {
         );
         return res.json(results);
       }
-      const allCustomers = await query;
-      res.json(allCustomers);
+      res.json(await db.select().from(customers));
     } catch (error) {
-      res.status(500).json({ error: "Failed to fetch customers" });
+      sendError(res, error, "Failed to fetch customers");
     }
   });
 
-
-  app.post("/api/customers", authenticateToken, checkPermission('customers', 'create'), async (req, res) => {
+  app.post("/api/customers", authenticateToken, canRegisterCustomers, async (req, res) => {
     try {
-      const data = { ...req.body };
-      // Map empty or whitespace-only optional fields to null
-      if (data.idNumber === undefined || data.idNumber === null || String(data.idNumber).trim() === '') {
-        data.idNumber = null;
-      }
-      if (data.email === undefined || data.email === null || String(data.email).trim() === '') {
-        data.email = null;
-      }
-      if (data.address === undefined || data.address === null || String(data.address).trim() === '') {
-        data.address = null;
-      }
-      if (data.phoneNumber === undefined || data.phoneNumber === null || String(data.phoneNumber).trim() === '') {
-        data.phoneNumber = null;
-      }
-
-      const newCustomer = await db.insert(customers).values(data).returning();
-      res.status(201).json(newCustomer[0]);
+      const input = customerCreateSchema.parse(req.body);
+      const [newCustomer] = await db.insert(customers).values(input).returning();
+      res.status(201).json(newCustomer);
     } catch (error: any) {
       if (error.code === '23505') {
-        return res.status(400).json({ message: "Ce client existe déjà." });
+        return res.status(400).json({ error: "Ce client existe déjà.", message: "Ce client existe déjà." });
       }
-      res.status(500).json({ error: "Failed to create customer profile" });
+      sendError(res, error, "Failed to create customer profile", "Customer Create Error");
     }
   });
-
 
   app.put("/api/customers/:id", authenticateToken, checkPermission('customers', 'edit'), async (req, res) => {
     try {
-      const data = { ...req.body };
-      // Map empty or whitespace-only optional fields to null
-      if (data.idNumber === undefined || data.idNumber === null || String(data.idNumber).trim() === '') {
-        data.idNumber = null;
-      }
-      if (data.email === undefined || data.email === null || String(data.email).trim() === '') {
-        data.email = null;
-      }
-      if (data.address === undefined || data.address === null || String(data.address).trim() === '') {
-        data.address = null;
-      }
-      if (data.phoneNumber === undefined || data.phoneNumber === null || String(data.phoneNumber).trim() === '') {
-        data.phoneNumber = null;
-      }
-
-      const updated = await db.update(customers)
-        .set({ ...data, updatedAt: new Date() })
-        .where(eq(customers.id, parseInt(req.params.id)))
+      const customerId = idParam.parse(req.params.id);
+      const input = customerUpdateSchema.parse(req.body);
+      const [updated] = await db.update(customers)
+        .set({ ...input, updatedAt: new Date() })
+        .where(eq(customers.id, customerId))
         .returning();
-      if (updated.length === 0) return res.status(404).json({ error: "Customer not found" });
-      res.json(updated[0]);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to update customer" });
+      if (!updated) throw notFound("Customer not found");
+      res.json(updated);
+    } catch (error: any) {
+      if (error.code === '23505') {
+        return res.status(400).json({ error: "Ce numéro d'identité est déjà utilisé.", message: "Ce numéro d'identité est déjà utilisé." });
+      }
+      sendError(res, error, "Failed to update customer", "Customer Update Error");
     }
   });
 
 
   app.get("/api/customers/:id/history", authenticateToken, checkPermission('customers', 'view'), async (req, res) => {
-    const customerId = parseInt(req.params.id);
     try {
+      const customerId = idParam.parse(req.params.id);
       const [customerReceipts, customerOrders, customerOdfs] = await Promise.all([
         db.select({
           id: sales.id,
@@ -125,10 +101,8 @@ export function registerCustomersRoutes(app: Express) {
         odf: customerOdfs
       });
     } catch (error) {
-      console.error("Customer History Error:", error);
-      res.status(500).json({ error: "Failed to fetch customer history" });
+      sendError(res, error, "Failed to fetch customer history", "Customer History Error");
     }
   });
 
-  // --- Search & Reporting Endpoints ---
 }
