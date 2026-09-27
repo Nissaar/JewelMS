@@ -21,8 +21,10 @@ ENV NODE_ENV=production
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 COPY package.json package-lock.json ./
+# The Playwright CLI is called by path: with --omit=dev npm links no `playwright`
+# command, because that name is also claimed by the dev-only @playwright/test.
 RUN npm ci --omit=dev \
-  && npx playwright install chromium --with-deps \
+  && node node_modules/playwright/cli.js install chromium --with-deps \
   && rm -rf /var/lib/apt/lists/* /root/.npm
 
 # The backend bundle uses --packages=external, so it relies on the production
