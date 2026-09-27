@@ -1,4 +1,4 @@
-name: E2E Tests
+name: Tests
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
 
 # A newer push to the same branch or PR supersedes the running job.
 concurrency:
-  group: e2e-${{ github.event.pull_request.number || github.ref }}
+  group: tests-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   test:
-    name: Playwright E2E
+    name: Unit, database, API and E2E tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Only one comment step needs write access; scope it to the PR event.
@@ -44,8 +44,13 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/haujee
       JWT_SECRET: ci-testing-jwt-secret-key-1234
       BASE_URL: http://localhost:3000
-      APP_URL: http://localhost:3000
       PORT: 3000
+      # No real delivery from CI: WhatsApp gets a fake token and no public URL
+      # (sends fail before any request leaves the server); email is unset.
+      APP_URL: ''
+      WHATSAPP_TOKEN: ci-fake-token
+      WHATSAPP_PHONE_NUMBER_ID: ci-fake-id
+      SEND_TESTS: '1'
 
     steps:
       - name: Checkout
@@ -62,9 +67,6 @@ jobs:
 
       - name: Type check
         run: npm run lint
-
-      - name: Unit tests
-        run: npm run test:unit
 
       - name: Check init.sql matches the migrations
         run: |
@@ -93,7 +95,7 @@ jobs:
         if: steps.pw-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
 
-      - name: Run Playwright tests
+      - name: Run all tests (unit, database, API, E2E)
         run: npx playwright test
         env:
           NODE_ENV: production
@@ -104,14 +106,14 @@ jobs:
 
       - name: Write job summary
         if: ${{ !cancelled() }}
-        run: node .github/scripts/e2e-summary.mjs >> "$GITHUB_STEP_SUMMARY"
+        run: node .github/scripts/test-summary.mjs >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload test reports
         id: upload
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-report-${{ github.run_number }}-${{ github.run_attempt }}
+          name: test-report-${{ github.run_number }}-${{ github.run_attempt }}
           path: |
             playwright-report/
             test-results/
@@ -126,8 +128,8 @@ jobs:
         with:
           script: |
             const { execSync } = require('child_process');
-            const summary = execSync('node .github/scripts/e2e-summary.mjs').toString();
-            const marker = '<!-- e2e-report -->';
+            const summary = execSync('node .github/scripts/test-summary.mjs').toString();
+            const marker = '<!-- test-report -->';
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const body = [
               marker,
