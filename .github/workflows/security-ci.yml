@@ -83,7 +83,7 @@ jobs:
         run: docker build -t haujee-app:${{ github.sha }} .
 
       - name: Run Trivy scanner
-        uses: aquasecurity/trivy-action@0.28.0 # pinned: never run a moving branch with repo access
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0, pinned to a commit so the tag can't be moved
         with:
           image-ref: 'haujee-app:${{ github.sha }}'
           format: 'table'

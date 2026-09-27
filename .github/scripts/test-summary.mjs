@@ -43,7 +43,9 @@ for (const suite of report.suites || []) walk(suite, suite.file, []);
 const icon = { passed: '✅', failed: '❌', flaky: '⚠️', skipped: '⏭️' };
 const seconds = ms => (ms / 1000).toFixed(1) + 's';
 const count = (list, s) => list.filter(r => r.status === s).length;
-const esc = s => s.replace(/\|/g, '\\|');
+// Test titles and error messages go into Markdown tables in the PR comment:
+// escape HTML and the table separator.
+const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\|/g, '\\|');
 
 const projects = [...new Set(rows.map(r => r.project))].sort((a, b) => (ORDER.indexOf(a) + 1 || 99) - (ORDER.indexOf(b) + 1 || 99));
 const failed = count(rows, 'failed');

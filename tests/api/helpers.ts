@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { test } from '@playwright/test';
 
 /** A 1x1 PNG, for photo uploads. */
@@ -49,7 +50,7 @@ export function apiClient() {
 export type ApiClient = ReturnType<typeof apiClient>;
 
 /** A unique tag so records created by one run never collide with another. */
-export const uniqueTag = (prefix = 'T') => `${prefix}${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`.toUpperCase();
+export const uniqueTag = (prefix = 'T') => `${prefix}${randomUUID().replace(/-/g, '').slice(0, 12)}`.toUpperCase();
 
 /** Creates a customer and returns it. */
 export async function createCustomer(api: ApiClient, tag: string, extra: Record<string, unknown> = {}) {
