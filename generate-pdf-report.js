@@ -43,7 +43,7 @@ function generatePDFReport() {
 
   doc.moveDown(4);
   doc.fontSize(28).fillColor(colors.primary).font('Helvetica-Bold').text('HAUJEE JEWELLERY', { align: 'center' });
-  doc.fontSize(16).fillColor(colors.secondary).font('Helvetica-Bold').text('End-to-End E2E Test Report', { align: 'center' });
+  doc.fontSize(16).fillColor(colors.secondary).font('Helvetica-Bold').text('Test Report (unit, database, API, E2E)', { align: 'center' });
   
   doc.moveDown(1.5);
   doc.rect(40, doc.y, doc.page.width - 80, 2).fill(colors.border);

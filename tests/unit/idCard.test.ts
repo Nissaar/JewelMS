@@ -1,5 +1,4 @@
-import { test } from 'node:test';
-import assert from 'node:assert/strict';
+import { test, expect } from '@playwright/test';
 import { parseMauritianIdText, readingScore } from '../../src/lib/idCard';
 
 // Fictitious card data, laid out the way OCR returns a Mauritian ID card.
@@ -18,28 +17,28 @@ ID Number
 R1503904200123
 `;
 
-test('reads every field of a clean card', () => {
+test('ID card: reads every field of a clean card', () => {
   const f = parseMauritianIdText(CLEAN);
-  assert.equal(f.surname, 'Ramdin');
-  assert.equal(f.firstName, 'Anjali Devi');
-  assert.equal(f.fullName, 'Anjali Devi Ramdin');
-  assert.equal(f.idNumber, 'R1503904200123');
-  assert.equal(f.dateOfBirth, '1990-03-15');
-  assert.equal(f.gender, 'F');
-  assert.equal(f.verified, true);
-  assert.deepEqual(f.warnings, []);
+  expect(f.surname).toBe('Ramdin');
+  expect(f.firstName).toBe('Anjali Devi');
+  expect(f.fullName).toBe('Anjali Devi Ramdin');
+  expect(f.idNumber).toBe('R1503904200123');
+  expect(f.dateOfBirth).toBe('1990-03-15');
+  expect(f.gender).toBe('F');
+  expect(f.verified).toBe(true);
+  expect(f.warnings).toEqual([]);
 });
 
-test('fixes letters misread as digits in the ID number', () => {
+test('ID card: fixes letters misread as digits in the ID number', () => {
   const f = parseMauritianIdText(CLEAN.replace('R1503904200123', 'R15O39O42OO1Z3'));
-  assert.equal(f.idNumber, 'R1503904200123');
-  assert.equal(f.verified, true);
+  expect(f.idNumber).toBe('R1503904200123');
+  expect(f.verified).toBe(true);
 });
 
-test('accepts spaces inside the ID number', () => {
+test('ID card: accepts spaces inside the ID number', () => {
   const f = parseMauritianIdText(CLEAN.replace('R1503904200123', 'R 150390 4200123'));
-  assert.equal(f.idNumber, 'R1503904200123');
-  assert.equal(f.verified, true);
+  expect(f.idNumber).toBe('R1503904200123');
+  expect(f.verified).toBe(true);
 });
 
 // The way OCR actually returns a photographed card: stray marks around labels
@@ -60,47 +59,47 @@ yp Geoder Date of Birth
 R1503904200123 )
 `;
 
-test('reads a noisy photographed card', () => {
+test('ID card: reads a noisy photographed card', () => {
   const f = parseMauritianIdText(NOISY);
-  assert.equal(f.surname, 'Ramdin');
-  assert.equal(f.firstName, 'Anjali');
-  assert.equal(f.idNumber, 'R1503904200123');
-  assert.equal(f.dateOfBirth, '1990-03-15');
-  assert.equal(f.gender, 'F');
-  assert.equal(f.verified, true);
+  expect(f.surname).toBe('Ramdin');
+  expect(f.firstName).toBe('Anjali');
+  expect(f.idNumber).toBe('R1503904200123');
+  expect(f.dateOfBirth).toBe('1990-03-15');
+  expect(f.gender).toBe('F');
+  expect(f.verified).toBe(true);
 });
 
-test('uses the ID initial to pick the surname out of noise', () => {
+test('ID card: uses the ID initial to pick the surname out of noise', () => {
   const f = parseMauritianIdText(NOISY.replace('re Yn Ramdin', 'we Vit Ramdin oo'));
-  assert.equal(f.surname, 'Ramdin');
+  expect(f.surname).toBe('Ramdin');
 });
 
-test('prefers the candidate matching the surname and date of birth', () => {
+test('ID card: prefers the candidate matching the surname and date of birth', () => {
   const f = parseMauritianIdText(CLEAN + '\nX9999999999999\n');
-  assert.equal(f.idNumber, 'R1503904200123');
+  expect(f.idNumber).toBe('R1503904200123');
 });
 
-test('flags an ID number that does not match the other fields', () => {
+test('ID card: flags an ID number that does not match the other fields', () => {
   const f = parseMauritianIdText(CLEAN.replace('R1503904200123', 'K0101014200123'));
-  assert.equal(f.idNumber, 'K0101014200123');
-  assert.equal(f.verified, false);
-  assert.ok(f.warnings.some(w => w.includes("numéro d'identité")));
+  expect(f.idNumber).toBe('K0101014200123');
+  expect(f.verified).toBe(false);
+  expect(f.warnings.some(w => w.includes("numéro d'identité"))).toBeTruthy();
 });
 
-test('reads a value printed on the same line as its label', () => {
+test('ID card: reads a value printed on the same line as its label', () => {
   const f = parseMauritianIdText(CLEAN.replace('Surname\nRAMDIN', 'Surname RAMDIN'));
-  assert.equal(f.surname, 'Ramdin');
+  expect(f.surname).toBe('Ramdin');
 });
 
-test('does not mistake the next label for a value', () => {
+test('ID card: does not mistake the next label for a value', () => {
   const f = parseMauritianIdText(CLEAN.replace('Anjali Devi\n', ''));
-  assert.equal(f.firstName, null);
-  assert.ok(f.warnings.includes('Prénom non lu.'));
+  expect(f.firstName).toBe(null);
+  expect(f.warnings.includes('Prénom non lu.')).toBeTruthy();
 });
 
-test('text from a sideways photo reads as nothing', () => {
+test('ID card: text from a sideways photo reads as nothing', () => {
   const f = parseMauritianIdText('Lx e2 ~~ 3ul\n,/ ;; rdsa\n');
-  assert.equal(f.idNumber, null);
-  assert.equal(f.fullName, null);
-  assert.ok(readingScore(f) < readingScore(parseMauritianIdText(CLEAN)));
+  expect(f.idNumber).toBe(null);
+  expect(f.fullName).toBe(null);
+  expect(readingScore(f) < readingScore(parseMauritianIdText(CLEAN))).toBeTruthy();
 });
