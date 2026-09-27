@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider } from './context/AuthContext';
 import { PWAProvider } from './context/PWAContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { UpdateBanner } from './components/UpdateBanner';
 import { Layout } from './components/Layout';
 
 // Pages
@@ -21,133 +22,40 @@ import Orders from './pages/Orders';
 import StockReports from './pages/StockReports';
 import Customers from './pages/Customers';
 
-// Placeholders for other pages
+/** Guarded page: `page` names its PAGE_ACCESS entry, `admin` requires the Admin role. */
+const guard = (element: React.ReactNode, opts: { page?: string; admin?: boolean } = {}) => (
+  <ProtectedRoute page={opts.page} requiredRole={opts.admin ? 'Admin' : undefined}>{element}</ProtectedRoute>
+);
 
 const App: React.FC = () => {
-  React.useEffect(() => {
-    const FIVE_MINUTES = 5 * 60 * 1000;
-    const timer = setInterval(() => {
-      console.log('[App Auto-Refresh] Refreshing application to sync updates...');
-      window.location.reload();
-    }, FIVE_MINUTES);
-
-    return () => clearInterval(timer);
-  }, []);
-
   return (
     <AuthProvider>
       <PWAProvider>
+        <UpdateBanner />
         <Router>
           <Routes>
-          <Route path="/login" element={<Login />} />
-          
-          <Route path="/" element={
-            <ProtectedRoute>
-              <Layout>
-                <Dashboard />
-              </Layout>
-            </ProtectedRoute>
-          } />
+            <Route path="/login" element={<Login />} />
 
-          <Route path="/stock/*" element={
-            <ProtectedRoute requiredPermission={{ functionality: 'stock', action: 'canView' }}>
-              <Layout>
-                <Stock />
-              </Layout>
-            </ProtectedRoute>
-          } />
+            {/* One shell for every signed-in page, so it isn't rebuilt on navigation. */}
+            <Route element={guard(<Layout />)}>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/stock/sold" element={guard(<SoldItems />, { page: '/stock/sold' })} />
+              <Route path="/stock/*" element={guard(<Stock />, { page: '/stock' })} />
+              <Route path="/customers/*" element={guard(<Customers />, { page: '/customers' })} />
+              <Route path="/sales/*" element={guard(<Sales />, { page: '/sales' })} />
+              <Route path="/sales-history" element={guard(<SalesHistory />, { page: '/sales-history' })} />
+              <Route path="/orders/*" element={guard(<Orders />, { page: '/orders' })} />
+              <Route path="/odf/*" element={guard(<ODF />, { page: '/odf' })} />
+              <Route path="/reports/discounts" element={guard(<DiscountReport />, { page: '/reports/discounts' })} />
+              <Route path="/reports/*" element={guard(<Reports />, { page: '/reports' })} />
+              <Route path="/stock-reports" element={guard(<StockReports />, { admin: true })} />
+              <Route path="/settings" element={guard(<Settings />, { admin: true })} />
+              <Route path="/audit-logs" element={guard(<AuditLogs />, { admin: true })} />
+            </Route>
 
-          <Route path="/customers/*" element={
-            <ProtectedRoute>
-              <Layout>
-                <Customers />
-              </Layout>
-            </ProtectedRoute>
-          } />
-
-          <Route path="/sales/*" element={
-            <ProtectedRoute>
-              <Layout>
-                <Sales />
-              </Layout>
-            </ProtectedRoute>
-          } />
-
-          <Route path="/sales-history" element={
-            <ProtectedRoute requiredPermission={{ functionality: 'sales', action: 'canView' }}>
-              <Layout>
-                <SalesHistory />
-              </Layout>
-            </ProtectedRoute>
-          } />
-
-          <Route path="/stock/sold" element={
-            <ProtectedRoute requiredPermission={{ functionality: 'stock', action: 'canView' }}>
-              <Layout>
-                <SoldItems />
-              </Layout>
-            </ProtectedRoute>
-          } />
-
-          <Route path="/orders/*" element={
-            <ProtectedRoute>
-              <Layout>
-                <Orders />
-              </Layout>
-            </ProtectedRoute>
-          } />
-
-          <Route path="/odf/*" element={
-            <ProtectedRoute>
-              <Layout>
-                <ODF />
-              </Layout>
-            </ProtectedRoute>
-          } />
-
-          <Route path="/reports/*" element={
-            <ProtectedRoute requiredPermission={{ functionality: 'reports', action: 'canView' }}>
-              <Layout>
-                <Reports />
-              </Layout>
-            </ProtectedRoute>
-          } />
-
-          <Route path="/reports/discounts" element={
-            <ProtectedRoute requiredPermission={{ functionality: 'reports', action: 'canView' }}>
-              <Layout>
-                <DiscountReport />
-              </Layout>
-            </ProtectedRoute>
-          } />
-
-          <Route path="/stock-reports" element={
-            <ProtectedRoute requiredRole="Admin">
-              <Layout>
-                <StockReports />
-              </Layout>
-            </ProtectedRoute>
-          } />
-
-          <Route path="/settings" element={
-            <ProtectedRoute requiredRole="Admin">
-              <Layout>
-                <Settings />
-              </Layout>
-            </ProtectedRoute>
-          } />
-
-          <Route path="/audit-logs" element={
-            <ProtectedRoute requiredRole="Admin">
-              <Layout>
-                <AuditLogs />
-              </Layout>
-            </ProtectedRoute>
-          } />
-
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Router>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Router>
       </PWAProvider>
     </AuthProvider>
   );

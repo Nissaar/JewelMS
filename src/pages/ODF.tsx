@@ -1,30 +1,36 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
-import { 
-  Scale, User, Camera, Plus, Check, AlertCircle, 
+import {
+  Scale, User, Camera, Plus, Check, AlertCircle,
   Loader2, Search, History, Image as ImageIcon,
-  X, UserPlus, Info, Tag, Calendar, FileText, Printer, Send, Banknote,
+  X, Tag, FileText, Printer, Send,
   Smartphone, Mail
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatCurrency, formatWeight, formatItemDetails } from '../lib/utils';
-import CustomerModal from '../components/CustomerModal';
+import { CustomerPicker } from '../components/CustomerPicker';
+import { sendErrorMessage } from '../lib/sendErrors';
+import { sendDocumentAndWait } from '../lib/sendDocument';
+import { openAuthenticatedFile } from '../lib/openFile';
+import { useSearchParams } from 'react-router-dom';
+import { usePagedList } from '../hooks/usePagedList';
+import { Pager } from '../components/Pager';
+import { activateOnKey } from '../lib/a11y';
 
 const ODF = () => {
-  const { token } = useAuth();
   const [view, setView] = useState<'list' | 'create' | 'success'>('list');
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
 
   // List View State
-  const [odfRecords, setOdfRecords] = useState<any[]>([]);
+  const [searchParams] = useSearchParams();
+  const [odfSearch, setOdfSearch] = useState(searchParams.get('q') || '');
+  // Searched (customer, description, ODF number) and paged on the server.
+  const list = usePagedList<any>('/api/odf', { q: odfSearch });
+  const odfRecords = list.items;
 
   // Form State
-  const [customerSearch, setCustomerSearch] = useState('');
-  const [searchResults, setSearchResults] = useState<any[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
-  const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
 
   const [formData, setFormData] = useState({
     metalType: 'Gold',
@@ -36,10 +42,11 @@ const ODF = () => {
   const [tradeInItems, setTradeInItems] = useState<Array<{ description: string, mass: string, fineness: string, price: string }>>([
     { description: '', mass: '', fineness: '22K', price: '' }
   ]);
-  const [dailyGoldRate, setDailyGoldRate] = useState<number>(3300);
   const [imageFile, setImageFile] = useState<File | null>(null);
 
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  // Release the previous preview's memory whenever it changes or the page closes.
+  useEffect(() => () => { if (imagePreview) URL.revokeObjectURL(imagePreview); }, [imagePreview]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Success View State
@@ -63,67 +70,10 @@ const ODF = () => {
     setSuccessData(null);
   };
 
+  // Coming back to the list shows the ODF just created.
   useEffect(() => {
-    if (view === 'list') fetchODFRecords();
+    if (view === 'list') list.reload();
   }, [view]);
-
-  const fetchODFRecords = async () => {
-    setIsLoading(true);
-    try {
-      const res = await axios.get('/api/odf', { headers: { Authorization: `Bearer ${token}` } });
-      setOdfRecords(res.data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const getPurityFraction = (fineness: string): number => {
-    const clean = String(fineness || '').toLowerCase().trim();
-    if (clean.includes('24k') || clean.includes('999') || clean.includes('99.9')) return 1.0;
-    if (clean.includes('22k') || clean.includes('916') || clean.includes('91.6')) return 0.916;
-    if (clean.includes('18k') || clean.includes('750') || clean.includes('75')) return 0.75;
-    if (clean.includes('14k') || clean.includes('585') || clean.includes('58.5')) return 0.585;
-    if (clean.includes('9k') || clean.includes('375') || clean.includes('37.5')) return 0.375;
-    
-    const matchFraction = clean.match(/(\d+)\s*\/\s*(\d+)/);
-    if (matchFraction) {
-      const num = parseInt(matchFraction[1]);
-      const den = parseInt(matchFraction[2]);
-      if (den > 0) return num / den;
-    }
-    
-    const matchPct = clean.match(/([\d.]+)\s*%/);
-    if (matchPct) {
-      return parseFloat(matchPct[1]) / 100;
-    }
-    
-    const matchNum = clean.match(/^(\d+)$/);
-    if (matchNum) {
-      const val = parseInt(matchNum[1]);
-      if (val > 100) return val / 1000;
-      if (val > 0) return val / 100;
-    }
-    
-    return 0.75; // Default to 18K
-  };
-
-  const getMetalRatePerGram = (mType: string): number => {
-    const metal = String(mType || 'Gold').toLowerCase().trim();
-    if (metal.includes('silver') || metal.includes('argent')) {
-      return 60; // Rs 60 per gram of pure silver
-    }
-    if (metal.includes('platinum') || metal.includes('platine')) {
-      return 1800; // Rs 1800 per gram of pure platinum
-    }
-    return 3300; // Rs 3300 per gram of pure gold
-  };
-
-  // When metalType changes, update dailyGoldRate to default value
-  useEffect(() => {
-    setDailyGoldRate(getMetalRatePerGram(formData.metalType));
-  }, [formData.metalType]);
 
   // Real-time Calculations
   let totalWeight = 0;
@@ -155,12 +105,7 @@ const ODF = () => {
 
   const handleExportPDF = async (id: number) => {
     try {
-      const res = await axios.get(`/api/odf/${id}/pdf`, {
-        headers: { Authorization: `Bearer ${token}` },
-        responseType: 'blob'
-      });
-      const blobUrl = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
-      window.open(blobUrl, '_blank');
+      await openAuthenticatedFile(`/api/odf/${id}/pdf`);
     } catch (err) {
       console.error("PDF Export Error:", err);
       alert("Erreur lors de l'export PDF");
@@ -169,12 +114,7 @@ const ODF = () => {
 
   const handlePrintDeclaration = async (id: number) => {
     try {
-      const res = await axios.get(`/api/odfs/${id}/declaration-pdf`, {
-        headers: { Authorization: `Bearer ${token}` },
-        responseType: 'blob'
-      });
-      const blobUrl = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
-      window.open(blobUrl, '_blank');
+      await openAuthenticatedFile(`/api/odfs/${id}/declaration-pdf`);
     } catch (err) {
       console.error("Declaration PDF Export Error:", err);
       alert("Erreur lors de l'export de la déclaration de propriété");
@@ -184,46 +124,14 @@ const ODF = () => {
   const handleSendFull = async (id: number, method: 'whatsapp' | 'email' | 'both') => {
     setIsProcessing(true);
     try {
-      // 1. Save locally first
-      await axios.post(`/api/odf/${id}/upload`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      // 2. Send
-      await axios.post(`/api/odf/${id}/send`, { method }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      setMessage({ type: 'success', text: `Document envoyé par ${method === 'both' ? 'Email & WhatsApp' : method === 'whatsapp' ? 'WhatsApp' : 'Email'}!` });
+      setMessage({ type: 'success', text: 'Envoi en cours…' });
+      const result = await sendDocumentAndWait('odf', id, method);
+      setMessage({ type: result.ok ? 'success' : 'error', text: result.text });
     } catch (err: any) {
-      console.error("Send Error:", err);
-      if (err.response?.status === 412) {
-        setMessage({ 
-          type: 'error', 
-          text: 'Configuration manquante — Veuillez configurer vos paramètres Email/WhatsApp dans les réglages.' 
-        });
-      } else if (err.response?.status === 400) {
-        if (err.response.data?.error === 'CLIENT_EMAIL_MISSING') {
-          setMessage({ type: 'error', text: 'Erreur : Veuillez ajouter une adresse email au profil de ce client.' });
-        } else {
-          setMessage({ type: 'error', text: "Erreur d'envoi. Vérifiez la configuration Brevo." });
-        }
-      } else {
-        setMessage({ type: 'error', text: "Erreur lors de l'envoi" });
-      }
+      setMessage({ type: 'error', text: sendErrorMessage(err) });
     } finally {
       setIsProcessing(false);
       setTimeout(() => setMessage({ type: '', text: '' }), 5000); // Increased timeout for reading
-    }
-  };
-
-  const handleCustomerSearch = async (query?: string) => {
-    const q = query !== undefined ? query : customerSearch;
-    try {
-      const res = await axios.get(`/api/customers?search=${q}`, { headers: { Authorization: `Bearer ${token}` } });
-      setSearchResults(res.data);
-    } catch (err) {
-      console.error(err);
     }
   };
 
@@ -252,15 +160,9 @@ const ODF = () => {
       payload.append('comments', formData.comments);
       payload.append('createdAt', formData.createdAt);
       payload.append('tradeInItems', JSON.stringify(tradeInItems));
-      payload.append('appliedRate', dailyGoldRate.toString());
       if (imageFile) payload.append('image', imageFile);
 
-      const res = await axios.post('/api/odf', payload, {
-        headers: { 
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'multipart/form-data'
-        }
-      });
+      const res = await axios.post('/api/odf', payload);
       
       setSuccessData(res.data);
       setView('success');
@@ -299,6 +201,16 @@ const ODF = () => {
         </button>
       </div>
 
+      {/* The create form shows its own message; list and success views show it here. */}
+      {view !== 'create' && message.text && (
+        <div role="status" className={`p-4 rounded-xl text-center font-bold flex items-center justify-center gap-2 ${
+          message.type === 'success' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'
+        }`}>
+          {message.type === 'success' ? <Check size={20} /> : <AlertCircle size={20} />}
+          {message.text}
+        </div>
+      )}
+
       <AnimatePresence mode="wait">
         {view === 'create' ? (
           <motion.div 
@@ -312,55 +224,7 @@ const ODF = () => {
                   <User className="text-amber-500" size={20} /> Client (KYC)
                 </h3>
                 
-                <div className="flex gap-2 mb-6">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                    <input 
-                      type="text"
-                      placeholder="Chercher Client..."
-                      className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-12 pr-4 font-bold outline-none focus:border-amber-400"
-                      value={customerSearch}
-                      onChange={(e) => {
-                        setCustomerSearch(e.target.value);
-                        handleCustomerSearch(e.target.value);
-                      }}
-                      onFocus={() => handleCustomerSearch()}
-                    />
-                  </div>
-                  <button 
-                    type="button"
-                    onClick={() => setIsCustomerModalOpen(true)}
-                    className="p-3 bg-amber-500 text-white rounded-xl hover:bg-amber-600 transition-colors shadow-lg shadow-amber-500/20"
-                    title="Nouveau Client"
-                  >
-                    <Plus size={24} />
-                  </button>
-                </div>
-
-                <div className="space-y-3 max-h-[300px] overflow-y-auto">
-                  {searchResults.map((c) => (
-                    <div 
-                      key={c.id} 
-                      onClick={() => setSelectedCustomer(c)}
-                      className={`p-4 rounded-2xl border-2 cursor-pointer transition-all ${
-                        selectedCustomer?.id === c.id ? 'border-amber-400 bg-amber-50' : 'border-slate-50 hover:border-slate-200'
-                      }`}
-                    >
-                      <p className="font-bold text-slate-900">{c.name}</p>
-                      <p className="text-xs text-slate-500">{c.idNumber}</p>
-                    </div>
-                  ))}
-                </div>
-
-                {selectedCustomer && (
-                  <div className="mt-6 p-4 bg-emerald-50 text-emerald-700 rounded-2xl flex items-center gap-3">
-                    <Check size={20} />
-                    <div className="text-sm font-bold">
-                      <p>{selectedCustomer.name}</p>
-                      <p className="opacity-70 font-medium">Prêt pour ODF</p>
-                    </div>
-                  </div>
-                )}
+                <CustomerPicker selected={selectedCustomer} onSelect={setSelectedCustomer} selectedNote="Prêt pour ODF" />
               </div>
             </div>
 
@@ -369,7 +233,7 @@ const ODF = () => {
               <div className="bg-white p-8 rounded-[2rem] shadow-xl border border-slate-100 grid grid-cols-2 gap-6">
                 <div className="col-span-2 md:col-span-1">
                   <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Date du Rachat</label>
-                  <input 
+                  <input aria-label="Date du Rachat" 
                     type="date" required
                     className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 font-bold outline-none focus:border-amber-400"
                     value={formData.createdAt}
@@ -379,7 +243,7 @@ const ODF = () => {
 
                 <div className="col-span-2 md:col-span-1">
                   <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Métal</label>
-                  <select 
+                  <select aria-label="Métal" 
                     className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 font-bold outline-none focus:border-amber-400"
                     value={formData.metalType}
                     onChange={(e) => setFormData({...formData, metalType: e.target.value})}
@@ -394,7 +258,7 @@ const ODF = () => {
                   <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Article Réservé / Réparé</label>
                   <div className="relative">
                     <Tag className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                    <input 
+                    <input aria-label="Article Réservé / Réparé" 
                       type="text" placeholder="Bague, Chaîne..."
                       className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 pl-12 pr-4 font-bold outline-none focus:border-amber-400"
                       value={formData.itemReservedRepair}
@@ -421,7 +285,7 @@ const ODF = () => {
                       <div key={index} className="grid grid-cols-12 gap-3 items-end bg-slate-50/50 p-4 rounded-2xl border-2 border-slate-100">
                         <div className="col-span-12 sm:col-span-4">
                           <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1.5">Description</label>
-                          <input
+                          <input aria-label="Description"
                             type="text" required placeholder="Ex: Bracelet, Collier..."
                             className="w-full bg-white border-2 border-slate-100 rounded-xl py-2 px-3 text-sm font-bold outline-none focus:border-amber-400"
                             value={item.description}
@@ -431,7 +295,7 @@ const ODF = () => {
 
                         <div className="col-span-6 sm:col-span-2">
                           <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1.5">Masse (g)</label>
-                          <input
+                          <input aria-label="Masse (g)"
                             type="number" step="0.001" required placeholder="0.000"
                             className="w-full bg-white border-2 border-slate-100 rounded-xl py-2 px-3 text-sm font-bold outline-none focus:border-amber-400"
                             value={item.mass}
@@ -441,7 +305,7 @@ const ODF = () => {
 
                         <div className="col-span-6 sm:col-span-2">
                           <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1.5">Finesse / Karat</label>
-                          <input
+                          <input aria-label="Finesse / Karat"
                             type="text" required placeholder="Ex: 22K, 750"
                             className="w-full bg-white border-2 border-slate-100 rounded-xl py-2 px-3 text-sm font-bold outline-none focus:border-amber-400"
                             value={item.fineness}
@@ -451,7 +315,7 @@ const ODF = () => {
 
                         <div className="col-span-12 sm:col-span-3">
                           <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1.5">Prix / Valeur Agréée (Rs)</label>
-                          <input
+                          <input aria-label="Prix / Valeur Agréée (Rs)"
                             type="number" step="0.01" required placeholder="0.00"
                             className="w-full bg-white border-2 border-slate-100 rounded-xl py-2 px-3 text-sm font-bold outline-none focus:border-amber-400 font-mono"
                             value={item.price}
@@ -495,7 +359,7 @@ const ODF = () => {
 
                 <div className="col-span-2">
                   <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Commentaires / Remarques</label>
-                  <textarea 
+                  <textarea aria-label="Commentaires / Remarques" 
                     rows={2}
                     className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-3 px-4 font-bold outline-none focus:border-amber-400"
                     placeholder="Détails supplémentaires..."
@@ -506,14 +370,20 @@ const ODF = () => {
 
                 <div className="col-span-2">
                   <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Preuve Photo (N° de Série / Article)</label>
-                  <div 
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Ajouter une photo"
                     onClick={() => fileInputRef.current?.click()}
+                    onKeyDown={activateOnKey(() => fileInputRef.current?.click())}
                     className="border-2 border-dashed border-slate-100 rounded-2xl p-8 text-center cursor-pointer hover:border-amber-400 hover:bg-amber-50 transition-all group"
                   >
                     {imagePreview ? (
                       <div className="relative inline-block">
                         <img src={imagePreview} alt="Preview" className="h-32 w-auto rounded-xl shadow-lg" />
-                        <button 
+                        <button
+                          type="button"
+                          aria-label="Retirer la photo" 
                           onClick={(e) => { e.stopPropagation(); setImagePreview(null); setImageFile(null); }}
                           className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1"
                         >
@@ -632,6 +502,17 @@ const ODF = () => {
             key="list" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
             className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden"
           >
+            <div className="p-4 border-b border-slate-100 flex items-center gap-4">
+              <Search className="text-slate-400" size={20} aria-hidden="true" />
+              <input
+                type="search"
+                aria-label="Rechercher un ODF"
+                placeholder="Rechercher par client, description ou N° ODF..."
+                className="flex-1 bg-transparent border-none outline-none font-medium"
+                value={odfSearch}
+                onChange={(e) => setOdfSearch(e.target.value)}
+              />
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left">
                 <thead className="bg-slate-50 border-b border-slate-100">
@@ -644,7 +525,7 @@ const ODF = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {isLoading ? (
+                  {list.isLoading ? (
                     <tr><td colSpan={5} className="py-20 text-center"><Loader2 className="animate-spin mx-auto text-amber-500" /></td></tr>
                   ) : odfRecords.length === 0 ? (
                     <tr><td colSpan={5} className="py-20 text-center text-slate-400 font-medium">Aucun enregistrement ODF trouvé</td></tr>
@@ -670,7 +551,7 @@ const ODF = () => {
                            <div className="flex items-center gap-3">
                             {record.imageUrl && (
                               <button 
-                                onClick={() => window.open(record.imageUrl, '_blank')}
+                                onClick={() => openAuthenticatedFile(record.imageUrl).catch(() => setMessage({ type: 'error', text: 'Impossible d’afficher la photo' }))}
                                 className="p-2 bg-slate-50 text-slate-400 hover:text-amber-500 rounded-lg transition-colors"
                                 title="Voir Photo"
                               >
@@ -720,16 +601,10 @@ const ODF = () => {
                 </tbody>
               </table>
             </div>
+            <Pager page={list.page} pageCount={list.pageCount} total={list.total} isLoading={list.isLoading} onPage={list.setPage} noun="rachats" />
           </motion.div>
         )}
       </AnimatePresence>
-
-      <CustomerModal 
-        isOpen={isCustomerModalOpen}
-        onClose={() => setIsCustomerModalOpen(false)}
-        onSuccess={(customer) => setSelectedCustomer(customer)}
-        initialName={customerSearch}
-      />
     </div>
   );
 };

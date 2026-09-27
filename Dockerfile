@@ -3,17 +3,12 @@ FROM node:20-slim AS builder
 
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+COPY package.json package-lock.json ./
+RUN npm ci
 
-# Install all dependencies (including devDependencies for build)
-RUN npm install
-
-# Copy source code
 COPY . .
 
-# Build the application
-# This generates the frontend in dist/ and the backend in dist/server.cjs
+# Generates the frontend in dist/ and the backend bundle in dist/server.cjs
 RUN npm run build
 
 # Stage 2: Production
@@ -22,26 +17,23 @@ FROM node:20-slim
 WORKDIR /app
 
 ENV NODE_ENV=production
+# Shared location so the non-root user can use the browser installed as root.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-# Copy package files for production dependency install
-COPY package*.json ./
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev \
+  && npx playwright install chromium --with-deps \
+  && rm -rf /var/lib/apt/lists/* /root/.npm
 
-# Install only production dependencies
-RUN npm install --omit=dev
-RUN apt-get update && npx playwright install chromium --with-deps
-
-# Copy the built application from the builder stage
+# The backend bundle uses --packages=external, so it relies on the production
+# node_modules installed above.
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/src/templates ./src/templates
+COPY --from=builder /app/drizzle ./drizzle
 
-# The backend bundle uses --packages=external, so we need the production node_modules
-# which we just installed in this stage.
+RUN mkdir -p uploads/receipts uploads/odf uploads/images && chown -R node:node uploads
 
-# Create uploads directory
-RUN mkdir -p uploads
+USER node
 
-# Expose the application port
 EXPOSE 3000
 
-# Start the application
-CMD ["npm", "start"]
+CMD ["node", "dist/server.cjs"]

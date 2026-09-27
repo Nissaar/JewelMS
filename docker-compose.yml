@@ -13,6 +13,9 @@ services:
     environment:
       - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@db:5432/haujee}
       - NODE_OPTIONS=--dns-result-order=ipv4first
+    volumes:
+      # Receipts, ODF documents and photos must survive container rebuilds.
+      - uploads_data:/app/uploads
     depends_on:
       db:
         condition: service_healthy
@@ -29,6 +32,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
+      # Creates the schema on a fresh (empty) volume only; generated from drizzle/.
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -42,6 +46,7 @@ services:
 
 volumes:
   postgres_data:
+  uploads_data:
 
 networks:
   jewelms_net:

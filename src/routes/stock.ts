@@ -1,68 +1,125 @@
 import type { Express } from "express";
+import type { z } from "zod";
 import { db } from "../db/index";
-import { settings, stock, customers, sales } from "../db/schema";
-import { eq, or, ilike, like, and, sql } from "drizzle-orm";
-import { authenticateToken, checkPermission } from "../middleware/auth";
+import { settings, stock } from "../db/schema";
+import { eq, or, ilike, like, and, sql, desc } from "drizzle-orm";
+import { authenticateToken, checkAnyPermission, checkPermission } from "../middleware/auth";
+import { idParam, stockBulkEditSchema, stockCreateSchema, stockUpdateSchema } from "../lib/schemas";
+import { badRequest, notFound, sendError } from "../lib/errors";
+import { escapeLike } from "../lib/sql";
+import { containsPattern, queryText } from "../lib/query";
+import { listResponse } from "../lib/pagination";
+import { centsToDecimal, splitGross, toCents } from "../shared/money";
+
+type StockFields = Partial<z.infer<typeof stockUpdateSchema>>;
+
+/**
+ * Turns validated input into column values. The price is VAT-inclusive; its
+ * net and VAT parts are derived here. Fields absent from the input are left
+ * out, so an update never touches what the client didn't send.
+ */
+function toStockColumns(input: StockFields) {
+  const { price, weightGrams, ...rest } = input;
+  const columns: Partial<typeof stock.$inferInsert> = { ...rest };
+
+  if (weightGrams !== undefined) columns.weightGrams = weightGrams === null ? null : weightGrams.toFixed(3);
+  if (price !== undefined) {
+    const { grossCents, netCents, vatCents } = splitGross(toCents(price ?? 0));
+    columns.price = centsToDecimal(grossCents);
+    columns.priceNet = centsToDecimal(netCents);
+    columns.priceVat = centsToDecimal(vatCents);
+  }
+  if (input.category === 'Jewellery') columns.brand = null;
+  return columns;
+}
+
+// Stock lookups are also needed at the till by people who can sell.
+const canLookUpStock = checkAnyPermission(['stock', 'view'], ['sales', 'create']);
 
 export function registerStockRoutes(app: Express) {
 
-  // --- Stock Endpoints ---
   app.get("/api/stock/metadata", authenticateToken, async (req, res) => {
     try {
       const meta = await db.select().from(settings).where(ilike(settings.key, 'stock_%'));
       const guarantee = await db.select().from(settings).where(eq(settings.key, 'guarantee_options')).limit(1);
       res.json([...meta, ...guarantee]);
     } catch (error) {
-      console.error("Stock Metadata Error:", error);
-      res.status(500).json({ error: "Failed to fetch stock metadata" });
+      sendError(res, error, "Failed to fetch stock metadata");
     }
   });
 
-
+  // Available stock, newest first. ?q= matches barcode, serial or item code; ?category= filters.
   app.get("/api/stock", authenticateToken, checkPermission('stock', 'view'), async (req, res) => {
     try {
-      const items = await db.select().from(stock).where(eq(stock.status, 'Disponible'));
-      res.json(items);
+      const q = queryText(req.query.q);
+      const category = queryText(req.query.category);
+      const pattern = containsPattern(q);
+      const where = and(
+        eq(stock.status, 'Disponible'),
+        category && category !== 'All' ? eq(stock.category, category) : undefined,
+        q ? or(ilike(stock.barcode, pattern), ilike(stock.serialNumber, pattern), ilike(stock.itemCode, pattern)) : undefined,
+      );
+      res.json(await listResponse(req.query,
+        (limit, offset) => {
+          const query = db.select().from(stock).where(where).orderBy(desc(stock.createdAt), desc(stock.id)).$dynamic();
+          return limit ? query.limit(limit).offset(offset!) : query;
+        },
+        async () => (await db.select({ n: sql<number>`count(*)::int` }).from(stock).where(where))[0].n,
+      ));
     } catch (error) {
-      res.status(500).json({ error: "Failed to fetch stock" });
+      sendError(res, error, "Failed to fetch stock");
     }
   });
 
-
-  app.get("/api/stock/sold", authenticateToken, checkPermission('reports', 'view'), async (req, res) => {
+  app.get("/api/stock/sold", authenticateToken, checkAnyPermission(['stock', 'view'], ['reports', 'view']), async (req, res) => {
     try {
-      const items = await db.select({
-        id: stock.id,
-        barcode: stock.barcode,
-        category: stock.category,
-        subCategory: stock.subCategory,
-        metalType: stock.metalType,
-        weightGrams: stock.weightGrams,
-        soldAt: stock.soldAt,
-        customerName: customers.name,
-        price: sales.amount
-      })
-      .from(stock)
-      .leftJoin(sales, eq(stock.id, sales.stockId))
-      .leftJoin(customers, eq(sales.customerId, customers.id))
-      .where(eq(stock.status, 'Vendu'))
-      .orderBy(sql`${stock.soldAt} DESC`);
-      res.json(items);
+      // The item's latest completed sale (an item can be sold, returned, resold).
+      // Written as plain SQL: drizzle leaves column names unqualified inside
+      // sql fragments of a single-table query, which is ambiguous here.
+      const lastSale = (column: string) => sql.raw(`(SELECT ${column} FROM sale_items si
+        JOIN sales s ON s.id = si.sale_id
+        LEFT JOIN customers c ON c.id = s.customer_id
+        WHERE si.stock_id = stock.id AND s.status = 'Completed'
+        ORDER BY s.id DESC LIMIT 1)`);
+
+      const q = queryText(req.query.q);
+      const pattern = containsPattern(q);
+      const where = and(
+        eq(stock.status, 'Vendu'),
+        q ? or(ilike(stock.barcode, pattern), ilike(stock.category, pattern), sql`${lastSale('c.name')} ILIKE ${pattern}`) : undefined,
+      );
+      res.json(await listResponse(req.query,
+        (limit, offset) => {
+          const query = db.select({
+            id: stock.id,
+            barcode: stock.barcode,
+            category: stock.category,
+            subCategory: stock.subCategory,
+            metalType: stock.metalType,
+            weightGrams: stock.weightGrams,
+            soldAt: stock.soldAt,
+            customerName: lastSale('c.name'),
+            price: lastSale('si.amount'),
+          })
+          .from(stock)
+          .where(where)
+          .orderBy(sql`${stock.soldAt} DESC NULLS LAST`, desc(stock.id))
+          .$dynamic();
+          return limit ? query.limit(limit).offset(offset!) : query;
+        },
+        async () => (await db.select({ n: sql<number>`count(*)::int` }).from(stock).where(where))[0].n,
+      ));
     } catch (error) {
-      console.error("Sold Stock Error:", error);
-      res.status(500).json({ error: "Failed to fetch sold items" });
+      sendError(res, error, "Failed to fetch sold items");
     }
   });
 
-
-  app.get("/api/stock/autocomplete", authenticateToken, async (req, res) => {
+  app.get("/api/stock/autocomplete", authenticateToken, canLookUpStock, async (req, res) => {
     const { q } = req.query;
-    
     try {
       let queryBuilder;
-      
-      if (q && typeof q === 'string' && q.trim().length >= 2) {
-        const searchStr = `%${q}%`;
+      if (typeof q === 'string' && q.trim().length >= 2) {
+        const searchStr = `%${escapeLike(q.trim())}%`;
         queryBuilder = db.select().from(stock).where(
           and(
             eq(stock.status, 'Disponible'),
@@ -81,20 +138,17 @@ export function registerStockRoutes(app: Express) {
       } else {
         queryBuilder = db.select().from(stock).where(eq(stock.status, 'Disponible'));
       }
-      
+
       const results = await queryBuilder
         .orderBy(sql`${stock.createdAt} DESC`)
         .limit(20);
-        
       res.json(results);
     } catch (error) {
-      console.error("Autocomplete Error:", error);
-      res.status(500).json({ error: "Failed to search stock" });
+      sendError(res, error, "Failed to search stock");
     }
   });
 
-
-  app.get("/api/stock/:barcode", authenticateToken, checkPermission('stock', 'view'), async (req, res) => {
+  app.get("/api/stock/:barcode", authenticateToken, canLookUpStock, async (req, res) => {
     try {
       const item = await db.select().from(stock)
         .where(and(eq(stock.barcode, req.params.barcode), eq(stock.status, 'Disponible')))
@@ -102,57 +156,30 @@ export function registerStockRoutes(app: Express) {
       if (item.length === 0) return res.status(404).json({ error: "Stock item not found or already sold" });
       res.json(item[0]);
     } catch (error) {
-      res.status(500).json({ error: "Failed to fetch stock item" });
+      sendError(res, error, "Failed to fetch stock item");
     }
   });
 
-
   app.post("/api/stock", authenticateToken, checkPermission('stock', 'create'), async (req, res) => {
     try {
-      const { quantity: rawQuantity, ...basePayload } = req.body;
-      const quantity = Math.min(Math.max(parseInt(rawQuantity) || 1, 1), 100);
-
-      // Helper to sanitize a single payload
-      const sanitizePayload = (payload: any) => {
-        if (payload.category === 'Jewellery') {
-          payload.brand = null;
-        }
-        if (payload.weightGrams === "") payload.weightGrams = null;
-        if (payload.yearsOfGuarantee === "") payload.yearsOfGuarantee = null;
-        if (payload.fineness === "") payload.fineness = null;
-        if (payload.price === "" || payload.price === undefined || payload.price === null) {
-          payload.price = "0.00";
-          payload.priceNet = "0.00";
-          payload.priceVat = "0.00";
-        } else {
-          const priceNum = parseFloat(payload.price);
-          const priceNet = priceNum / 1.15;
-          const priceVat = priceNum - priceNet;
-          payload.priceNet = priceNet.toFixed(2);
-          payload.priceVat = priceVat.toFixed(2);
-          payload.price = priceNum.toFixed(2);
-        }
-        return payload;
-      };
+      const { quantity, ...input } = stockCreateSchema.parse(req.body);
+      // Required columns spelled out so the insert is fully typed.
+      const base = { ...toStockColumns(input), barcode: input.barcode, category: input.category, stockType: input.stockType };
 
       if (quantity === 1) {
-        // Single insert — same as original behavior, no suffix
-        const payload = sanitizePayload({ ...basePayload });
-        const newItem = await db.insert(stock).values(payload).returning();
-        return res.status(201).json(newItem[0]);
+        const [newItem] = await db.insert(stock).values(base).returning();
+        return res.status(201).json(newItem);
       }
 
-      // Bulk insert with transaction
+      // Several identical pieces: one row each, with "-1", "-2"... suffixes.
       const results = await db.transaction(async (tx) => {
         const items = [];
         for (let i = 1; i <= quantity; i++) {
-          const suffix = `-${i}`;
-          const payload = sanitizePayload({
-            ...basePayload,
-            barcode: `${basePayload.barcode}${suffix}`,
-            itemCode: basePayload.itemCode ? `${basePayload.itemCode}${suffix}` : null,
-          });
-          const [newItem] = await tx.insert(stock).values(payload).returning();
+          const [newItem] = await tx.insert(stock).values({
+            ...base,
+            barcode: `${input.barcode}-${i}`,
+            itemCode: input.itemCode ? `${input.itemCode}-${i}` : null,
+          }).returning();
           items.push(newItem);
         }
         return items;
@@ -161,56 +188,24 @@ export function registerStockRoutes(app: Express) {
       res.status(201).json({ items: results, count: results.length });
     } catch (error: any) {
       if (error.code === '23505') {
-        return res.status(400).json({ message: "Un ou plusieurs codes-barres existent déjà." });
+        return res.status(400).json({ error: "Un ou plusieurs codes-barres existent déjà.", message: "Un ou plusieurs codes-barres existent déjà." });
       }
-      console.error("Stock Create Error:", error);
-      res.status(500).json({ error: "Failed to create stock item" });
+      sendError(res, error, "Failed to create stock item", "Stock Create Error");
     }
   });
 
   // Bulk edit — update all remaining (unsold) items sharing the same base item code
-
-
-  // Bulk edit — update all remaining (unsold) items sharing the same base item code
   app.put("/api/stock/bulk-edit", authenticateToken, checkPermission('stock', 'edit'), async (req, res) => {
     try {
-      const { baseItemCode, ...updateFields } = req.body;
-      if (!baseItemCode) {
-        return res.status(400).json({ message: "baseItemCode est requis." });
-      }
+      const { baseItemCode, ...input } = stockBulkEditSchema.parse(req.body);
+      const columns = toStockColumns(input);
+      if (Object.keys(columns).length === 0) throw badRequest("Aucun champ à modifier.");
 
-      // Remove fields that should stay unique per item
-      delete updateFields.barcode;
-      delete updateFields.itemCode;
-      delete updateFields.id;
-
-      // Sanitize numeric fields
-      if (updateFields.weightGrams === "") updateFields.weightGrams = null;
-      if (updateFields.yearsOfGuarantee === "") updateFields.yearsOfGuarantee = null;
-      if (updateFields.fineness === "") updateFields.fineness = null;
-      if (updateFields.category === 'Jewellery') {
-        updateFields.brand = null;
-      }
-      if (updateFields.price === "" || updateFields.price === undefined || updateFields.price === null) {
-        updateFields.price = "0.00";
-        updateFields.priceNet = "0.00";
-        updateFields.priceVat = "0.00";
-      } else if (updateFields.price !== undefined) {
-        const priceNum = parseFloat(updateFields.price);
-        const priceNet = priceNum / 1.15;
-        const priceVat = priceNum - priceNet;
-        updateFields.priceNet = priceNet.toFixed(2);
-        updateFields.priceVat = priceVat.toFixed(2);
-        updateFields.price = priceNum.toFixed(2);
-      }
-
-      // Match items whose itemCode starts with the base code followed by a dash
-      const pattern = `${baseItemCode}-%`;
       const updated = await db.update(stock)
-        .set({ ...updateFields, updatedAt: new Date() })
+        .set({ ...columns, updatedAt: new Date() })
         .where(
           and(
-            like(stock.itemCode, pattern),
+            like(stock.itemCode, `${escapeLike(baseItemCode)}-%`),
             eq(stock.status, 'Disponible')
           )
         )
@@ -218,56 +213,38 @@ export function registerStockRoutes(app: Express) {
 
       res.json({ updated: updated.length, items: updated });
     } catch (error) {
-      console.error("Bulk Edit Error:", error);
-      res.status(500).json({ error: "Failed to bulk edit stock items" });
+      sendError(res, error, "Failed to bulk edit stock items", "Bulk Edit Error");
     }
   });
-
 
   app.put("/api/stock/:id", authenticateToken, checkPermission('stock', 'edit'), async (req, res) => {
     try {
-      const payload = { ...req.body };
-      // Sanitize brand for Jewellery
-      if (payload.category === 'Jewellery') {
-        payload.brand = null;
-      }
-      // Sanitize numeric fields that might be empty strings from frontend
-      if (payload.weightGrams === "") payload.weightGrams = null;
-      if (payload.yearsOfGuarantee === "") payload.yearsOfGuarantee = null;
-      if (payload.fineness === "") payload.fineness = null;
-      if (payload.price === "" || payload.price === undefined || payload.price === null) {
-        payload.price = "0.00";
-        payload.priceNet = "0.00";
-        payload.priceVat = "0.00";
-      } else {
-        const priceNum = parseFloat(payload.price);
-        const priceNet = priceNum / 1.15;
-        const priceVat = priceNum - priceNet;
-        payload.priceNet = priceNet.toFixed(2);
-        payload.priceVat = priceVat.toFixed(2);
-        payload.price = priceNum.toFixed(2);
-      }
+      const stockId = idParam.parse(req.params.id);
+      const columns = toStockColumns(stockUpdateSchema.parse(req.body));
 
-      const updated = await db.update(stock)
-        .set({ ...payload, updatedAt: new Date() })
-        .where(eq(stock.id, parseInt(req.params.id)))
+      const [updated] = await db.update(stock)
+        .set({ ...columns, updatedAt: new Date() })
+        .where(eq(stock.id, stockId))
         .returning();
-      if (updated.length === 0) return res.status(404).json({ error: "Stock item not found" });
-      res.json(updated[0]);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to update stock item" });
+      if (!updated) throw notFound("Stock item not found");
+      res.json(updated);
+    } catch (error: any) {
+      if (error.code === '23505') return res.status(400).json({ error: "Ce code-barres existe déjà." });
+      sendError(res, error, "Failed to update stock item", "Stock Update Error");
     }
   });
-
 
   app.delete("/api/stock/:id", authenticateToken, checkPermission('stock', 'delete'), async (req, res) => {
     try {
-      await db.delete(stock).where(eq(stock.id, parseInt(req.params.id)));
+      const stockId = idParam.parse(req.params.id);
+      const [item] = await db.select().from(stock).where(eq(stock.id, stockId)).limit(1);
+      if (!item) throw notFound("Stock item not found");
+      // Sold items are part of the sales record and the Assay Office register.
+      if (item.status !== 'Disponible') throw badRequest("Un article vendu ne peut pas être supprimé.");
+      await db.delete(stock).where(eq(stock.id, stockId));
       res.json({ message: "Stock item deleted successfully" });
     } catch (error) {
-      res.status(500).json({ error: "Failed to delete stock item" });
+      sendError(res, error, "Failed to delete stock item");
     }
   });
-
-  // --- KYC / Customer Endpoints ---
 }

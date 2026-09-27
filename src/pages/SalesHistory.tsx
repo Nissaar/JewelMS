@@ -1,87 +1,40 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
-import { 
-  History, Search, Filter, Calendar, FileText, 
-  Download, Eye, X, Loader2, Banknote,
-  Smartphone, Mail, Check, AlertCircle, ExternalLink,
+import {
+  History, Search, Calendar, FileText,
+  Download, Eye, X, Loader2,
+  Check, AlertCircle,
   Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatCurrency, formatWeight, formatItemDetails, getItemFullDescription } from '../lib/utils';
+import { openAuthenticatedFile } from '../lib/openFile';
+import { useSearchParams } from 'react-router-dom';
+import { usePagedList } from '../hooks/usePagedList';
+import { Pager } from '../components/Pager';
+import { useDialog } from '../hooks/useDialog';
 
 const SalesHistory = () => {
-  const { token, user } = useAuth();
-  const [sales, setSales] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+  const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '');
   const [dateFilter, setDateFilter] = useState('');
+  // Searched, date-filtered (shop day) and paged on the server.
+  const list = usePagedList<any>('/api/sales/history', { q: searchQuery, date: dateFilter });
+  const { items: filteredSales, isLoading } = list;
   const [selectedSale, setSelectedSale] = useState<any>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [isGeneratingDecl, setIsGeneratingDecl] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
-
-  useEffect(() => {
-    fetchSalesHistory();
-  }, []);
-
-  const formatDetails = (details: any): string => {
-    if (!details) return '';
-    try {
-      const parsed = typeof details === 'string' ? JSON.parse(details) : details;
-      return [parsed.name, parsed.category, parsed.brand].filter(Boolean).join(' - ');
-    } catch (e) {
-      return details; // Fallback to raw text if it's not JSON
-    }
-  };
-
-  const fetchSalesHistory = async () => {
-    setIsLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (searchQuery) {
-        params.append('search', searchQuery);
-      }
-      const res = await axios.get(`/api/sales/history?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setSales(res.data);
-    } catch (err) {
-      console.error(err);
-      setMessage({ type: 'error', text: 'Échec de la récupération de l\'historique' });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const filteredSales = (sales || []).filter(sale => {
-    const search = String(searchQuery || '').toLowerCase();
-    const cName = String(sale?.customerName || '').toLowerCase();
-    const rNo = String(sale?.receiptNo || '').toLowerCase();
-    const sId = String(sale?.id || '').toLowerCase();
-    const detailsTxt = String(sale?.itemDetails || '').toLowerCase();
-    const formattedDetailsTxt = formatDetails(sale?.itemDetails).toLowerCase();
-    
-    const matchesSearch = cName.includes(search) || rNo.includes(search) || sId.includes(search) || detailsTxt.includes(search) || formattedDetailsTxt.includes(search);
-    
-    const saleDateStr = new Date(sale.date).toISOString().split('T')[0];
-    const matchesDate = !dateFilter || saleDateStr === dateFilter;
-    
-    return matchesSearch && matchesDate;
-  });
+  const detailsDialog = useDialog(isModalOpen && !!selectedSale, () => setIsModalOpen(false));
 
   const handleDownloadPDF = async (saleId: number) => {
     setIsGeneratingPDF(true);
     try {
-      const response = await axios.get(`/api/receipts/${saleId}/pdf`, {
-        headers: { Authorization: `Bearer ${token}` },
-        responseType: 'blob'
-      });
-      
-      const blobUrl = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
-      window.open(blobUrl, '_blank');
+      await openAuthenticatedFile(`/api/receipts/${saleId}/pdf`);
     } catch (err) {
       console.error(err);
       setMessage({ type: 'error', text: 'Échec de l\'ouverture du PDF' });
@@ -93,13 +46,7 @@ const SalesHistory = () => {
   const handleDownloadDeclarationPDF = async (saleId: number) => {
     setIsGeneratingDecl(true);
     try {
-      const response = await axios.get(`/api/receipts/${saleId}/declaration-pdf`, {
-        headers: { Authorization: `Bearer ${token}` },
-        responseType: 'blob'
-      });
-      
-      const blobUrl = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
-      window.open(blobUrl, '_blank');
+      await openAuthenticatedFile(`/api/receipts/${saleId}/declaration-pdf`);
     } catch (err) {
       console.error(err);
       setMessage({ type: 'error', text: 'Échec de l\'ouverture de la déclaration' });
@@ -118,12 +65,10 @@ const SalesHistory = () => {
 
     setIsCancelling(true);
     try {
-      await axios.post(`/api/sales/${saleId}/cancel`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await axios.post(`/api/sales/${saleId}/cancel`);
       setMessage({ type: 'success', text: "Vente annulée avec succès" });
       setIsModalOpen(false);
-      fetchSalesHistory();
+      list.reload();
     } catch (err: any) {
       console.error(err);
       setMessage({ type: 'error', text: err.response?.data?.error || "Erreur lors de l'annulation" });
@@ -161,7 +106,7 @@ const SalesHistory = () => {
       <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 flex flex-wrap items-center gap-6">
         <div className="flex-1 min-w-[300px] relative">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-          <input 
+          <input aria-label="Rechercher par Client, N° Receipt, ID..." 
             type="text" 
             placeholder="Rechercher par Client, N° Receipt, ID..."
             className="w-full bg-slate-50 border-2 border-slate-50 rounded-2xl py-3 pl-12 pr-4 font-bold outline-none focus:border-emerald-400 focus:bg-white transition-all"
@@ -173,15 +118,17 @@ const SalesHistory = () => {
         <div className="flex items-center gap-4">
           <div className="relative">
             <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-            <input 
+            <input aria-label="Filtrer par date" 
               type="date"
               className="bg-slate-50 border-2 border-slate-50 rounded-2xl py-3 pl-12 pr-4 font-bold outline-none focus:border-emerald-400 focus:bg-white transition-all"
               value={dateFilter}
               onChange={(e) => setDateFilter(e.target.value)}
             />
           </div>
-          <button 
-            onClick={fetchSalesHistory}
+          <button
+            type="button"
+            aria-label="Rafraîchir"
+            onClick={list.reload}
             className="p-3 bg-slate-900 text-white rounded-2xl hover:bg-slate-800 transition-all shadow-lg"
           >
             <History size={20} />
@@ -244,7 +191,7 @@ const SalesHistory = () => {
                       <p className="text-[10px] font-bold text-slate-400 italic">TVA incluse</p>
                     </td>
                     <td className="px-8 py-6 text-center">
-                      <button 
+                      <button aria-label="Voir les détails de la vente" 
                         onClick={() => openDetails(sale)}
                         className="p-3 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-900 hover:text-white transition-all shadow-sm"
                       >
@@ -257,12 +204,13 @@ const SalesHistory = () => {
             </tbody>
           </table>
         </div>
+        <Pager page={list.page} pageCount={list.pageCount} total={list.total} isLoading={isLoading} onPage={list.setPage} noun="ventes" />
       </div>
 
       {/* Details Modal */}
       <AnimatePresence>
         {isModalOpen && selectedSale && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div ref={detailsDialog} role="dialog" aria-modal="true" aria-label="Détails de la vente" tabIndex={-1} className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <motion.div 
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               onClick={() => setIsModalOpen(false)}
@@ -279,7 +227,7 @@ const SalesHistory = () => {
                   <h2 className="text-2xl font-black text-slate-900 tracking-tight">Détails de la Vente</h2>
                   <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest mt-1">N° TRANSACTION: {selectedSale.id}</p>
                 </div>
-                <button 
+                <button aria-label="Fermer" 
                   onClick={() => setIsModalOpen(false)}
                   className="p-2 hover:bg-slate-100 rounded-full transition-colors"
                 >
@@ -402,6 +350,7 @@ const SalesHistory = () => {
                       )}
                       {isGeneratingPDF ? 'Génération...' : 'Télécharger PDF'}
                     </button>
+                    {selectedSale.linkedOdfId && (
                     <button 
                       onClick={() => handleDownloadDeclarationPDF(selectedSale.id)}
                       disabled={isGeneratingDecl || selectedSale.status === 'Cancelled'}
@@ -414,6 +363,7 @@ const SalesHistory = () => {
                       )}
                       {isGeneratingDecl ? 'Génération...' : 'Imprimer Déclaration (Trade-in)'}
                     </button>
+                    )}
                   </div>
                   <button 
                     onClick={() => setIsModalOpen(false)}

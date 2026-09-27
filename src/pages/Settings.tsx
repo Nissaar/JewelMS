@@ -1,12 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
 import { usePWA } from '../context/PWAContext';
 import axios from 'axios';
 import { Save, UserPlus, Shield, Check, X, AlertCircle, Loader2, Download, Smartphone, Monitor } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { FUNCTIONALITIES } from '../shared/permissions';
+import { useDialog } from '../hooks/useDialog';
+
+const SHOP_FIELDS = [
+  { key: 'shop_name', label: 'Nom commercial' },
+  { key: 'shop_legal_name', label: 'Raison sociale' },
+  { key: 'shop_address', label: 'Adresse' },
+  { key: 'shop_phone', label: 'Téléphone' },
+  { key: 'shop_brn', label: 'BRN' },
+  { key: 'shop_vat_number', label: 'N° TVA' },
+];
 
 const Settings = () => {
-  const { token, user: currentUser } = useAuth();
   const { isInstallable, installApp } = usePWA();
   const [activeTab, setActiveTab] = useState<'general' | 'users' | 'pwa'>('general');
   const [settings, setSettings] = useState<any[]>([]);
@@ -23,14 +32,13 @@ const Settings = () => {
 
   // Permissions state
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]); // format: "funcId:action"
+  // Saving is only allowed once the edited user's own permissions have loaded.
+  const [permissionsState, setPermissionsState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [resetPassword, setResetPassword] = useState('');
+  const addUserDialog = useDialog(showAddUser, () => setShowAddUser(false));
+  const editUserDialog = useDialog(isEditModalOpen && !!editingUser, () => setIsEditModalOpen(false));
 
-  const functionalities = [
-    { id: 'stock', name: 'Gestion du Stock' },
-    { id: 'customers', name: 'Fichier Clients (KYC)' },
-    { id: 'sales', name: 'Enregistrement des Ventes' },
-    { id: 'orders', name: 'Commandes Spéciales' },
-    { id: 'reports', name: 'Rapports' },
-  ];
+  const functionalities = FUNCTIONALITIES;
 
   useEffect(() => {
     fetchData();
@@ -40,10 +48,10 @@ const Settings = () => {
     setIsLoading(true);
     try {
       if (activeTab === 'general') {
-        const res = await axios.get('/api/settings', { headers: { Authorization: `Bearer ${token}` } });
+        const res = await axios.get('/api/settings');
         setSettings(res.data);
       } else {
-        const res = await axios.get('/api/users', { headers: { Authorization: `Bearer ${token}` } });
+        const res = await axios.get('/api/users');
         setUsers(res.data);
       }
     } catch (err) {
@@ -57,8 +65,24 @@ const Settings = () => {
   const handleUpdateSetting = async (key: string, value: string) => {
     setIsSaving(true);
     try {
-      await axios.put(`/api/settings/${key}`, { value }, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.put(`/api/settings/${key}`, { value });
       setMessage({ type: 'success', text: 'Paramètres mis à jour' });
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Erreur lors de la mise à jour' });
+    } finally {
+      setIsSaving(false);
+      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+    }
+  };
+
+  const handleSaveShopDetails = async () => {
+    setIsSaving(true);
+    try {
+      for (const { key } of SHOP_FIELDS) {
+        const value = (document.getElementById(key) as HTMLInputElement).value;
+        await axios.put(`/api/settings/${key}`, { value });
+      }
+      setMessage({ type: 'success', text: 'Coordonnées de la boutique mises à jour' });
     } catch (err) {
       setMessage({ type: 'error', text: 'Erreur lors de la mise à jour' });
     } finally {
@@ -71,21 +95,23 @@ const Settings = () => {
     e.preventDefault();
     setIsSaving(true);
     try {
-      await axios.post('/api/users', newUser, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.post('/api/users', newUser);
       setMessage({ type: 'success', text: 'Utilisateur créé' });
       setShowAddUser(false);
       setNewUser({ username: '', email: '', password: '', role: 'User' });
       fetchData();
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Erreur lors de la création' });
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.response?.data?.error || 'Erreur lors de la création' });
     } finally {
       setIsSaving(false);
     }
   };
 
   const fetchPermissions = async (userId: number) => {
+    setSelectedPermissions([]);
+    setPermissionsState('loading');
     try {
-      const res = await axios.get(`/api/users/${userId}/permissions`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await axios.get(`/api/users/${userId}/permissions`);
       const perms: string[] = [];
       res.data.forEach((p: any) => {
         if (p.canView) perms.push(`${p.functionality}:canView`);
@@ -94,27 +120,29 @@ const Settings = () => {
         if (p.canDelete) perms.push(`${p.functionality}:canDelete`);
       });
       setSelectedPermissions(perms);
+      setPermissionsState('ready');
     } catch (err) {
-      console.error(err);
+      setPermissionsState('error');
     }
   };
 
   const handleEditUser = (user: any) => {
     setEditingUser(user);
+    setResetPassword('');
     fetchPermissions(user.id);
     setIsEditModalOpen(true);
   };
 
   const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingUser) return;
+    if (!editingUser || permissionsState !== 'ready') return;
     setIsSaving(true);
     try {
       // 1. Update basic info (role/email)
       await axios.put(`/api/users/${editingUser.id}`, {
         email: editingUser.email,
         role: editingUser.role
-      }, { headers: { Authorization: `Bearer ${token}` } });
+      });
 
       // 2. Prepare permissions objects for backend
       const permsToSave = functionalities.map(f => {
@@ -128,18 +156,31 @@ const Settings = () => {
       });
 
       // 3. Update permissions
-      await axios.put(`/api/users/${editingUser.id}/permissions`, { permissions: permsToSave }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await axios.put(`/api/users/${editingUser.id}/permissions`, { permissions: permsToSave });
 
       setMessage({ type: 'success', text: 'Utilisateur mis à jour' });
       setIsEditModalOpen(false);
       fetchData();
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Erreur lors de la mise à jour' });
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.response?.data?.error || 'Erreur lors de la mise à jour' });
     } finally {
       setIsSaving(false);
       setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!editingUser) return;
+    setIsSaving(true);
+    try {
+      const res = await axios.post(`/api/users/${editingUser.id}/reset-password`, { password: resetPassword });
+      setResetPassword('');
+      setMessage({ type: 'success', text: res.data.message });
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.response?.data?.error || 'Erreur lors de la réinitialisation' });
+    } finally {
+      setIsSaving(false);
+      setTimeout(() => setMessage({ type: '', text: '' }), 4000);
     }
   };
 
@@ -203,6 +244,32 @@ const Settings = () => {
         <div className="space-y-6">
           {activeTab === 'general' ? (
             <div className="grid grid-cols-1 gap-8">
+              <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-lg font-bold text-slate-800">Coordonnées de la boutique</h3>
+                  <button
+                    onClick={handleSaveShopDetails}
+                    disabled={isSaving}
+                    className="flex items-center space-x-2 bg-slate-900 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-slate-800 transition-colors disabled:opacity-50"
+                  >
+                    <Save size={16} />
+                    <span>Enregistrer</span>
+                  </button>
+                </div>
+                <p className="text-sm text-slate-500 mb-6">Imprimées sur les factures et les déclarations de trade-in. Les champs vides ne sont pas imprimés.</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {SHOP_FIELDS.map(({ key, label }) => (
+                    <div key={key}>
+                      <label htmlFor={key} className="block text-xs font-bold text-slate-500 uppercase mb-1">{label}</label>
+                      <input
+                        id={key}
+                        defaultValue={settings.find(s => s.key === key)?.value || ''}
+                        className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-2 outline-none focus:border-amber-400 transition-colors font-medium text-slate-700"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
               {['receipt_heading', 'receipt_policy_wording'].map((key) => {
                 const setting = settings.find(s => s.key === key);
                 return (
@@ -365,7 +432,7 @@ const Settings = () => {
       {/* Add User Modal */}
       <AnimatePresence>
         {showAddUser && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div ref={addUserDialog} role="dialog" aria-modal="true" aria-label="Nouvel utilisateur" tabIndex={-1} className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -375,14 +442,14 @@ const Settings = () => {
               <div className="p-8">
                 <div className="flex items-center justify-between mb-8">
                   <h3 className="text-2xl font-bold text-slate-900">Nouvel Utilisateur</h3>
-                  <button onClick={() => setShowAddUser(false)} className="text-slate-400 hover:text-slate-900">
+                  <button aria-label="Fermer" onClick={() => setShowAddUser(false)} className="text-slate-400 hover:text-slate-900">
                     <X size={24} />
                   </button>
                 </div>
                 <form onSubmit={handleAddUser} className="space-y-4">
                   <div>
                     <label className="block text-sm font-bold text-slate-700 mb-1">Nom d'utilisateur</label>
-                    <input
+                    <input aria-label="Nom d'utilisateur"
                       type="text"
                       className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-amber-400 font-medium"
                       value={newUser.username}
@@ -392,7 +459,7 @@ const Settings = () => {
                   </div>
                   <div>
                     <label className="block text-sm font-bold text-slate-700 mb-1">Email</label>
-                    <input
+                    <input aria-label="Email"
                       type="email"
                       className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-amber-400 font-medium"
                       value={newUser.email}
@@ -402,7 +469,7 @@ const Settings = () => {
                   </div>
                   <div>
                     <label className="block text-sm font-bold text-slate-700 mb-1">Mot de passe</label>
-                    <input
+                    <input aria-label="Mot de passe"
                       type="password"
                       className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-amber-400 font-medium"
                       value={newUser.password}
@@ -412,7 +479,7 @@ const Settings = () => {
                   </div>
                   <div>
                     <label className="block text-sm font-bold text-slate-700 mb-1">Rôle</label>
-                    <select
+                    <select aria-label="Rôle"
                       className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-amber-400 font-bold"
                       value={newUser.role}
                       onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
@@ -438,7 +505,7 @@ const Settings = () => {
       {/* Edit User & Permissions Modal */}
       <AnimatePresence>
         {isEditModalOpen && editingUser && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div ref={editUserDialog} role="dialog" aria-modal="true" aria-label="Modifier l'utilisateur" tabIndex={-1} className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
             <motion.div
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
@@ -466,7 +533,7 @@ const Settings = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8 bg-slate-50 p-6 rounded-3xl border border-slate-100">
                     <div className="space-y-2">
                        <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Email de l'utilisateur</label>
-                       <input 
+                       <input aria-label="Email de l'utilisateur" 
                          type="email"
                          className="w-full bg-white border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-amber-400 font-bold"
                          value={editingUser.email}
@@ -475,7 +542,7 @@ const Settings = () => {
                     </div>
                     <div className="space-y-2">
                        <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Rôle Principal</label>
-                       <select 
+                       <select aria-label="Rôle Principal" 
                          className="w-full bg-white border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-amber-400 font-bold appearance-none"
                          value={editingUser.role}
                          onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })}
@@ -493,7 +560,13 @@ const Settings = () => {
                       <div className="h-1 flex-1 mx-6 bg-slate-100 rounded-full hidden sm:block"></div>
                     </div>
                     
-                    <div className="bg-white rounded-3xl border-2 border-slate-50 overflow-x-auto shadow-inner">
+                    {permissionsState === 'loading' && (
+                      <p className="text-sm font-bold text-slate-400 flex items-center gap-2"><Loader2 className="animate-spin" size={16} /> Chargement des permissions…</p>
+                    )}
+                    {permissionsState === 'error' && (
+                      <p role="alert" className="text-sm font-bold text-red-600">Impossible de charger les permissions de cet utilisateur. Fermez et réessayez avant d'enregistrer.</p>
+                    )}
+                    <div className={`bg-white rounded-3xl border-2 border-slate-50 overflow-x-auto shadow-inner ${permissionsState !== 'ready' ? 'opacity-40 pointer-events-none' : ''}`}>
                       <table className="w-full min-w-[600px] border-collapse">
                         <thead>
                           <tr className="bg-slate-50/50">
@@ -515,7 +588,7 @@ const Settings = () => {
                                 const isSelected = selectedPermissions.includes(permId);
                                 return (
                                   <td key={action} className="text-center py-5 px-4">
-                                    <button
+                                    <button aria-label={`${f.name} : ${({ canView: "voir", canCreate: "créer", canEdit: "éditer", canDelete: "supprimer" } as Record<string, string>)[action]}`} aria-pressed={isSelected}
                                       type="button"
                                       onClick={() => togglePermission(permId)}
                                       className={`h-7 w-7 rounded-lg border-2 flex items-center justify-center mx-auto transition-all ${
@@ -536,6 +609,29 @@ const Settings = () => {
                     </div>
                   </div>
 
+                  <div className="space-y-2">
+                    <label htmlFor="reset-password" className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Réinitialiser le mot de passe</label>
+                    <div className="flex gap-3">
+                      <input
+                        id="reset-password"
+                        type="password"
+                        autoComplete="new-password"
+                        placeholder="Nouveau mot de passe (10 caractères min.)"
+                        value={resetPassword}
+                        onChange={(e) => setResetPassword(e.target.value)}
+                        className="flex-1 bg-white border-2 border-slate-100 rounded-2xl p-4 outline-none focus:border-amber-400 font-bold"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleResetPassword}
+                        disabled={isSaving || resetPassword.length < 10}
+                        className="bg-slate-100 text-slate-700 font-black px-6 rounded-2xl hover:bg-slate-200 transition-all disabled:opacity-50"
+                      >
+                        Réinitialiser
+                      </button>
+                    </div>
+                  </div>
+
                   <div className="flex gap-4 pt-4">
                     <button
                       type="button"
@@ -546,7 +642,7 @@ const Settings = () => {
                     </button>
                     <button
                       type="submit"
-                      disabled={isSaving}
+                      disabled={isSaving || permissionsState !== 'ready'}
                       className="flex-[2] bg-slate-900 text-white font-black py-4 rounded-2xl shadow-xl shadow-slate-900/10 hover:bg-slate-800 transition-all flex items-center justify-center space-x-3"
                     >
                       {isSaving ? <Loader2 className="animate-spin" size={24} /> : (

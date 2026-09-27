@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
-import { 
-  ShieldAlert, Fingerprint, Clock, User, 
-  Search, RefreshCcw, Filter, Loader2,
+import {
+  ShieldAlert, Fingerprint, Clock,
+  Search, RefreshCcw, Loader2,
   Terminal, ShieldCheck, Database
 } from 'lucide-react';
-import { motion } from 'motion/react';
 
 const AuditLogDetails = ({ data }: { data: any }) => {
   if (!data) return <span className="text-slate-400 italic text-xs">Aucun détail</span>;
@@ -112,39 +111,39 @@ const AuditLogDetails = ({ data }: { data: any }) => {
 };
 
 const AuditLogs = () => {
-  const { token, user } = useAuth();
+  const { user } = useAuth();
   const [logs, setLogs] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const PAGE_SIZE = 50;
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
+  // Search runs on the server (the list is paged); wait for typing to pause.
   useEffect(() => {
-    fetchLogs();
-  }, []);
+    const controller = new AbortController();
+    const timer = setTimeout(() => fetchLogs(controller.signal), searchQuery ? 300 : 0);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [page, searchQuery]);
 
-  const fetchLogs = async () => {
+  const fetchLogs = async (signal?: AbortSignal) => {
     setIsLoading(true);
     try {
       const res = await axios.get('/api/audit-logs', {
-        headers: { Authorization: `Bearer ${token}` }
+        params: { page, pageSize: PAGE_SIZE, q: searchQuery || undefined },
+        signal,
       });
-      setLogs(res.data);
+      setLogs(res.data.items);
+      setTotal(res.data.total);
     } catch (err) {
-      console.error(err);
+      if (!axios.isCancel(err)) console.error(err);
     } finally {
-      setIsLoading(false);
+      if (!signal?.aborted) setIsLoading(false);
     }
   };
 
-  const filteredLogs = (logs || []).filter(l => {
-    const query = String(searchQuery || '').toLowerCase();
-    const username = String(l.username || '').toLowerCase();
-    const action = String(l.action || '').toLowerCase();
-    const details = typeof l.details === 'object' 
-      ? JSON.stringify(l.details).toLowerCase() 
-      : String(l.details || '').toLowerCase();
-    
-    return username.includes(query) || action.includes(query) || details.includes(query);
-  });
+  const filteredLogs = logs;
 
   if (user?.role !== 'Admin') {
     return (
@@ -168,7 +167,7 @@ const AuditLogs = () => {
           <p className="text-slate-500 font-medium">Surveillance en temps réel des actions système</p>
         </div>
         <button 
-          onClick={fetchLogs}
+          onClick={() => fetchLogs()}
           className="flex items-center gap-2 bg-white border-2 border-slate-100 px-4 py-2 rounded-xl text-slate-600 font-bold hover:bg-slate-50 transition-all shadow-sm"
         >
           <RefreshCcw size={18} />
@@ -184,7 +183,7 @@ const AuditLogs = () => {
            </div>
            <div>
              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Total Actions</p>
-             <p className="text-2xl font-black text-slate-900">{logs.length}</p>
+             <p className="text-2xl font-black text-slate-900">{total}</p>
            </div>
         </div>
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex items-center gap-4">
@@ -210,12 +209,12 @@ const AuditLogs = () => {
       {/* Filter Bar */}
       <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4">
         <Search className="text-slate-400" size={20} />
-        <input 
+        <input aria-label="Rechercher par utilisateur, action ou détails..." 
           type="text" 
           placeholder="Rechercher par utilisateur, action ou détails..."
           className="flex-1 bg-transparent border-none outline-none font-medium"
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
         />
       </div>
 
@@ -273,6 +272,16 @@ const AuditLogs = () => {
             </tbody>
           </table>
         </div>
+
+        <div className="flex items-center justify-between text-sm font-bold text-slate-500 px-6 py-4 border-t border-slate-100">
+        <span>Page {page} / {pageCount} · {total} actions</span>
+        <div className="flex gap-2">
+          <button type="button" disabled={page <= 1 || isLoading} onClick={() => setPage(p => p - 1)}
+            className="px-4 py-2 bg-white border-2 border-slate-100 rounded-xl hover:bg-slate-50 disabled:opacity-40">Précédent</button>
+          <button type="button" disabled={page >= pageCount || isLoading} onClick={() => setPage(p => p + 1)}
+            className="px-4 py-2 bg-white border-2 border-slate-100 rounded-xl hover:bg-slate-50 disabled:opacity-40">Suivant</button>
+        </div>
+      </div>
       </div>
     </div>
   );

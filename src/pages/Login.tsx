@@ -56,6 +56,8 @@ const Login = () => {
               <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
               <input
                 type="text"
+                aria-label="Nom d'utilisateur"
+                autoComplete="username"
                 placeholder="Nom d'utilisateur"
                 className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-4 pl-12 pr-4 outline-none focus:border-amber-400 transition-colors font-medium"
                 value={username}
@@ -68,6 +70,8 @@ const Login = () => {
               <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
               <input
                 type="password"
+                aria-label="Mot de passe"
+                autoComplete="current-password"
                 placeholder="Mot de passe"
                 className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-4 pl-12 pr-4 outline-none focus:border-amber-400 transition-colors font-medium"
                 value={password}

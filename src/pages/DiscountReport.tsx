@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
-import { 
-  Percent, Tag, Search, Calendar, RefreshCcw, 
-  Loader2, AlertCircle, TrendingDown, ArrowDownRight, 
+import {
+  Percent, Tag, Search, Calendar, RefreshCcw,
+  Loader2, AlertCircle, TrendingDown,
   ShoppingBag, Trash2
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
 import { formatCurrency } from '../lib/utils';
 
 interface DiscountRecord {
@@ -25,7 +24,6 @@ interface DiscountRecord {
 const DiscountReport: React.FC = () => {
   const { token } = useAuth();
   const [records, setRecords] = useState<DiscountRecord[]>([]);
-  const [summary, setSummary] = useState({ totalDiscounts: '0.00', count: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,14 +36,8 @@ const DiscountReport: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await axios.get('/api/reports/discounts', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await axios.get('/api/reports/discounts');
       setRecords(res.data.data || []);
-      setSummary({
-        totalDiscounts: res.data.summary?.totalDiscounts || '0.00',
-        count: res.data.summary?.count || 0
-      });
     } catch (err: any) {
       console.error("Error fetching discount report:", err);
       setError("Impossible de charger le rapport d'audit des remises");
@@ -179,7 +171,7 @@ const DiscountReport: React.FC = () => {
             <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Rechercher</label>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-              <input 
+              <input aria-label="Rechercher" 
                 type="text" 
                 placeholder="N° Vente, Client, Code-barres ou Article..."
                 className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-2 pl-10 pr-4 font-medium outline-none focus:border-amber-400 transition-all placeholder:text-slate-400"
@@ -194,7 +186,7 @@ const DiscountReport: React.FC = () => {
             <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Date Début</label>
             <div className="relative">
               <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
-              <input 
+              <input aria-label="Date Début" 
                 type="date" 
                 className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-2 pl-10 pr-3 font-bold outline-none focus:border-amber-400 transition-all"
                 value={startDate}
@@ -207,7 +199,7 @@ const DiscountReport: React.FC = () => {
             <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Date Fin</label>
             <div className="relative">
               <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
-              <input 
+              <input aria-label="Date Fin" 
                 type="date" 
                 className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-2 pl-10 pr-3 font-bold outline-none focus:border-amber-400 transition-all"
                 value={endDate}

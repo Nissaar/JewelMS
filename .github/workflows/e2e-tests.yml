@@ -1,16 +1,29 @@
-name: Haujee Jewellery E2E Tests CI
+name: E2E Tests
 
 on:
   push:
-    branches: [ main, master ]
+    branches: ['**']
   pull_request:
-    branches: [ main, master ]
+    branches: [main]
   workflow_dispatch:
+
+# A newer push to the same branch or PR supersedes the running job.
+concurrency:
+  group: e2e-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   test:
-    name: Run Playwright E2E Tests
+    name: Playwright E2E
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Only one comment step needs write access; scope it to the PR event.
+    permissions:
+      contents: read
+      pull-requests: write
 
     services:
       postgres:
@@ -32,46 +45,102 @@ jobs:
       JWT_SECRET: ci-testing-jwt-secret-key-1234
       BASE_URL: http://localhost:3000
       APP_URL: http://localhost:3000
-      NODE_ENV: production
       PORT: 3000
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: 20
-        cache: 'npm'
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
 
-    - name: Install dependencies
-      run: NODE_ENV=development npm ci || NODE_ENV=development npm install
+      - name: Install dependencies
+        run: npm ci
 
-    - name: Setup database schema and seed
-      run: |
-        psql "postgresql://postgres:postgres@localhost:5432/haujee" -f init.sql
-        npm run db:push
+      - name: Type check
+        run: npm run lint
 
-    - name: Build fullstack application
-      run: npm run build
+      - name: Unit tests
+        run: npm run test:unit
 
-    - name: Install Playwright Chromium with system dependencies
-      run: npx playwright install chromium --with-deps
+      - name: Check init.sql matches the migrations
+        run: |
+          npm run db:init-sql
+          git diff --exit-code init.sql || (echo "::error file=init.sql::init.sql is out of date. Run 'npm run db:init-sql' and commit it." && exit 1)
 
-    - name: Run Playwright tests
-      run: npx playwright test
+      # Same path as a new client install: the schema comes from init.sql.
+      - name: Create database from init.sql
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f init.sql
 
-    - name: Generate PDF test report
-      if: always()
-      run: node generate-pdf-report.js
+      - name: Build
+        run: npm run build
 
-    - name: Upload Test Artifacts
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: e2e-test-results-and-reports
-        path: |
-          playwright-report/
-          test-results/
-        retention-days: 14
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright Chromium
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: npx playwright install chromium --with-deps
+
+      - name: Install Playwright system dependencies
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+
+      - name: Run Playwright tests
+        run: npx playwright test
+        env:
+          NODE_ENV: production
+
+      - name: Generate PDF test report
+        if: ${{ !cancelled() }}
+        run: node generate-pdf-report.js
+
+      - name: Write job summary
+        if: ${{ !cancelled() }}
+        run: node .github/scripts/e2e-summary.mjs >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload test reports
+        id: upload
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report-${{ github.run_number }}-${{ github.run_attempt }}
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
+
+      - name: Comment results on the pull request
+        # Forked PRs get a read-only token; the job summary still has the results.
+        if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+        uses: actions/github-script@v7
+        env:
+          ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+        with:
+          script: |
+            const { execSync } = require('child_process');
+            const summary = execSync('node .github/scripts/e2e-summary.mjs').toString();
+            const marker = '<!-- e2e-report -->';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              marker,
+              summary,
+              `**Commit:** ${context.payload.pull_request.head.sha.slice(0, 7)} · [Workflow run](${runUrl})` +
+                (process.env.ARTIFACT_URL ? ` · [Download HTML + PDF report](${process.env.ARTIFACT_URL})` : ''),
+            ].join('\n');
+            const { data: comments } = await github.rest.issues.listComments({
+              ...context.repo, issue_number: context.issue.number, per_page: 100,
+            });
+            const existing = comments.find(c => c.user.type === 'Bot' && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ ...context.repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body });
+            }

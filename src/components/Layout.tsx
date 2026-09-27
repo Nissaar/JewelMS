@@ -1,41 +1,25 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Search, User, LogOut, Package, Users, ShoppingCart, FileText, Settings, Menu, X, PlusCircle, Fingerprint, BarChart3, Download, History, Percent } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { usePWA } from '../context/PWAContext';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'motion/react';
 import { getCleanDisplayLabel } from '../lib/utils';
+import { PAGE_ACCESS, hasPermission } from '../shared/permissions';
 
-export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, token, logout } = useAuth();
+/** App shell: sidebar, global search, and the current page (rendered by <Outlet />). */
+export const Layout: React.FC = () => {
+  const { user, logout } = useAuth();
+  const { isInstallable, installApp } = usePWA();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
-  const [showInstallBtn, setShowInstallBtn] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
-
-  useEffect(() => {
-    window.addEventListener('beforeinstallprompt', (e) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-      setShowInstallBtn(true);
-    });
-  }, []);
-
-  const handleInstallClick = async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') {
-      setDeferredPrompt(null);
-      setShowInstallBtn(false);
-    }
-  };
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -47,40 +31,53 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Search only when something is typed; a newer query cancels the previous one.
   useEffect(() => {
+    const q = searchQuery.trim();
+    if (!q) {
+      setSearchResults(null);
+      setIsSearchOpen(false);
+      return;
+    }
+    const controller = new AbortController();
     const delayDebounceFn = setTimeout(async () => {
       setIsSearching(true);
       setIsSearchOpen(true);
       try {
-        const response = await axios.get(`/api/search?q=${searchQuery}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const response = await axios.get('/api/search', { params: { q }, signal: controller.signal });
         setSearchResults(response.data);
       } catch (error) {
-        console.error("Search failed:", error);
+        if (!axios.isCancel(error)) console.error("Search failed:", error);
       } finally {
-        setIsSearching(false);
+        if (!controller.signal.aborted) setIsSearching(false);
       }
     }, 300);
 
-    return () => clearTimeout(delayDebounceFn);
-  }, [searchQuery, token]);
+    return () => { clearTimeout(delayDebounceFn); controller.abort(); };
+  }, [searchQuery]);
 
-  const hasPermission = (funcId: string, action: 'canView' | 'canCreate' | 'canEdit' | 'canDelete' = 'canView') => {
-    if (user?.role === 'Admin') return true;
-    return user?.permissions?.some(p => p.functionality === funcId && p[action]);
+  // Search results open the page, filtered to that record.
+  const openResult = (path: string, q: string) => {
+    navigate(`${path}?q=${encodeURIComponent(q)}`);
+    setIsSearchOpen(false);
+    setSearchQuery('');
+  };
+
+  const canOpen = (path: string) => {
+    const requirement = PAGE_ACCESS[path];
+    return !requirement || hasPermission(user, ...requirement);
   };
 
   const navItems = [
     { name: 'Dashboard', icon: Menu, path: '/', show: true },
-    { name: 'Stock', icon: Package, path: '/stock', show: hasPermission('stock') },
-    { name: 'Clients', icon: Users, path: '/customers', show: hasPermission('customers') },
-    { name: 'Ventes', icon: ShoppingCart, path: '/sales', show: hasPermission('sales') },
-    { name: 'Historique des Ventes', icon: History, path: '/sales-history', show: hasPermission('sales') },
-    { name: 'Commandes', icon: FileText, path: '/orders', show: hasPermission('orders') },
-    { name: 'Trade-ins (ODF)', icon: PlusCircle, path: '/odf', show: hasPermission('odf') },
-    { name: 'Rapports', icon: FileText, path: '/reports', show: hasPermission('reports') },
-    { name: 'Audit Remises', icon: Percent, path: '/reports/discounts', show: hasPermission('reports') },
+    { name: 'Stock', icon: Package, path: '/stock', show: canOpen('/stock') },
+    { name: 'Clients', icon: Users, path: '/customers', show: canOpen('/customers') },
+    { name: 'Ventes', icon: ShoppingCart, path: '/sales', show: canOpen('/sales') },
+    { name: 'Historique des Ventes', icon: History, path: '/sales-history', show: canOpen('/sales-history') },
+    { name: 'Commandes', icon: FileText, path: '/orders', show: canOpen('/orders') },
+    { name: 'Trade-ins (ODF)', icon: PlusCircle, path: '/odf', show: canOpen('/odf') },
+    { name: 'Rapports', icon: FileText, path: '/reports', show: canOpen('/reports') },
+    { name: 'Audit Remises', icon: Percent, path: '/reports/discounts', show: canOpen('/reports/discounts') },
   ];
 
   if (user?.role === 'Admin') {
@@ -100,7 +97,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             <Link to="/" className="text-2xl font-bold tracking-tighter text-amber-400">
               HAUJEE
             </Link>
-            <button className="lg:hidden" onClick={() => setIsSidebarOpen(false)}>
+            <button aria-label="Fermer le menu" className="lg:hidden" onClick={() => setIsSidebarOpen(false)}>
               <X size={24} />
             </button>
           </div>
@@ -122,9 +119,10 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
           </nav>
 
           <div className="p-6 border-t border-slate-800 shrink-0">
-            {showInstallBtn && (
-              <button 
-                onClick={handleInstallClick}
+            {isInstallable && (
+              <button
+                type="button"
+                onClick={installApp}
                 className="flex items-center space-x-3 px-4 py-3 mb-6 w-full bg-amber-500 text-slate-900 rounded-xl font-bold text-sm shadow-lg shadow-amber-500/20 hover:bg-amber-400 transition-all active:scale-95"
               >
                 <Download size={18} />
@@ -156,14 +154,14 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Top Header */}
         <header className="bg-white border-b border-slate-200 h-16 flex items-center justify-between px-4 lg:px-8 shrink-0">
-          <button className="lg:hidden p-2 text-slate-600" onClick={() => setIsSidebarOpen(true)}>
+          <button aria-label="Ouvrir le menu" className="lg:hidden p-2 text-slate-600" onClick={() => setIsSidebarOpen(true)}>
             <Menu size={24} />
           </button>
 
           <div className="flex-1 max-w-2xl mx-4 relative" ref={searchRef}>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-              <input
+              <input aria-label="Rechercher stock, client, facture..."
                 type="text"
                 placeholder="Rechercher stock, client, facture..."
                 className="w-full bg-slate-100 border-none rounded-full py-2 pl-10 pr-4 text-sm focus:ring-2 focus:ring-amber-500/20 transition-all outline-none"
@@ -192,14 +190,14 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
                           <div>
                             <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Stock</h3>
                             {searchResults.stock.slice(0, 5).map((item: any) => (
-                              <div key={item.id} className="p-3 hover:bg-slate-50 rounded-lg cursor-pointer flex justify-between items-center" onClick={() => { navigate(`/stock/${item.id}`); setIsSearchOpen(false); }}>
+                              <button type="button" key={item.id} className="w-full text-left p-3 hover:bg-slate-50 focus:bg-slate-50 rounded-lg flex justify-between items-center" onClick={() => openResult('/stock', item.barcode)}>
                                 <div>
                                   <p className="font-semibold text-sm text-slate-900">{getCleanDisplayLabel(item)}</p>
                                 </div>
                                 <div className="text-right ml-4">
                                   <p className="text-xs font-bold text-amber-600">{item.weightGrams ? `${item.weightGrams}g` : ''}</p>
                                 </div>
-                              </div>
+                              </button>
                             ))}
                           </div>
                         )}
@@ -207,14 +205,14 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
                           <div>
                             <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Clients</h3>
                             {searchResults.customers.slice(0, 5).map((item: any) => (
-                              <div key={item.id} className="p-2 hover:bg-slate-50 rounded-lg cursor-pointer" onClick={() => { navigate(`/customers/${item.id}`); setIsSearchOpen(false); }}>
+                              <button type="button" key={item.id} className="w-full text-left p-2 hover:bg-slate-50 focus:bg-slate-50 rounded-lg" onClick={() => openResult('/customers', item.name)}>
                                 <p className="font-medium text-sm text-slate-900">{item.name}</p>
                                 <p className="text-xs text-slate-500">{item.idNumber}</p>
-                              </div>
+                              </button>
                             ))}
                           </div>
                         )}
-                        {(!searchResults || (searchResults.stock.length === 0 && searchResults.customers.length === 0)) && (
+                        {(!searchResults || (searchResults.stock.length === 0 && searchResults.customers.length === 0)) && !isSearching && (
                           <div className="text-center py-8 text-slate-500 text-sm">
                             Aucun résultat trouvé pour "{searchQuery}"
                           </div>
@@ -242,7 +240,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3 }}
           >
-            {children}
+            <Outlet />
           </motion.div>
         </main>
       </div>

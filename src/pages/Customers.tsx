@@ -1,67 +1,40 @@
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
+import React, { useState } from 'react';
 import axios from 'axios';
-import { 
-  Users, Search, Plus, MapPin, Phone, 
-  ShieldAlert, History, FileText, Package, 
-  Scale, X, Loader2, User, ChevronRight,
-  TrendingDown, TrendingUp, Minus, UserPlus,
-  Check, AlertCircle, Mail, Edit2
+import {
+  Users, Search, Plus, MapPin, Phone,
+  History, Package,
+  X, Loader2, User, ChevronRight,
+  TrendingDown, TrendingUp,
+  Mail, Edit2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatCurrency, getItemFullDescription } from '../lib/utils';
 import CustomerModal from '../components/CustomerModal';
+import { useSearchParams } from 'react-router-dom';
+import { usePagedList } from '../hooks/usePagedList';
+import { Pager } from '../components/Pager';
+import { activateOnKey } from '../lib/a11y';
+import { useDialog } from '../hooks/useDialog';
 
 const Customers = () => {
-  const { token } = useAuth();
-  const [customers, setCustomers] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [search, setSearch] = useState('');
+  const [searchParams] = useSearchParams();
+  const [search, setSearch] = useState(searchParams.get('q') || '');
+  // Searched (name or ID number) and paged on the server.
+  const list = usePagedList<any>('/api/customers', { q: search }, 24);
+  const { items: customers, isLoading } = list;
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [editingCustomer, setEditingCustomer] = useState<any>(null);
   const [history, setHistory] = useState<any>(null);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
-  
+  const detailsDialog = useDialog(!!selectedCustomer, () => setSelectedCustomer(null));
+
   // New Customer Form State
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [isSearching, setIsSearching] = useState(false);
-
-  // Debounce Search
-  useEffect(() => {
-    if (search === '') {
-      fetchCustomers();
-      return;
-    }
-    
-    setIsSearching(true);
-    const timer = setTimeout(() => {
-      fetchCustomers(search);
-      setIsSearching(false);
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [search]);
-
-  const fetchCustomers = async (query = '') => {
-    setIsLoading(true);
-    try {
-      const res = await axios.get(`/api/customers${query ? `?search=${query}` : ''}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setCustomers(res.data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const fetchCustomerHistory = async (id: number) => {
     setIsHistoryLoading(true);
     try {
-      const res = await axios.get(`/api/customers/${id}/history`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await axios.get(`/api/customers/${id}/history`);
       setHistory(res.data);
     } catch (err) {
       console.error(err);
@@ -98,12 +71,12 @@ const Customers = () => {
         <div className="flex gap-4">
           <div className="flex gap-2">
             <div className="relative">
-              {isSearching || isLoading ? (
+              {isLoading ? (
                 <Loader2 className="absolute left-4 top-1/2 -translate-y-1/2 text-amber-500 animate-spin" size={20} />
               ) : (
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
               )}
-              <input 
+              <input aria-label="Nom ou N° de Carte..." 
                 type="text" 
                 placeholder="Nom ou N° de Carte..."
                 className="bg-slate-50 border-2 border-slate-100 rounded-2xl py-3 pl-12 pr-4 font-bold outline-none focus:border-amber-400 w-64 transition-all"
@@ -151,11 +124,15 @@ const Customers = () => {
             <motion.div 
               key={c.id}
               layoutId={`card-${c.id}`}
+              role="button"
+              tabIndex={0}
+              aria-label={`Voir le dossier de ${c.name}`}
               onClick={() => openDetails(c)}
+              onKeyDown={activateOnKey(() => openDetails(c))}
               className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 hover:shadow-xl hover:border-amber-100 transition-all cursor-pointer group relative"
             >
-              <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
-                <button 
+              <div className="absolute top-4 right-4 transition-opacity flex gap-2 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
+                <button aria-label="Modifier le client" 
                   onClick={(e) => {
                     e.stopPropagation();
                     setEditingCustomer(c);
@@ -199,6 +176,7 @@ const Customers = () => {
           ))
         )}
       </div>
+      <Pager page={list.page} pageCount={list.pageCount} total={list.total} isLoading={isLoading} onPage={list.setPage} noun="clients" />
 
       {/* Customer Modal (Create/Edit) */}
       <CustomerModal 
@@ -208,7 +186,7 @@ const Customers = () => {
           setEditingCustomer(null);
         }}
         onSuccess={() => {
-          fetchCustomers(search);
+          list.reload();
           setIsCreateModalOpen(false);
           setEditingCustomer(null);
         }}
@@ -219,7 +197,7 @@ const Customers = () => {
       {/* Details Side-Drawer/Modal */}
       <AnimatePresence>
         {selectedCustomer && (
-          <div className="fixed inset-0 z-50 flex justify-end">
+          <div ref={detailsDialog} role="dialog" aria-modal="true" aria-label="Dossier client" tabIndex={-1} className="fixed inset-0 z-50 flex justify-end">
             <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -244,7 +222,7 @@ const Customers = () => {
                     <p className="text-xs font-black text-slate-400 uppercase tracking-widest">{selectedCustomer.idNumber}</p>
                   </div>
                 </div>
-                <button 
+                <button aria-label="Fermer" 
                   onClick={() => setSelectedCustomer(null)}
                   className="p-3 hover:bg-white hover:shadow-md rounded-full transition-all text-slate-400"
                 >

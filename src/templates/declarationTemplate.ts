@@ -30,8 +30,8 @@ export const declarationPdfFixedHtml = `<!DOCTYPE html>
 
     <div class="text-center bold" style="margin-bottom: 20px;">
         DECLARATION OF OWNERSHIP IN CASE OF TRADE-IN OF JEWELLERY<br>
-        SOCIETE MOHAMMUD HAUJEE & SONS<br>
-        33, SIR SEEWOOSAGUR RAMGOOLAM STREET<br>
+        {{shop_legal_name}}<br>
+        {{shop_address}}<br>
         PORT LOUIS
     </div>
 

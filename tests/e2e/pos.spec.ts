@@ -37,8 +37,8 @@ test.describe('Point of Sale (POS) Checkout', () => {
     await page.locator('input[placeholder="Saisir barcode ou catégorie..."]').fill(posBarcode);
     await page.locator('button:has-text("Rechercher")').click();
 
-    // Item should be recognized
-    await expect(page.locator(`p:has-text("${posBarcode}")`).first()).toBeVisible();
+    // Item should be in the cart
+    await expect(page.locator(`tr:has-text("${posBarcode}")`)).toBeVisible();
 
     // Click "Continuer"
     await page.locator('button:has-text("Continuer")').click();
@@ -62,10 +62,43 @@ test.describe('Point of Sale (POS) Checkout', () => {
 
     // Verify PDF actions exist on screen
     await expect(page.locator('p:has-text("Télécharger PDF")')).toBeVisible();
-    await expect(page.locator('p:has-text("Imprimer Déclaration (Trade-in)")')).toBeVisible();
+    // No trade-in was linked, so there is no declaration of ownership to print.
+    await expect(page.locator('p:has-text("Imprimer Déclaration (Trade-in)")')).toHaveCount(0);
 
     // Go back to sales
     await page.locator('button:has-text("Nouvelle Vente")').click();
     await expect(page).toHaveURL('/sales');
+  });
+
+  test('should block checkout when a cart price is cleared or above the list price', async ({ page, request }) => {
+    // Create the item through the API to keep this test about the till.
+    const login = await request.post('/api/login', { data: { username: 'admin', password: 'mysecret' } });
+    const { token } = await login.json();
+    const barcode = `POS_PRICE_${Date.now()}`;
+    const created = await request.post('/api/stock', {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { barcode, category: 'Jewellery', stockType: 'on-display', price: '5000' },
+    });
+    expect(created.ok()).toBeTruthy();
+
+    await page.locator('a[href="/sales"]').click();
+    await page.locator('input[placeholder="Saisir barcode ou catégorie..."]').fill(barcode);
+    await page.locator('button:has-text("Rechercher")').click();
+    await expect(page.locator(`tr:has-text("${barcode}")`)).toBeVisible();
+
+    const priceInput = page.locator('input[type="number"][step="0.01"]').first();
+    const continueButton = page.locator('button:has-text("Continuer")');
+
+    await priceInput.fill('');
+    await expect(page.getByRole('alert')).toContainText('prix supérieur à 0');
+    await expect(continueButton).toBeDisabled();
+
+    await priceInput.fill('6000');
+    await expect(page.getByRole('alert')).toContainText('ne peut pas dépasser');
+    await expect(continueButton).toBeDisabled();
+
+    await priceInput.fill('4500');
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    await expect(continueButton).toBeEnabled();
   });
 });

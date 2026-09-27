@@ -1,76 +1,54 @@
+import path from "path";
+import { sql } from "drizzle-orm";
+import { readMigrationFiles } from "drizzle-orm/migrator";
 import { db, isPglite } from "./index";
 import { settings, users } from "./schema";
-import { sql } from "drizzle-orm";
+import { upgradeLegacySchema } from "./legacy";
+
+const MIGRATIONS_FOLDER = path.resolve(process.cwd(), "drizzle");
+
+const firstRow = (result: any) => (result.rows ?? result)[0];
 
 /**
- * Idempotent schema fixes and default-data seeding, run once at startup.
- * Failures are logged but non-fatal: the server still boots so the problem is
- * visible through the app rather than a silent exit.
+ * Applies schema migrations from drizzle/ and seeds default data, at startup.
+ * Any failure stops the server: running on a half-migrated schema corrupts data.
  */
 export async function runMigrations() {
-// Run one-time database migrations/fixes
-try {
-  if (isPglite) {
-    const { migrate } = await import("drizzle-orm/pglite/migrator");
-    await migrate(db, { migrationsFolder: "./drizzle" });
-    console.log("PGlite schema migrated successfully.");
-  }
+  await adoptLegacyDatabase();
 
-  await db.execute(sql`ALTER TABLE stock DROP CONSTRAINT IF EXISTS stock_category_check;`);
-  await db.execute(sql`ALTER TABLE stock ALTER COLUMN category TYPE VARCHAR(100);`);
-  await db.execute(sql`ALTER TABLE stock ADD COLUMN IF NOT EXISTS price NUMERIC(15, 2) DEFAULT 0.00;`);
-  await db.execute(sql`ALTER TABLE stock ADD COLUMN IF NOT EXISTS price_net NUMERIC(15, 2) DEFAULT 0.00;`);
-  await db.execute(sql`ALTER TABLE stock ADD COLUMN IF NOT EXISTS price_vat NUMERIC(15, 2) DEFAULT 0.00;`);
-  await db.execute(sql`ALTER TABLE stock ADD COLUMN IF NOT EXISTS item_code VARCHAR(100);`);
-  await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_stock_item_code ON stock(item_code);`);
-  await db.execute(sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(15, 2);`);
-  await db.execute(sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS discount_percentage NUMERIC(5, 2);`);
-  await db.execute(sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS linked_odf_id INTEGER REFERENCES odf(id) ON DELETE SET NULL;`);
-  await db.execute(sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS linked_commande_id INTEGER REFERENCES orders(id) ON DELETE SET NULL;`);
-  await db.execute(sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'Completed' NOT NULL;`);
-  await db.execute(sql`ALTER TABLE orders ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'Pending' NOT NULL;`);
-  await db.execute(sql`ALTER TABLE sales DROP COLUMN IF EXISTS gold_rate;`);
-  await db.execute(sql`ALTER TABLE orders DROP COLUMN IF EXISTS gold_rate;`);
-  
-  // Make customers.id_number nullable for over-the-counter sales
-  await db.execute(sql`ALTER TABLE customers ALTER COLUMN id_number DROP NOT NULL;`);
-  
-  // Clean up brand field for Jewellery items
-  await db.execute(sql`UPDATE stock SET brand = NULL WHERE category = 'Jewellery' AND brand IS NOT NULL;`);
-  
-  // Create odf_items table if not exists
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS odf_items (
-      id SERIAL PRIMARY KEY,
-      odf_id INTEGER REFERENCES odf(id) ON DELETE CASCADE NOT NULL,
-      description TEXT NOT NULL,
-      mass NUMERIC(10, 3) NOT NULL,
-      fineness VARCHAR(20) NOT NULL,
-      price NUMERIC(15, 2) DEFAULT 0.00,
-      created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
-    );
-  `);
-  await db.execute(sql`ALTER TABLE odf_items ADD COLUMN IF NOT EXISTS price NUMERIC(15, 2) DEFAULT 0.00;`);
+  const { migrate } = isPglite
+    ? await import("drizzle-orm/pglite/migrator")
+    : await import("drizzle-orm/node-postgres/migrator");
+  await migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
 
-  // Create sale_items table if not exists
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS sale_items (
-      id SERIAL PRIMARY KEY,
-      sale_id INTEGER REFERENCES sales(id) ON DELETE CASCADE NOT NULL,
-      stock_id INTEGER REFERENCES stock(id) ON DELETE SET NULL,
-      barcode VARCHAR(100),
-      item_details TEXT,
-      qty INTEGER DEFAULT 1 NOT NULL,
-      unit_sales_price NUMERIC(15, 2),
-      amount NUMERIC(15, 2),
-      weight NUMERIC(10, 3),
-      fineness VARCHAR(20),
-      metal_type VARCHAR(50),
-      created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
-    );
-  `);
-  console.log("Database migrations: stock_category_check dropped, category length increased, price added, gold_rate columns dropped, odf_items, and sale_items tables verified.");
+  await seedDefaults();
+}
 
+/**
+ * A database that already has tables but no record of the baseline migration
+ * was created by init.sql. Upgrade it to the baseline schema and record the
+ * baseline as applied, so migrate() only runs the migrations after it.
+ */
+async function adoptLegacyDatabase() {
+  const { has_users } = firstRow(await db.execute(sql`SELECT to_regclass('public.users') IS NOT NULL AS has_users`));
+  if (!has_users) return; // empty database: migrate() creates everything
+
+  const [baseline] = readMigrationFiles({ migrationsFolder: MIGRATIONS_FOLDER });
+  await db.execute(sql`CREATE SCHEMA IF NOT EXISTS drizzle`);
+  await db.execute(sql`CREATE TABLE IF NOT EXISTS drizzle.__drizzle_migrations (id SERIAL PRIMARY KEY, hash text NOT NULL, created_at bigint)`);
+  const { adopted } = firstRow(await db.execute(
+    sql`SELECT EXISTS (SELECT 1 FROM drizzle.__drizzle_migrations WHERE created_at >= ${baseline.folderMillis}) AS adopted`,
+  ));
+  if (adopted) return;
+
+  console.log("Existing database without migration history: upgrading it to the baseline schema.");
+  await db.transaction(async (tx) => {
+    await upgradeLegacySchema(tx);
+    await tx.execute(sql`INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES (${baseline.hash}, ${baseline.folderMillis})`);
+  });
+}
+
+async function seedDefaults() {
   // Seed default data if users/settings don't exist yet
   const existingUsers = await db.select().from(users).limit(1);
   if (existingUsers.length === 0) {
@@ -98,8 +76,11 @@ try {
     ]);
     console.log("Default settings seeded.");
   }
-} catch (err) {
-  console.error("Migration error (non-fatal):", err);
-}
 
+  // Shop legal details (Settings > Général). Added individually so existing
+  // databases get the new keys without touching values already set.
+  const { SHOP_SETTING_DEFAULTS } = await import("../services/shopDetails");
+  for (const [key, value] of Object.entries(SHOP_SETTING_DEFAULTS)) {
+    await db.insert(settings).values({ key, value }).onConflictDoNothing({ target: settings.key });
+  }
 }

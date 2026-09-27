@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import axios from 'axios';
-import { 
-  User, ShieldAlert, FileText, MapPin, 
-  Phone, Mail, Check, AlertCircle, Loader2, 
-  X, UserPlus
+import {
+  User, ShieldAlert, FileText, MapPin,
+  Phone, Mail, Check, AlertCircle, Loader2,
+  X, UserPlus, ScanLine
 } from 'lucide-react';
+import { scanIdCard, type ScanStage } from '../lib/idCardScanner';
 import { motion } from 'motion/react';
-import { useAuth } from '../context/AuthContext';
+import { useDialog } from '../hooks/useDialog';
 
 interface CustomerModalProps {
   isOpen: boolean;
@@ -17,7 +18,6 @@ interface CustomerModalProps {
 }
 
 const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSuccess, initialName = '', customerToEdit = null }) => {
-  const { token } = useAuth();
   const [newCustomer, setNewCustomer] = useState({
     name: '',
     email: '',
@@ -28,7 +28,41 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSucces
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [scanStage, setScanStage] = useState<ScanStage | null>(null);
+  const [scanned, setScanned] = useState<{ fields: string[]; warnings: string[] } | null>(null);
+  const idPhotoInput = useRef<HTMLInputElement>(null);
+
+  // Fills name and ID number from a photo of the customer's ID card. The photo
+  // is read on this device and not kept.
+  const handleIdPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same photo
+    if (!file) return;
+    setScanned(null);
+    setMessage({ type: '', text: '' });
+    try {
+      const result = await scanIdCard(file, setScanStage);
+      const filled = [result.fullName && 'name', result.idNumber && 'idNumber'].filter(Boolean) as string[];
+      setNewCustomer(prev => ({
+        ...prev,
+        ...(result.fullName ? { name: result.fullName } : {}),
+        ...(result.idNumber ? { idNumber: result.idNumber } : {}),
+      }));
+      if (!result.fullName && !result.idNumber) {
+        setMessage({ type: 'error', text: "Carte non lue. Reprenez la photo bien à plat, nette et sans reflet, ou saisissez les informations." });
+      } else {
+        setScanned({ fields: filled, warnings: result.warnings });
+      }
+    } catch (err) {
+      console.error('ID scan failed:', err);
+      setMessage({ type: 'error', text: "La lecture de la carte a échoué. Saisissez les informations manuellement." });
+    } finally {
+      setScanStage(null);
+    }
+  };
+  const scannedClass = (field: string) => scanned?.fields.includes(field) ? ' ring-2 ring-amber-300' : '';
   const [message, setMessage] = useState({ type: '', text: '' });
+  const dialogRef = useDialog(isOpen, onClose);
   const [hasInitialized, setHasInitialized] = useState(false);
 
   // Use useEffect to reset state when modal opens or editing customer changes
@@ -57,6 +91,7 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSucces
         }
         setHasInitialized(true);
         setMessage({ type: '', text: '' });
+        setScanned(null);
       }
     } else {
       setHasInitialized(false);
@@ -78,13 +113,9 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSucces
     try {
       let res;
       if (customerToEdit) {
-        res = await axios.put(`/api/customers/${customerToEdit.id}`, newCustomer, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        res = await axios.put(`/api/customers/${customerToEdit.id}`, newCustomer);
       } else {
-        res = await axios.post('/api/customers', newCustomer, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        res = await axios.post('/api/customers', newCustomer);
       }
       onSuccess(res.data);
       onClose();
@@ -101,7 +132,7 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSucces
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+    <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={customerToEdit ? "Modifier le client" : "Nouveau client"} tabIndex={-1} className="fixed inset-0 z-[100] flex items-center justify-center p-6">
       <motion.div 
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -113,7 +144,7 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSucces
         initial={{ opacity: 0, scale: 0.9, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.9, y: 20 }}
-        className="relative w-full max-w-xl bg-white rounded-[3rem] shadow-2xl overflow-hidden"
+        className="relative w-full max-w-xl max-h-[calc(100vh-3rem)] overflow-y-auto bg-white rounded-[3rem] shadow-2xl"
       >
         <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
           <div className="flex items-center gap-4">
@@ -125,7 +156,7 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSucces
               <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Ajout rapide de conformité</p>
             </div>
           </div>
-          <button 
+          <button aria-label="Fermer" 
             onClick={onClose}
             className="p-3 hover:bg-white hover:shadow-md rounded-full transition-all text-slate-400"
           >
@@ -141,6 +172,35 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSucces
             </div>
           )}
 
+          {/* Scan the ID card to fill the name and ID number */}
+          <div className="flex flex-col gap-3">
+            <input
+              ref={idPhotoInput}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              aria-hidden="true"
+              tabIndex={-1}
+              onChange={handleIdPhoto}
+            />
+            <button
+              type="button"
+              onClick={() => idPhotoInput.current?.click()}
+              disabled={scanStage !== null}
+              className="flex items-center justify-center gap-3 w-full py-3 rounded-2xl border-2 border-dashed border-amber-300 bg-amber-50 text-amber-700 font-black hover:bg-amber-100 transition-colors disabled:opacity-70"
+            >
+              {scanStage ? <Loader2 className="animate-spin" size={20} aria-hidden="true" /> : <ScanLine size={20} aria-hidden="true" />}
+              {scanStage === 'loading' ? 'Préparation…' : scanStage === 'reading' ? 'Lecture de la carte…' : "Scanner la carte d'identité"}
+            </button>
+            {scanned && (
+              <div role="status" className="p-3 rounded-2xl bg-amber-50 text-amber-800 text-sm font-bold space-y-1">
+                <p>Informations lues sur la carte : vérifiez-les avant d'enregistrer.</p>
+                {scanned.warnings.map(w => <p key={w} className="font-medium">• {w}</p>)}
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
               <label htmlFor="customer-name" className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">
@@ -153,7 +213,7 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSucces
                   required
                   type="text" 
                   placeholder="Ex: Jean Dupont"
-                  className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-3 pl-12 pr-4 font-bold outline-none focus:border-amber-400"
+                  className={`w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-3 pl-12 pr-4 font-bold outline-none focus:border-amber-400${scannedClass('name')}`}
                   value={newCustomer.name}
                   onChange={(e) => setNewCustomer({...newCustomer, name: e.target.value})}
                 />
@@ -170,7 +230,7 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSucces
                   id="customer-id"
                   type="text" 
                   placeholder="N° de Passeport / CNI"
-                  className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-3 pl-12 pr-4 font-bold outline-none focus:border-amber-400 font-mono tracking-tighter"
+                  className={`w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-3 pl-12 pr-4 font-bold outline-none focus:border-amber-400 font-mono tracking-tighter${scannedClass('idNumber')}`}
                   value={newCustomer.idNumber}
                   onChange={(e) => setNewCustomer({...newCustomer, idNumber: e.target.value})}
                 />

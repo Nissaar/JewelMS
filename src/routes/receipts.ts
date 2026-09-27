@@ -1,328 +1,122 @@
 import type { Express } from "express";
-import type { Multer } from "multer";
 import { db } from "../db/index";
-import { stock, customers, receipts, sales } from "../db/schema";
-import { eq, or } from "drizzle-orm";
-import { authenticateToken } from "../middleware/auth";
-import { checkNotificationConfig } from "../lib/notifications";
-import path from "path";
+import { customers, receipts, sales } from "../db/schema";
+import { desc, eq, ilike, or, sql } from "drizzle-orm";
+import { authenticateToken, checkPermission, type AuthRequest } from "../middleware/auth";
+import { idParam, sendMethodSchema } from "../lib/schemas";
+import { notFound, sendError } from "../lib/errors";
+import { containsPattern, queryText } from "../lib/query";
+import { listResponse } from "../lib/pagination";
+import { assertCanSend, queueDocument } from "../services/notifications";
+import { saleBarcodes } from "../services/reportData";
+import { ensureReceiptFile } from "../services/documents";
+import { contentTypeFor, readFile, verifyFileToken } from "../services/storage";
 
-export function registerReceiptsRoutes(app: Express, upload: Multer) {
+export function registerReceiptsRoutes(app: Express) {
 
-
-  // --- Receipt PDF Generation ---
-  app.get("/api/receipts/:saleId/pdf", authenticateToken, async (req, res) => {
+  // Every call is a counted print, so reprints carry the COPIE watermark.
+  app.get("/api/receipts/:saleId/pdf", authenticateToken, checkPermission('sales', 'view'), async (req, res) => {
     try {
-      const { saleId } = req.params;
-      const sId = parseInt(saleId);
+      const saleId = idParam.parse(req.params.saleId);
+      const { generateReceiptPDF } = await import("../services/pdf");
+      const { doc } = await generateReceiptPDF(saleId);
 
-      // Try to fetch from storage first if it exists
-      const receiptArr = await db.select().from(receipts).where(eq(receipts.saleId, sId)).limit(1);
-      const receipt = receiptArr[0];
-
-      if (receipt && receipt.fileUrl) {
-        try {
-          const { getReceiptFromStorage } = await import("../services/storageService");
-          const fileName = path.basename(receipt.fileUrl);
-          const buffer = await getReceiptFromStorage(fileName);
-          
-          res.setHeader('Content-Type', 'application/pdf');
-          res.setHeader('Content-Disposition', `inline; filename=${fileName}`);
-          return res.send(buffer);
-        } catch (storageError) {
-          console.warn("Local storage fetch failed, falling back to dynamic generation:", storageError);
-        }
-      }
-      
-      // Fallback to dynamic generation
-      const { generateReceiptPDF } = await import("../services/pdfService");
-      const { doc } = await generateReceiptPDF(sId);
-      
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `inline; filename=receipt-${saleId}.pdf`);
-      
+      res.setHeader('Content-Disposition', `inline; filename="receipt-${saleId}.pdf"`);
       doc.pipe(res);
       doc.end();
-    } catch (error: any) {
-      console.error("PDF Generation Error:", error);
-      res.status(500).json({ error: error.message || "Failed to generate PDF" });
+    } catch (error) {
+      sendError(res, error, "Failed to generate PDF", "PDF Generation Error");
     }
   });
 
-  // --- Trade-in Declaration PDF Generation ---
-
-
-  // --- Trade-in Declaration PDF Generation ---
-  app.get("/api/receipts/:saleId/declaration-pdf", authenticateToken, async (req, res) => {
+  app.get("/api/receipts/:saleId/declaration-pdf", authenticateToken, checkPermission('sales', 'view'), async (req, res) => {
     try {
-      const { saleId } = req.params;
-      const sId = parseInt(saleId);
+      const saleId = idParam.parse(req.params.saleId);
+      const { generateDeclarationPDF } = await import("../services/pdf");
+      const { buffer } = await generateDeclarationPDF(saleId);
 
-      const { generateDeclarationPDF } = await import("../services/pdfService");
-      const result = await generateDeclarationPDF(sId);
-      
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `inline; filename=tradein-declaration-${saleId}.pdf`);
-      
-      if (result.buffer) {
-        res.send(result.buffer);
-      } else if (result.doc) {
-        result.doc.pipe(res);
-        result.doc.end();
-      }
-    } catch (error: any) {
-      console.error("Declaration PDF Generation Error:", error);
-      res.status(500).json({ error: error.message || "Failed to generate trade-in declaration PDF" });
+      res.setHeader('Content-Disposition', `inline; filename="tradein-declaration-${saleId}.pdf"`);
+      res.send(buffer);
+    } catch (error) {
+      sendError(res, error, "Failed to generate trade-in declaration PDF", "Declaration PDF Generation Error");
     }
   });
 
-  // --- Dedicated ODF Declaration PDF Generation ---
-
-
-  app.post("/api/receipts/:saleId/upload", authenticateToken, async (req, res) => {
+  app.post("/api/receipts/:saleId/send", authenticateToken, checkPermission('sales', 'create'), async (req: AuthRequest, res) => {
     try {
-      const { saleId } = req.params;
-      const sId = parseInt(saleId);
-      const { generateReceiptPDF, getPDFBuffer } = await import("../services/pdfService");
-      const { uploadReceiptToStorage } = await import("../services/storageService");
-      const { sanitize } = await import("../lib/utils");
-      
-      // 1. Generate PDF
-      const { doc, receipt } = await generateReceiptPDF(sId);
-      const buffer = await getPDFBuffer(doc);
+      const saleId = idParam.parse(req.params.saleId);
+      const { method } = sendMethodSchema.parse(req.body);
 
-      // Fetch info for dynamic naming
-      const saleRec = await db.select({
-        stock: stock,
-        customer: customers
-      })
-      .from(sales)
-      .leftJoin(stock, eq(sales.stockId, stock.id))
-      .leftJoin(customers, eq(sales.customerId, customers.id))
-      .where(eq(sales.id, sId))
-      .limit(1);
-      
-      const category = saleRec[0]?.stock?.category || "Jewellery";
-      const subCategory = saleRec[0]?.stock?.subCategory || "Item";
-      const clientId = saleRec[0]?.customer?.idNumber || "Unknown";
-      
-      const fileName = `${sanitize(category)}_${sanitize(subCategory)}_${sanitize(clientId)}_${receipt.id}.pdf`;
-      
-      // 2. Save locally
-      const fileUrl = await uploadReceiptToStorage(fileName, buffer);
-      
-      // 3. Save URL to receipts table
-      await db.update(receipts)
-        .set({ fileUrl })
-        .where(eq(receipts.id, receipt.id));
-        
+      const [sale] = await db.select().from(sales).where(eq(sales.id, saleId)).limit(1);
+      if (!sale) throw notFound("Sale not found");
+      const [customer] = sale.customerId
+        ? await db.select().from(customers).where(eq(customers.id, sale.customerId)).limit(1)
+        : [];
+      assertCanSend(method, customer);
+
+      // Generate the stored copy now so a PDF failure is reported to the caller.
+      await ensureReceiptFile(saleId);
+
+      const notifications = await queueDocument('receipt', saleId, method, customer, req.user?.id);
       res.json({
-        message: "Receipt saved locally successfully",
-        file_url: fileUrl
+        success: true,
+        message: "Envoi en cours.",
+        notifications,
       });
-    } catch (error: any) {
-      console.error("Receipt Upload Error:", error);
-      res.status(500).json({ error: error.message || "Failed to save receipt" });
+    } catch (error) {
+      sendError(res, error, "Failed to send receipt", "Send Receipt Error");
     }
   });
 
-
-  app.post("/api/notifications/send-receipt", authenticateToken, async (req, res) => {
-    const { saleId, method } = req.body;
-    
-    if (!checkNotificationConfig(method)) {
-      return res.status(412).json({ 
-        success: false, 
-        error: 'CONFIGURATION_MISSING',
-        message: 'WhatsApp or Email service is not configured on the server.'
-      });
-    }
-
-    // Reuse existing logic
+  // Newest first. ?q= matches receipt number or customer.
+  app.get("/api/receipts", authenticateToken, checkPermission('sales', 'view'), async (req, res) => {
     try {
-      const saleArr = await db.select().from(sales).where(eq(sales.id, parseInt(saleId))).limit(1);
-      if (saleArr.length === 0) return res.status(404).json({ error: "Sale not found" });
-      const sale = saleArr[0];
-
-      const receiptArr = await db.select().from(receipts).where(eq(receipts.saleId, sale.id)).limit(1);
-      let receipt = receiptArr[0];
-
-      if (!receipt || !receipt.fileUrl) {
-        const { generateReceiptPDF, getPDFBuffer } = await import("../services/pdfService");
-        const { uploadReceiptToStorage } = await import("../services/storageService");
-        const { sanitize } = await import("../lib/utils");
-        
-        const { doc, receipt: genReceipt } = await generateReceiptPDF(sale.id);
-        const buffer = await getPDFBuffer(doc);
-        const fileName = `receipt-${genReceipt.id}-${sanitize(genReceipt.receiptSerialNumber.toString())}.pdf`;
-        const fileUrl = await uploadReceiptToStorage(fileName, buffer);
-        
-        await db.update(receipts)
-          .set({ fileUrl })
-          .where(eq(receipts.id, genReceipt.id));
-          
-        receipt = { ...genReceipt, fileUrl };
-      }
-
-      const customerArr = sale.customerId 
-        ? await db.select().from(customers).where(eq(customers.id, sale.customerId)).limit(1)
-        : [];
-      const customer = customerArr[0];
-
-      if (!customer) return res.status(404).json({ error: "Customer info required for sending receipt." });
-
-      if ((method === 'email' || method === 'both') && !customer.email) {
-        return res.status(400).json({ success: false, error: 'CLIENT_EMAIL_MISSING', message: "Le client n'a pas d'adresse email configurée." });
-      }
-
-      // Return success response immediately to prevent frontend timeout
-      res.json({ 
-        success: true, 
-        message: "Demande reçue. L'envoi est en cours d'exécution en arrière-plan.",
-        results: { queued: true } 
-      });
-
-      // Fire the asynchronous transmission in background
-      setImmediate(async () => {
-        try {
-          const results: any = {};
-          if (method === 'whatsapp' || method === 'both') {
-            const { sendWhatsAppReceipt } = await import("../services/whatsappService");
-            results.whatsapp = await sendWhatsAppReceipt(customer.phoneNumber || '', receipt.fileUrl, receipt.receiptSerialNumber.toString());
-            console.log(`[Background Sender] WhatsApp for receipt ${receipt.receiptSerialNumber} sent successfully.`);
-          }
-
-          if (method === 'email' || method === 'both') {
-            const { sendEmailReceipt } = await import("../services/emailService");
-            results.email = await sendEmailReceipt(customer.email || '', customer.name, receipt.fileUrl, receipt.receiptSerialNumber.toString());
-            console.log(`[Background Sender] Email for receipt ${receipt.receiptSerialNumber} sent successfully.`);
-          }
-        } catch (error: any) {
-          console.error(`[Background Sender Error] Failed sending notifications for receipt/sale ID ${saleId}:`, error.message || error);
-        }
-      });
-
-    } catch (error: any) {
-      console.error("Send Notification Error:", error);
-      res.status(500).json({ error: error.message || "Failed to send notification" });
-    }
-  });
-
-
-  app.post("/api/receipts/:saleId/send", authenticateToken, async (req, res) => {
-    const { saleId } = req.params;
-    const { method } = req.body; // 'whatsapp', 'email', or 'both'
-
-    if (!checkNotificationConfig(method)) {
-      return res.status(412).json({ 
-        success: false, 
-        error: 'CONFIGURATION_MISSING',
-        message: 'WhatsApp or Email service is not configured on the server.'
-      });
-    }
-
-    try {
-      const saleArr = await db.select().from(sales).where(eq(sales.id, parseInt(saleId))).limit(1);
-      if (saleArr.length === 0) return res.status(404).json({ error: "Sale not found" });
-      const sale = saleArr[0];
-
-      const receiptArr = await db.select().from(receipts).where(eq(receipts.saleId, sale.id)).limit(1);
-      let receipt = receiptArr[0];
-
-      if (!receipt || !receipt.fileUrl) {
-        const { generateReceiptPDF, getPDFBuffer } = await import("../services/pdfService");
-        const { uploadReceiptToStorage } = await import("../services/storageService");
-        const { sanitize } = await import("../lib/utils");
-        
-        const { doc, receipt: genReceipt } = await generateReceiptPDF(sale.id);
-        const buffer = await getPDFBuffer(doc);
-        const fileName = `receipt-${genReceipt.id}-${sanitize(genReceipt.receiptSerialNumber.toString())}.pdf`;
-        const fileUrl = await uploadReceiptToStorage(fileName, buffer);
-        
-        await db.update(receipts)
-          .set({ fileUrl })
-          .where(eq(receipts.id, genReceipt.id));
-          
-        receipt = { ...genReceipt, fileUrl };
-      }
-
-      const customerArr = sale.customerId 
-        ? await db.select().from(customers).where(eq(customers.id, sale.customerId)).limit(1)
-        : [];
-      const customer = customerArr[0];
-
-      if (!customer) return res.status(404).json({ error: "Customer info required for sending receipt." });
-
-      if ((method === 'email' || method === 'both') && !customer.email) {
-        return res.status(400).json({ success: false, error: 'CLIENT_EMAIL_MISSING', message: "Le client n'a pas d'adresse email configurée." });
-      }
-
-      // Return success response immediately to prevent frontend timeout
-      res.json({ 
-        success: true, 
-        message: "Demande reçue. L'envoi est en cours d'exécution en arrière-plan.",
-        results: { queued: true } 
-      });
-
-      // Fire the asynchronous transmission in background
-      setImmediate(async () => {
-        try {
-          const results: any = {};
-          if (method === 'whatsapp' || method === 'both') {
-            if (customer.phoneNumber) {
-              const { sendWhatsAppReceipt } = await import("../services/whatsappService");
-              results.whatsapp = await sendWhatsAppReceipt(customer.phoneNumber, receipt.fileUrl, receipt.receiptSerialNumber.toString());
-              console.log(`[Background Sender] WhatsApp for receipt ${receipt.receiptSerialNumber} sent successfully.`);
-            } else {
-              console.warn(`[Background Sender Warn] WhatsApp skipped: customer ${customer.id} has no phone number.`);
-            }
-          }
-
-          if (method === 'email' || method === 'both') {
-            if (customer.email) {
-              const { sendEmailReceipt } = await import("../services/emailService");
-              results.email = await sendEmailReceipt(customer.email, customer.name, receipt.fileUrl, receipt.receiptSerialNumber.toString());
-              console.log(`[Background Sender] Email for receipt ${receipt.receiptSerialNumber} sent successfully.`);
-            } else {
-              console.warn(`[Background Sender Warn] Email skipped: customer ${customer.id} has no email.`);
-            }
-          }
-        } catch (error: any) {
-          console.error(`[Background Sender Error] Failed sending notifications for receipt/sale ID ${saleId}:`, error.message || error);
-        }
-      });
-
-    } catch (error: any) {
-      console.error("Send Error:", error);
-      res.status(500).json({ error: error.message || "Failed to send receipt" });
-    }
-  });
-
-  // --- ODF PDF Generation & Sending ---
-
-
-  app.get("/api/receipts", authenticateToken, async (req, res) => {
-    try {
-      const allReceipts = await db.select({
+      const q = queryText(req.query.q);
+      const pattern = containsPattern(q);
+      const where = q ? or(sql`CAST(${receipts.receiptSerialNumber} AS TEXT) ILIKE ${pattern}`, ilike(customers.name, pattern)) : undefined;
+      const base = () => db.select({
         id: receipts.id,
         saleId: receipts.saleId,
         receiptNo: receipts.receiptSerialNumber,
-        fileUrl: receipts.fileUrl,
         createdAt: receipts.createdAt,
         customerName: customers.name,
         totalAmount: sales.amount,
-        barcode: stock.barcode,
+        barcode: saleBarcodes,
+        status: sales.status,
         itemDetails: sales.itemDetails
       })
       .from(receipts)
       .innerJoin(sales, eq(receipts.saleId, sales.id))
-      .innerJoin(customers, eq(sales.customerId, customers.id))
-      .leftJoin(stock, eq(sales.stockId, stock.id))
-      .orderBy(receipts.createdAt);
+      .leftJoin(customers, eq(sales.customerId, customers.id))
+      .where(where)
+      .orderBy(desc(receipts.createdAt), desc(receipts.id))
+      .$dynamic();
 
-      res.json(allReceipts);
+      res.json(await listResponse(req.query,
+        (limit, offset) => (limit ? base().limit(limit).offset(offset!) : base()),
+        async () => (await db.select({ n: sql<number>`count(*)::int` }).from(receipts)
+          .innerJoin(sales, eq(receipts.saleId, sales.id))
+          .leftJoin(customers, eq(sales.customerId, customers.id)).where(where))[0].n,
+      ));
     } catch (error) {
-      res.status(500).json({ error: "Failed to fetch receipts" });
+      sendError(res, error, "Failed to fetch receipts");
+    }
+  });
+
+  // Signed, expiring link used by WhatsApp to fetch a document. No login:
+  // the token itself is the authorisation.
+  app.get("/api/files/:token", async (req, res) => {
+    try {
+      const { kind, name } = verifyFileToken(req.params.token);
+      const data = await readFile(kind, name);
+      res.setHeader('Content-Type', contentTypeFor(name));
+      res.setHeader('Content-Disposition', `inline; filename="${name}"`);
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.send(data);
+    } catch (error) {
+      sendError(res, error, "File not available");
     }
   });
 }

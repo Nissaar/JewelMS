@@ -6,3 +6,12 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Playwright output (published as CI artifacts instead)
+test-results/
+playwright-report/
+blob-report/
+
+# Runtime uploads (customer documents)
+uploads/*
+!uploads/.gitkeep

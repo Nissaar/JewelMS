@@ -1,16 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
-import { 
-  BarChart3, Scale, Filter, ChevronDown, 
+import {
+  BarChart3, Scale, Filter,
   Loader2, Info, Package, Store, Eye,
   RefreshCw, TrendingUp
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
 const StockReports = () => {
-  const { token } = useAuth();
   const [reportData, setReportData] = useState<any>(null);
   const [metadata, setMetadata] = useState<any>({});
   const [isLoading, setIsLoading] = useState(true);
@@ -26,7 +24,7 @@ const StockReports = () => {
 
   const fetchMetadata = async () => {
     try {
-      const res = await axios.get('/api/stock/metadata', { headers: { Authorization: `Bearer ${token}` } });
+      const res = await axios.get('/api/stock/metadata');
       const metaObj: any = {};
       res.data.forEach((s: any) => {
         metaObj[s.key] = JSON.parse(s.value || '[]');
@@ -45,7 +43,7 @@ const StockReports = () => {
       if (category) url += `category=${encodeURIComponent(category)}&`;
       if (subCategory) url += `subCategory=${encodeURIComponent(subCategory)}&`;
       
-      const res = await axios.get(url, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await axios.get(url);
       setReportData(res.data);
     } catch (err) {
       console.error(err);
@@ -88,7 +86,7 @@ const StockReports = () => {
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2">
             <Filter className="text-slate-400" size={18} />
-            <select 
+            <select aria-label="Filtrer par catégorie" 
               className="bg-slate-50 border-2 border-slate-100 rounded-xl py-2 px-4 font-bold outline-none focus:border-amber-400"
               value={filters.category}
               onChange={(e) => handleFilterChange('category', e.target.value)}
@@ -101,7 +99,7 @@ const StockReports = () => {
             </select>
           </div>
           <div className="flex items-center gap-2">
-            <select 
+            <select aria-label="Filtrer par sous-catégorie" 
               className="bg-slate-50 border-2 border-slate-100 rounded-xl py-2 px-4 font-bold outline-none focus:border-amber-400"
               value={filters.subCategory}
               onChange={(e) => handleFilterChange('subCategory', e.target.value)}

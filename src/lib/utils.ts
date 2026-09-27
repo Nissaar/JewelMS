@@ -19,13 +19,6 @@ export const formatWeight = (weight: number | string | null | undefined): string
   return `${num.toFixed(3)} g`;
 };
 
-export const formatWeightValue = (weight: number | string | null | undefined): string => {
-  if (weight === null || weight === undefined || weight === '') return '0.000';
-  const num = typeof weight === 'string' ? parseFloat(weight) : weight;
-  if (isNaN(num)) return '0.000';
-  return num.toFixed(3);
-};
-
 export const formatItemDetails = (details: any): string => {
   if (!details) return '';
   if (typeof details !== 'string') return String(details);
@@ -108,15 +101,4 @@ export const getItemFullDescription = (item: any): string => {
   }
   
   return description;
-};
-
-export const sanitize = (str: string | null | undefined): string => {
-  if (!str) return 'unknown';
-  // Remove accents, replace non-alphanumeric with _, trim, and lowercase
-  return str.normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]/gi, '_')
-    .replace(/_+/g, '_')
-    .toLowerCase()
-    .slice(0, 50); // Limit length
 };

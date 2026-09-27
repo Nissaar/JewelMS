@@ -1,47 +1,20 @@
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
-import axios from 'axios';
-import { 
-  History, Search, Filter, Loader2, ArrowLeft,
-  Barcode, Tag, User, Scale, Calendar
+import React, { useState } from 'react';
+import {
+  History, Search, Loader2, ArrowLeft,
+  Barcode, User, Scale, Calendar
 } from 'lucide-react';
-import { motion } from 'motion/react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { usePagedList } from '../hooks/usePagedList';
+import { Pager } from '../components/Pager';
 import { formatCurrency, formatWeight, formatItemDetails } from '../lib/utils';
 
 const SoldItems = () => {
-  const { token } = useAuth();
   const navigate = useNavigate();
-  const [soldItems, setSoldItems] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-
-  useEffect(() => {
-    fetchSoldItems();
-  }, []);
-
-  const fetchSoldItems = async () => {
-    setIsLoading(true);
-    try {
-      const res = await axios.get('/api/stock/sold', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setSoldItems(res.data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const filteredItems = (soldItems || []).filter(item => {
-    const search = String(searchQuery || '').toLowerCase();
-    const barcode = String(item?.barcode || '').toLowerCase();
-    const customer = String(item?.customerName || '').toLowerCase();
-    const category = String(item?.category || '').toLowerCase();
-    
-    return barcode.includes(search) || customer.includes(search) || category.includes(search);
-  });
+  const [searchParams] = useSearchParams();
+  const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '');
+  // Searched and paged on the server.
+  const list = usePagedList<any>('/api/stock/sold', { q: searchQuery });
+  const { items: filteredItems, isLoading } = list;
 
   return (
     <div className="max-w-7xl mx-auto space-y-8">
@@ -67,7 +40,7 @@ const SoldItems = () => {
       <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
         <div className="relative">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-          <input 
+          <input aria-label="Rechercher par Code-Barres, Client, Catégorie..." 
             type="text" 
             placeholder="Rechercher par Code-Barres, Client, Catégorie..."
             className="w-full bg-slate-50 border-2 border-slate-50 rounded-2xl py-3 pl-12 pr-4 font-bold outline-none focus:border-red-400 focus:bg-white transition-all underline-offset-4"
@@ -138,6 +111,7 @@ const SoldItems = () => {
             </tbody>
           </table>
         </div>
+        <Pager page={list.page} pageCount={list.pageCount} total={list.total} isLoading={isLoading} onPage={list.setPage} noun="articles vendus" />
       </div>
     </div>
   );

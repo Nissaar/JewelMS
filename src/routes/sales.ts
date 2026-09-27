@@ -1,38 +1,25 @@
 import type { Express } from "express";
 import { db } from "../db/index";
 import { stock, customers, receipts, orders, sales, saleItems, odf, auditLogs } from "../db/schema";
-import { eq, or, ilike, and, sql } from "drizzle-orm";
-import { authenticateToken, checkPermission } from "../middleware/auth";
-import { badRequest, notFound, statusFor } from "../lib/errors";
+import { eq, or, ilike, and, sql, desc } from "drizzle-orm";
+import { authenticateToken, checkPermission, requireAdmin, type AuthRequest } from "../middleware/auth";
+import { badRequest, notFound, sendError } from "../lib/errors";
+import { idParam, saleCreateSchema } from "../lib/schemas";
+import { containsPattern, queryText } from "../lib/query";
+import { listResponse } from "../lib/pagination";
+import { inShopTime } from "../lib/time";
+import { parseDateParam, saleBarcodes } from "../services/reportData";
+import { centsToDecimal, splitGross, sumLines, toCents } from "../shared/money";
 
 export function registerSalesRoutes(app: Express) {
 
   // --- Sales Recording Endpoint ---
   app.post("/api/sales", authenticateToken, checkPermission('sales', 'create'), async (req, res) => {
-    const { 
-      customerId, 
-      paymentMode, 
-      chequeNumber, 
-      orderId, 
-      linkedOdfId, 
-      linkedCommandeId,
-      items: inputItems,
-      stock_ids,
-      // fallback single item fields:
-      barcode,
-      qty,
-      amount,
-      unitSalesPrice,
-      discountAmount,
-      discountPercentage,
-      itemDetails
-    } = req.body;
-
     try {
-      const result = await db.transaction(async (tx) => {
-        const lOdfId = linkedOdfId ? parseInt(linkedOdfId) : null;
-        const lCommandeId = linkedCommandeId ? parseInt(linkedCommandeId) : null;
+      const { customerId, paymentMode, chequeNumber, orderId, linkedOdfId: lOdfId, linkedCommandeId: lCommandeId, items: rawItemsList } =
+        saleCreateSchema.parse(req.body);
 
+      const result = await db.transaction(async (tx) => {
         // Verify linked ODF has a completed Declaration of Ownership (Customer profile details filled)
         if (lOdfId) {
           const odfRecords = await tx.select().from(odf).where(eq(odf.id, lOdfId)).limit(1);
@@ -61,102 +48,69 @@ export function registerSalesRoutes(app: Express) {
           }
         }
 
-        // Standardize items list
-        let rawItemsList: any[] = [];
-        if (Array.isArray(inputItems) && inputItems.length > 0) {
-          rawItemsList = inputItems;
-        } else if (Array.isArray(stock_ids) && stock_ids.length > 0) {
-          rawItemsList = stock_ids.map((sId: any) => ({ stockId: typeof sId === 'object' ? sId.id || sId.stockId : sId }));
-        } else if (barcode) {
-          rawItemsList = [{
-            barcode,
-            qty: qty || 1,
-            amount,
-            unitSalesPrice,
-            discountAmount,
-            discountPercentage,
-            itemDetails
-          }];
+        const stockIds = rawItemsList.map(i => i.stockId);
+        if (new Set(stockIds).size !== stockIds.length) {
+          throw badRequest("Le même article figure deux fois dans le panier.");
         }
 
-        if (rawItemsList.length === 0) {
-          throw badRequest("Aucun article spécifié pour la vente.");
-        }
-
-        // Process each item in cart
-        const processedItems: any[] = [];
-        let totalAmountNum = 0;
-        let totalDiscountNum = 0;
-
+        // Price every line from its stock record. The till only supplies the
+        // discount, which must leave a positive price.
+        const processedItems = [];
         for (const rawItem of rawItemsList) {
-          let stockItem: any = null;
-
           // Lock the row for the duration of the transaction. Without this, two
           // concurrent checkouts can both read the item as 'Disponible' and both
           // mark it sold.
-          if (rawItem.stockId) {
-            const items = await tx.select().from(stock)
-              .where(and(eq(stock.id, rawItem.stockId), eq(stock.status, 'Disponible')))
-              .limit(1)
-              .for('update');
-            if (items.length > 0) stockItem = items[0];
-          } else if (rawItem.barcode) {
-            const items = await tx.select().from(stock)
-              .where(and(eq(stock.barcode, rawItem.barcode), eq(stock.status, 'Disponible')))
-              .limit(1)
-              .for('update');
-            if (items.length > 0) stockItem = items[0];
-          }
-
+          const [stockItem] = await tx.select().from(stock)
+            .where(and(eq(stock.id, rawItem.stockId), eq(stock.status, 'Disponible')))
+            .limit(1)
+            .for('update');
           if (!stockItem) {
-            throw badRequest(`Un article du panier (Code-barres: ${rawItem.barcode || rawItem.stockId || 'Inconnu'}) n'est plus disponible en stock.`);
+            throw badRequest(`Un article du panier (ID: ${rawItem.stockId}) n'est plus disponible en stock.`);
           }
 
-          const itemQty = Number(rawItem.qty || 1);
-          const itemNetPrice = rawItem.amount ? parseFloat(String(rawItem.amount)) : (stockItem.price ? parseFloat(stockItem.price) / 1.15 : 0);
-          const itemUnitPrice = rawItem.unitSalesPrice ? parseFloat(String(rawItem.unitSalesPrice)) : itemNetPrice;
-          const itemDisc = rawItem.discountAmount ? parseFloat(String(rawItem.discountAmount)) : 0;
+          const listCents = toCents(stockItem.price);
+          const discountCents = toCents(rawItem.discountAmount);
+          if (listCents <= 0) {
+            throw badRequest(`L'article ${stockItem.barcode} n'a pas de prix. Ajoutez un prix dans le Stock avant de le vendre.`);
+          }
+          if (discountCents >= listCents) {
+            throw badRequest(`La remise sur l'article ${stockItem.barcode} ne peut pas atteindre ou dépasser son prix.`);
+          }
 
-          // Multiply by quantity: the frontend totals as netPrice * qty, and the
-          // two must agree or the recorded sale undercharges.
-          totalAmountNum += itemNetPrice * itemQty;
-          totalDiscountNum += itemDisc * itemQty;
-
-          const desc = rawItem.itemDetails || `${stockItem.barcode || ''} - ${stockItem.category || ''} ${stockItem.subCategory || ''} ${stockItem.metalType ? `(${stockItem.metalType})` : ''}`.trim().replace(/\s+/g, ' ');
-
+          const line = splitGross(listCents - discountCents);
+          const metal = [stockItem.metalType, stockItem.fineness].filter(Boolean).join(' ');
           processedItems.push({
             stockItem,
-            stockId: stockItem.id,
-            barcode: stockItem.barcode,
-            qty: itemQty,
-            itemDetails: desc,
-            unitSalesPrice: itemUnitPrice.toFixed(2),
-            amount: itemNetPrice.toFixed(2),
-            weight: stockItem.weightGrams,
-            fineness: stockItem.fineness,
-            metalType: stockItem.metalType
+            line,
+            listCents,
+            discountCents,
+            itemDetails: `${stockItem.subCategory || stockItem.category}${metal ? ` (${metal})` : ''}`,
           });
         }
 
-        const totalVatNum = totalAmountNum * 0.15;
-        const mainStockItem = processedItems[0]?.stockItem;
+        const totals = sumLines(processedItems.map(p => p.line));
+        const totalListCents = processedItems.reduce((sum, p) => sum + p.listCents, 0);
+        const totalDiscountCents = processedItems.reduce((sum, p) => sum + p.discountCents, 0);
+        const totalWeight = processedItems.reduce((sum, p) => sum + Number(p.stockItem.weightGrams || 0), 0);
+        const first = processedItems[0].stockItem;
+        const sameMetal = processedItems.every(p => p.stockItem.metalType === first.metalType && p.stockItem.fineness === first.fineness);
 
-        // 1. Insert parent sale
+        // 1. Insert parent sale. amount is net of VAT and of discounts.
         const newSale = await tx.insert(sales).values({
           customerId,
-          stockId: mainStockItem ? mainStockItem.id : null,
+          stockId: first.id,
           paymentMode,
-          chequeNumber,
-          qty: processedItems.reduce((acc, curr) => acc + curr.qty, 0),
+          chequeNumber: paymentMode === 'Cheque' ? chequeNumber : null,
+          qty: processedItems.length,
           itemDetails: processedItems.length === 1 ? processedItems[0].itemDetails : `${processedItems.length} articles en panier`,
-          weight: mainStockItem ? mainStockItem.weightGrams : null,
-          fineness: mainStockItem ? mainStockItem.fineness : null,
-          unitSalesPrice: totalAmountNum.toFixed(2),
-          amount: totalAmountNum.toFixed(2),
-          discountAmount: totalDiscountNum.toFixed(2),
-          discountPercentage: (discountPercentage !== undefined && discountPercentage !== null) ? discountPercentage.toString() : '0.00',
-          vat15: totalVatNum.toFixed(2),
-          metalType: mainStockItem ? mainStockItem.metalType : null,
+          weight: totalWeight ? totalWeight.toFixed(3) : null,
+          fineness: sameMetal ? first.fineness : null,
+          metalType: sameMetal ? first.metalType : null,
+          unitSalesPrice: centsToDecimal(totals.netCents),
+          amount: centsToDecimal(totals.netCents),
+          vat15: centsToDecimal(totals.vatCents),
+          discountAmount: centsToDecimal(totalDiscountCents),
+          discountPercentage: (totalDiscountCents / totalListCents * 100).toFixed(2),
           orderId: orderId || lCommandeId || null,
           linkedOdfId: lOdfId,
           linkedCommandeId: lCommandeId,
@@ -165,23 +119,24 @@ export function registerSalesRoutes(app: Express) {
         const saleId = newSale[0].id;
 
         // 2. Insert into sale_items table & mark stock items as sold
-        for (const pItem of processedItems) {
+        for (const { stockItem, line, itemDetails } of processedItems) {
           await tx.insert(saleItems).values({
             saleId,
-            stockId: pItem.stockId,
-            barcode: pItem.barcode,
-            itemDetails: pItem.itemDetails,
-            qty: pItem.qty,
-            unitSalesPrice: pItem.unitSalesPrice,
-            amount: pItem.amount,
-            weight: pItem.weight,
-            fineness: pItem.fineness,
-            metalType: pItem.metalType,
+            stockId: stockItem.id,
+            barcode: stockItem.barcode,
+            itemDetails,
+            qty: 1,
+            unitSalesPrice: centsToDecimal(line.netCents),
+            amount: centsToDecimal(line.netCents),
+            vat15: centsToDecimal(line.vatCents),
+            weight: stockItem.weightGrams,
+            fineness: stockItem.fineness,
+            metalType: stockItem.metalType,
           });
 
           await tx.update(stock)
             .set({ status: 'Vendu', soldAt: new Date(), updatedAt: new Date() })
-            .where(eq(stock.id, pItem.stockId));
+            .where(eq(stock.id, stockItem.id));
         }
 
         // 3. Create associated receipt
@@ -200,19 +155,15 @@ export function registerSalesRoutes(app: Express) {
         sale: result,
         receipt: result.receipt
       });
-    } catch (error: any) {
-      if (statusFor(error) === 500) console.error("Sales Recording Error:", error);
-      res.status(statusFor(error)).json({ error: error.message || "Failed to record sale" });
+    } catch (error) {
+      sendError(res, error, "Failed to record sale", "Sales Recording Error");
     }
   });
 
 
-  app.post("/api/sales/:id/cancel", authenticateToken, async (req: any, res) => {
-    if (req.user?.role !== 'Admin') return res.status(403).json({ error: "Admin access required" });
-    
-    const saleId = parseInt(req.params.id);
-
+  app.post("/api/sales/:id/cancel", authenticateToken, requireAdmin, async (req: AuthRequest, res) => {
     try {
+      const saleId = idParam.parse(req.params.id);
       await db.transaction(async (tx) => {
         const saleRecords = await tx.select().from(sales).where(eq(sales.id, saleId)).limit(1);
         if (saleRecords.length === 0) throw notFound("Vente non trouvée");
@@ -258,26 +209,28 @@ export function registerSalesRoutes(app: Express) {
       });
 
       res.json({ message: "Vente annulée avec succès. Les articles sont de nouveau en stock." });
-    } catch (error: any) {
-      console.error("Sale Cancellation Error:", error);
-      res.status(statusFor(error)).json({ error: error.message || "Erreur lors de l'annulation de la vente" });
+    } catch (error) {
+      sendError(res, error, "Erreur lors de l'annulation de la vente", "Sale Cancellation Error");
     }
   });
 
-  // --- Stock Endpoints ---
-
-
-  app.get("/api/sales/history", authenticateToken, async (req, res) => {
+  // Newest first. ?q= matches customer, items, receipt or sale number;
+  // ?date=YYYY-MM-DD keeps one shop-time day.
+  app.get("/api/sales/history", authenticateToken, checkPermission('sales', 'view'), async (req, res) => {
     try {
-      const { search, query, q } = req.query;
-      const searchTerm = (search || query || q)?.toString();
-
-      let conditions = [];
-      if (searchTerm) {
-        conditions.push(ilike(sales.itemDetails, `%${searchTerm}%`));
-      }
-
-      const history = await db.select({
+      const q = queryText(req.query.q) || queryText(req.query.search) || queryText(req.query.query);
+      const date = parseDateParam(req.query.date, 'date');
+      const pattern = containsPattern(q);
+      const where = and(
+        q ? or(
+          ilike(sales.itemDetails, pattern),
+          ilike(customers.name, pattern),
+          sql`CAST(${receipts.receiptSerialNumber} AS TEXT) ILIKE ${pattern}`,
+          sql`CAST(${sales.id} AS TEXT) = ${q}`,
+        ) : undefined,
+        date ? sql`DATE(${inShopTime(sales.datetime)}) = ${date.toLocaleDateString('en-CA')}` : undefined,
+      );
+      const base = () => db.select({
         id: sales.id,
         receiptId: receipts.id,
         receiptNo: receipts.receiptSerialNumber,
@@ -287,7 +240,7 @@ export function registerSalesRoutes(app: Express) {
         paymentMode: sales.paymentMode,
         vat15: sales.vat15,
         itemDetails: sales.itemDetails,
-        barcode: stock.barcode,
+        barcode: saleBarcodes,
         category: stock.category,
         subCategory: stock.subCategory,
         weight: sales.weight,
@@ -300,6 +253,7 @@ export function registerSalesRoutes(app: Express) {
         orderId: sales.orderId,
         orderDeposit: orders.deposit,
         orderNumber: orders.orderNumber,
+        linkedOdfId: sales.linkedOdfId,
         status: sales.status
       })
       .from(sales)
@@ -307,13 +261,19 @@ export function registerSalesRoutes(app: Express) {
       .leftJoin(receipts, eq(sales.id, receipts.saleId))
       .leftJoin(stock, eq(sales.stockId, stock.id))
       .leftJoin(orders, eq(sales.orderId, orders.id))
-      .where(conditions.length > 0 ? and(...conditions) : undefined)
-      .orderBy(sql`${sales.datetime} DESC`);
+      .where(where)
+      .orderBy(sql`${sales.datetime} DESC`, desc(sales.id))
+      .$dynamic();
 
-      res.json(history);
+      res.json(await listResponse(req.query,
+        (limit, offset) => (limit ? base().limit(limit).offset(offset!) : base()),
+        async () => (await db.select({ n: sql<number>`count(*)::int` }).from(sales)
+          .leftJoin(customers, eq(sales.customerId, customers.id))
+          .leftJoin(receipts, eq(sales.id, receipts.saleId))
+          .where(where))[0].n,
+      ));
     } catch (error) {
-      console.error("Sales History Error:", error);
-      res.status(500).json({ error: "Failed to fetch sales history" });
+      sendError(res, error, "Failed to fetch sales history", "Sales History Error");
     }
   });
 }
