@@ -176,9 +176,9 @@ const ODF = () => {
   return (
     <div className="max-w-6xl mx-auto space-y-8">
       {/* Header */}
-      <div className="flex justify-between items-center bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3">
+          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 flex items-center gap-3">
             <Scale className="text-amber-500" size={32} />
             Espace ODF (Trade-ins)
           </h1>
@@ -193,7 +193,7 @@ const ODF = () => {
               setView('create');
             }
           }}
-          className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-black transition-all ${
+          className={`flex items-center justify-center gap-2 px-6 py-3 rounded-2xl font-black transition-all whitespace-nowrap ${
             view === 'list' ? 'bg-slate-900 text-white hover:bg-slate-800' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
           }`}
         >
@@ -230,7 +230,7 @@ const ODF = () => {
 
             {/* Right: Form */}
             <form onSubmit={handleSubmit} className="lg:col-span-2 space-y-8">
-              <div className="bg-white p-8 rounded-[2rem] shadow-xl border border-slate-100 grid grid-cols-2 gap-6">
+              <div className="bg-white p-5 sm:p-8 rounded-[2rem] shadow-xl border border-slate-100 grid grid-cols-2 gap-6">
                 <div className="col-span-2 md:col-span-1">
                   <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Date du Rachat</label>
                   <input aria-label="Date du Rachat" 
@@ -376,7 +376,7 @@ const ODF = () => {
                     aria-label="Ajouter une photo"
                     onClick={() => fileInputRef.current?.click()}
                     onKeyDown={activateOnKey(() => fileInputRef.current?.click())}
-                    className="border-2 border-dashed border-slate-100 rounded-2xl p-8 text-center cursor-pointer hover:border-amber-400 hover:bg-amber-50 transition-all group"
+                    className="border-2 border-dashed border-slate-100 rounded-2xl p-5 sm:p-8 text-center cursor-pointer hover:border-amber-400 hover:bg-amber-50 transition-all group"
                   >
                     {imagePreview ? (
                       <div className="relative inline-block">
@@ -426,7 +426,7 @@ const ODF = () => {
         ) : view === 'success' ? (
           <motion.div 
             key="success" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
-            className="max-w-2xl mx-auto bg-white p-8 sm:p-12 rounded-[2.5rem] shadow-xl border border-slate-100 text-center space-y-8"
+            className="max-w-2xl mx-auto bg-white p-6 sm:p-12 rounded-[2.5rem] shadow-xl border border-slate-100 text-center space-y-8"
           >
             <div className="h-24 w-24 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto shadow-inner">
               <Check size={48} strokeWidth={3} />
@@ -508,7 +508,7 @@ const ODF = () => {
                 type="search"
                 aria-label="Rechercher un ODF"
                 placeholder="Rechercher par client, description ou N° ODF..."
-                className="flex-1 bg-transparent border-none outline-none font-medium"
+                className="flex-1 min-w-0 bg-transparent border-none outline-none font-medium"
                 value={odfSearch}
                 onChange={(e) => setOdfSearch(e.target.value)}
               />

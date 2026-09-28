@@ -89,11 +89,17 @@ export const Layout: React.FC = () => {
   const filteredNavItems = navItems.filter(item => item.show);
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
+    <div className="flex h-dvh bg-slate-50 overflow-hidden font-sans">
+      {/* dvh, not vh: on phones 100vh includes the area under the browser bar,
+          which pushed the bottom of the menu (and Déconnexion) off-screen. */}
+      {/* On phones, tapping beside the open menu closes it. */}
+      {isSidebarOpen && (
+        <div aria-hidden="true" className="fixed inset-0 z-20 bg-slate-900/40 lg:hidden" onClick={() => setIsSidebarOpen(false)} />
+      )}
       {/* Sidebar */}
       <aside className={`fixed inset-y-0 left-0 bg-slate-900 text-white w-64 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 transition-transform duration-200 ease-in-out z-30 lg:relative`}>
-        <div className="flex flex-col h-screen">
-          <div className="p-6 flex items-center justify-between shrink-0">
+        <div className="flex flex-col h-full">
+          <div className="p-6 max-lg:py-4 flex items-center justify-between shrink-0">
             <Link to="/" className="text-2xl font-bold tracking-tighter text-amber-400">
               HAUJEE
             </Link>
@@ -107,7 +113,7 @@ export const Layout: React.FC = () => {
               <Link
                 key={item.name}
                 to={item.path}
-                className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
+                className={`flex items-center space-x-3 px-4 py-3 max-lg:py-2.5 rounded-lg transition-colors ${
                   location.pathname === item.path ? 'bg-slate-800 text-amber-400 shadow-sm' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
                 }`}
                 onClick={() => setIsSidebarOpen(false)}
@@ -118,7 +124,7 @@ export const Layout: React.FC = () => {
             ))}
           </nav>
 
-          <div className="p-6 border-t border-slate-800 shrink-0">
+          <div className="p-6 max-lg:py-4 border-t border-slate-800 shrink-0">
             {isInstallable && (
               <button
                 type="button"

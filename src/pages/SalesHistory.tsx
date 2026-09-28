@@ -82,7 +82,7 @@ const SalesHistory = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold text-slate-900 flex items-center gap-3">
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 flex items-center gap-3">
             <History className="text-emerald-500" size={32} />
             Historique des Ventes
           </h1>
@@ -104,7 +104,7 @@ const SalesHistory = () => {
 
       {/* Filters Bar */}
       <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 flex flex-wrap items-center gap-6">
-        <div className="flex-1 min-w-[300px] relative">
+        <div className="flex-1 w-full sm:w-auto sm:min-w-[300px] relative">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
           <input aria-label="Rechercher par Client, N° Receipt, ID..." 
             type="text" 
@@ -115,12 +115,12 @@ const SalesHistory = () => {
           />
         </div>
         
-        <div className="flex items-center gap-4">
-          <div className="relative">
+        <div className="flex items-center gap-4 w-full sm:w-auto">
+          <div className="relative flex-1 min-w-0">
             <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
             <input aria-label="Filtrer par date" 
               type="date"
-              className="bg-slate-50 border-2 border-slate-50 rounded-2xl py-3 pl-12 pr-4 font-bold outline-none focus:border-emerald-400 focus:bg-white transition-all"
+              className="w-full bg-slate-50 border-2 border-slate-50 rounded-2xl py-3 pl-12 pr-4 font-bold outline-none focus:border-emerald-400 focus:bg-white transition-all"
               value={dateFilter}
               onChange={(e) => setDateFilter(e.target.value)}
             />
@@ -222,7 +222,7 @@ const SalesHistory = () => {
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               className="relative bg-white w-full max-w-2xl rounded-[2.5rem] shadow-2xl overflow-hidden"
             >
-              <div className="p-8 border-b border-slate-100 flex items-center justify-between">
+              <div className="p-5 sm:p-8 border-b border-slate-100 flex items-center justify-between">
                 <div>
                   <h2 className="text-2xl font-black text-slate-900 tracking-tight">Détails de la Vente</h2>
                   <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest mt-1">N° TRANSACTION: {selectedSale.id}</p>
@@ -235,7 +235,7 @@ const SalesHistory = () => {
                 </button>
               </div>
 
-              <div className="p-8 space-y-8 overflow-y-auto max-h-[70vh]">
+              <div className="p-5 sm:p-8 space-y-8 overflow-y-auto max-h-[70vh]">
                 {selectedSale.status === 'Cancelled' && (
                   <div className="bg-red-50 border-2 border-red-100 p-6 rounded-3xl flex items-center gap-4 text-red-600">
                     <Trash2 size={32} />
@@ -297,7 +297,7 @@ const SalesHistory = () => {
                   </div>
                 </div>
 
-                <div className="p-8 bg-slate-900 text-white rounded-[2.5rem] space-y-4">
+                <div className="p-5 sm:p-8 bg-slate-900 text-white rounded-[2.5rem] space-y-4">
                    <div className="flex justify-between items-center text-sm font-bold text-slate-400">
                      <span>SOUS-TOTAL</span>
                      <span>{formatCurrency(selectedSale.totalAmount || "0")}</span>

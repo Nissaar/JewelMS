@@ -76,7 +76,7 @@ export const StockOptions: React.FC<StockOptionsProps> = ({ metadata, saveList, 
       exit={{ opacity: 0, scale: 0.95 }}
       className="bg-white rounded-3xl shadow-xl border border-slate-100 overflow-hidden"
     >
-      <div className="p-8 border-b border-slate-100 flex justify-between items-center">
+      <div className="p-5 sm:p-8 border-b border-slate-100 flex justify-between items-center">
         <div>
           <h3 className="text-2xl font-bold text-slate-900">Options des Listes Déroulantes</h3>
           <p className="text-slate-500 font-medium">Configurez les valeurs disponibles pour le stock</p>
@@ -86,7 +86,7 @@ export const StockOptions: React.FC<StockOptionsProps> = ({ metadata, saveList, 
         </button>
       </div>
 
-      <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+      <div className="p-5 sm:p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
         <OptionList settingKey="stock_categories" label="Catégories Principales" values={categories} saveList={saveList} />
 
         {/* Sub-categories and brands, each linked to a category */}

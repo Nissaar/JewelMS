@@ -23,7 +23,7 @@ const Reports = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold text-slate-900 flex items-center gap-3">
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 flex items-center gap-3">
             <FileText className="text-amber-500" size={32} />
             Rapports & Archives
           </h1>
@@ -45,10 +45,10 @@ const Reports = () => {
 
       {/* Tabs */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex space-x-1 bg-slate-200 p-1 rounded-2xl w-fit">
+        <div className="flex space-x-1 bg-slate-200 p-1 rounded-2xl w-fit max-w-full overflow-x-auto">
           <button
             onClick={() => setActiveTab('vat')}
-            className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${
+            className={`px-4 sm:px-6 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
               activeTab === 'vat' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -56,7 +56,7 @@ const Reports = () => {
           </button>
           <button
             onClick={() => setActiveTab('receipts')}
-            className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${
+            className={`px-4 sm:px-6 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
               activeTab === 'receipts' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -64,7 +64,7 @@ const Reports = () => {
           </button>
           <button
             onClick={() => setActiveTab('tradein')}
-            className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${
+            className={`px-4 sm:px-6 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
               activeTab === 'tradein' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -72,7 +72,7 @@ const Reports = () => {
           </button>
           <button
             onClick={() => setActiveTab('metal')}
-            className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${
+            className={`px-4 sm:px-6 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
               activeTab === 'metal' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
             }`}
           >

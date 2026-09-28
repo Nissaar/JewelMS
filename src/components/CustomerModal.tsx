@@ -144,9 +144,9 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSucces
         initial={{ opacity: 0, scale: 0.9, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.9, y: 20 }}
-        className="relative w-full max-w-xl max-h-[calc(100vh-3rem)] overflow-y-auto bg-white rounded-[3rem] shadow-2xl"
+        className="relative w-full max-w-xl max-h-[calc(100dvh-3rem)] overflow-y-auto bg-white rounded-[3rem] shadow-2xl"
       >
-        <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+        <div className="p-5 sm:p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
           <div className="flex items-center gap-4">
             <div className="h-14 w-14 bg-amber-500 rounded-2xl flex items-center justify-center shadow-lg shadow-amber-500/30 text-white">
               <UserPlus size={28} />
@@ -164,7 +164,7 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSucces
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-8 space-y-6">
+        <form onSubmit={handleSubmit} className="p-5 sm:p-8 space-y-6">
           {message.text && (
             <div className={`p-4 rounded-2xl flex items-center gap-3 font-bold ${message.type === 'success' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
               {message.type === 'success' ? <Check className="shrink-0" /> : <AlertCircle className="shrink-0" />}

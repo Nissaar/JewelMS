@@ -127,7 +127,7 @@ export const CustomerStep: React.FC<CustomerStepProps> = ({
       exit={{ opacity: 0, x: -20 }}
       className="space-y-6"
     >
-      <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100 overflow-hidden">
+      <div className="bg-white p-5 sm:p-8 rounded-3xl shadow-xl border border-slate-100 overflow-hidden">
         <div className="flex items-center justify-between mb-8">
           <h2 className="text-2xl font-black text-slate-900">Identification Client (KYC)</h2>
           <button

@@ -67,9 +67,9 @@ export const ItemStep: React.FC<{ cart: Cart; onContinue: () => void }> = ({ car
       exit={{ opacity: 0, x: -20 }}
       className="space-y-6"
     >
-      <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-black text-slate-900">Identifier l'Article</h2>
+      <div className="bg-white p-5 sm:p-8 rounded-3xl shadow-xl border border-slate-100">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+          <h2 className="text-xl sm:text-2xl font-black text-slate-900">Identifier l'Article</h2>
           <button
             type="button"
             onClick={() => setIsScannerOpen(!isScannerOpen)}
@@ -95,7 +95,7 @@ export const ItemStep: React.FC<{ cart: Cart; onContinue: () => void }> = ({ car
           )}
         </AnimatePresence>
 
-        <form onSubmit={(e) => { e.preventDefault(); fetchByBarcode(barcode); }} className="flex gap-4 mb-8 relative">
+        <form onSubmit={(e) => { e.preventDefault(); fetchByBarcode(barcode); }} className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-8 relative">
           <div className="relative flex-1">
             <Barcode className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={24} aria-hidden="true" />
             <input
@@ -148,7 +148,7 @@ export const ItemStep: React.FC<{ cart: Cart; onContinue: () => void }> = ({ car
           <button
             type="submit"
             disabled={isLoading}
-            className="bg-slate-900 text-white px-8 rounded-2xl font-bold hover:bg-slate-800 transition-all disabled:opacity-50 h-[60px]"
+            className="bg-slate-900 text-white px-8 rounded-2xl font-bold hover:bg-slate-800 transition-all disabled:opacity-50 h-[60px] flex items-center justify-center"
           >
             {isLoading ? <Loader2 className="animate-spin" /> : 'Rechercher'}
           </button>
@@ -192,7 +192,7 @@ export const ItemStep: React.FC<{ cart: Cart; onContinue: () => void }> = ({ car
             </div>
           </div>
         ) : error ? (
-          <div className="p-10 text-center space-y-4 border-2 border-dashed border-slate-100 rounded-3xl">
+          <div className="p-6 sm:p-10 text-center space-y-4 border-2 border-dashed border-slate-100 rounded-3xl">
             <div className="h-20 w-20 bg-red-50 text-red-500 mx-auto rounded-full flex items-center justify-center">
               <AlertCircle size={40} aria-hidden="true" />
             </div>
@@ -200,7 +200,7 @@ export const ItemStep: React.FC<{ cart: Cart; onContinue: () => void }> = ({ car
             <button type="button" onClick={() => { setBarcode(''); setError(''); }} className="text-amber-600 font-bold hover:underline">Réessayer</button>
           </div>
         ) : (
-          <div className="p-20 text-center space-y-4 border-2 border-dashed border-slate-100 rounded-3xl">
+          <div className="p-8 sm:p-20 text-center space-y-4 border-2 border-dashed border-slate-100 rounded-3xl">
             <Barcode className="mx-auto text-slate-200" size={64} aria-hidden="true" />
             <p className="text-slate-400 font-medium">En attente d'un scan ou d'une saisie pour ajouter au panier...</p>
           </div>

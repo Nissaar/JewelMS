@@ -39,7 +39,7 @@ const Login = () => {
         animate={{ opacity: 1, scale: 1 }}
         className="max-w-md w-full bg-white rounded-3xl shadow-2xl overflow-hidden"
       >
-        <div className="p-8">
+        <div className="p-5 sm:p-8">
           <div className="text-center mb-10">
             <h1 className="text-4xl font-extrabold tracking-tighter text-slate-900 mb-2">HAUJEE</h1>
             <p className="text-slate-500 font-medium italic">Accès Bijouterie Privé</p>

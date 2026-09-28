@@ -100,7 +100,7 @@ const DiscountReport: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold text-slate-900 flex items-center gap-3">
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 flex items-center gap-3">
             <Percent className="text-amber-500 bg-amber-50 p-2 rounded-2xl" size={48} />
             Audit des Remises & Prix Modifiés
           </h1>
@@ -123,7 +123,7 @@ const DiscountReport: React.FC = () => {
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Total remises accordées */}
-        <div className="bg-slate-900 text-white p-8 rounded-[2rem] shadow-xl relative overflow-hidden group">
+        <div className="bg-slate-900 text-white p-5 sm:p-8 rounded-[2rem] shadow-xl relative overflow-hidden group">
           <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:scale-110 transition-all duration-300">
              <TrendingDown size={110} />
           </div>
@@ -137,7 +137,7 @@ const DiscountReport: React.FC = () => {
         </div>
 
         {/* Global Remises Ratio */}
-        <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100 relative overflow-hidden group">
+        <div className="bg-white p-5 sm:p-8 rounded-[2rem] shadow-sm border border-slate-100 relative overflow-hidden group">
           <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:scale-110 transition-all duration-300 text-amber-500">
              <Tag size={110} />
           </div>
@@ -149,7 +149,7 @@ const DiscountReport: React.FC = () => {
         </div>
 
         {/* Transactions with discounts */}
-        <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100 relative overflow-hidden group">
+        <div className="bg-white p-5 sm:p-8 rounded-[2rem] shadow-sm border border-slate-100 relative overflow-hidden group">
           <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:scale-110 transition-all duration-300 text-slate-900">
              <ShoppingBag size={110} />
           </div>

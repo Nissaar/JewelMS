@@ -107,7 +107,7 @@ export const StockFormView: React.FC<StockFormViewProps> = ({ mode, metadata, on
       className="w-full max-w-5xl mx-auto flex flex-col gap-8"
     >
       <div className="w-full bg-white rounded-3xl shadow-xl border border-slate-100 overflow-hidden">
-        <div className="p-8 bg-slate-900 text-white">
+        <div className="p-5 sm:p-8 bg-slate-900 text-white">
           <h3 className="text-2xl font-bold">
             {mode.kind === 'bulk' ? `Modifier le Groupe — ${mode.baseCode}` : isEdit ? "Modifier l'Article" : 'Nouvel Article'}
           </h3>
@@ -124,7 +124,7 @@ export const StockFormView: React.FC<StockFormViewProps> = ({ mode, metadata, on
           )}
         </div>
 
-        <form onSubmit={handleSubmit} className="p-8 space-y-6">
+        <form onSubmit={handleSubmit} className="p-5 sm:p-8 space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {/* Barcode — not editable in bulk mode */}
             {!isBulk && (

@@ -24,7 +24,7 @@ const Unauthorized: React.FC = () => {
           ACCÈS REFUSÉ
         </h1>
         
-        <div className="bg-white/60 backdrop-blur-md rounded-3xl p-8 shadow-xl border border-white relative overflow-hidden group mb-8">
+        <div className="bg-white/60 backdrop-blur-md rounded-3xl p-5 sm:p-8 shadow-xl border border-white relative overflow-hidden group mb-8">
           <div className="absolute top-0 left-0 w-1 h-full bg-red-500"></div>
           <p className="text-slate-600 font-medium leading-relaxed">
             Désolé, vous n'avez pas les permissions nécessaires pour accéder à ce module système. 
