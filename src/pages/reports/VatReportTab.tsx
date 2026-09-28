@@ -6,6 +6,8 @@ import { formatCurrency, formatWeight } from '../../lib/utils';
 import { downloadAuthenticatedFile } from '../../lib/openFile';
 import type { Notify } from './types';
 
+const MONTHS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+
 /** VAT collected per sale for a year / month / day. */
 export const VatReportTab: React.FC<{ notify: Notify }> = ({ notify }) => {
   const [isLoading, setIsLoading] = useState(true);
@@ -18,6 +20,9 @@ export const VatReportTab: React.FC<{ notify: Notify }> = ({ notify }) => {
   });
 
   useEffect(() => { fetchVatReport(); }, [filters]);
+
+  const periodLabel = [filters.day, filters.month ? MONTHS[Number(filters.month) - 1].toLowerCase() : "l'année", filters.year]
+    .filter(Boolean).join(' ');
 
   const fetchVatReport = async () => {
     setIsLoading(true);
@@ -57,7 +62,7 @@ export const VatReportTab: React.FC<{ notify: Notify }> = ({ notify }) => {
       key="vat" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
       className="space-y-6"
     >
-      <div className="flex justify-end gap-2">
+      <div className="flex flex-wrap justify-end gap-2">
         <button
           id="export-vat-pdf-btn"
           onClick={handleExportVatPDF}
@@ -69,7 +74,7 @@ export const VatReportTab: React.FC<{ notify: Notify }> = ({ notify }) => {
       </div>
       {/* Summary Card */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-slate-900 text-white p-8 rounded-[2rem] shadow-2xl relative overflow-hidden group">
+        <div className="bg-slate-900 text-white p-5 sm:p-8 rounded-[2rem] shadow-2xl relative overflow-hidden group">
           <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform">
              <ArrowUpRight size={100} />
           </div>
@@ -79,14 +84,14 @@ export const VatReportTab: React.FC<{ notify: Notify }> = ({ notify }) => {
           </div>
           <div className="mt-4 flex items-center gap-2 text-xs text-slate-400">
             <Calendar size={14} />
-            <span>Période: {filters.month}/{filters.year}</span>
+            <span>Période : {periodLabel}</span>
           </div>
         </div>
 
         {/* Filters */}
-        <div className="md:col-span-2 bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100 flex flex-wrap items-end gap-4">
+        <div className="md:col-span-2 bg-white p-5 sm:p-8 rounded-[2rem] shadow-sm border border-slate-100 flex flex-wrap items-end gap-4">
           <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Année</label>
+            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">Année</label>
             <select aria-label="Année" 
               className="w-32 bg-slate-50 border-2 border-slate-100 rounded-xl py-2 px-3 font-bold outline-none focus:border-amber-400"
               value={filters.year}
@@ -96,24 +101,26 @@ export const VatReportTab: React.FC<{ notify: Notify }> = ({ notify }) => {
             </select>
           </div>
           <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Mois</label>
+            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">Mois</label>
             <select aria-label="Mois" 
               className="w-40 bg-slate-50 border-2 border-slate-100 rounded-xl py-2 px-3 font-bold outline-none focus:border-amber-400"
               value={filters.month}
-              onChange={(e) => setFilters({...filters, month: e.target.value})}
+              onChange={(e) => setFilters({...filters, month: e.target.value, day: e.target.value ? filters.day : ''})}
             >
-              {['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'].map((m, i) => (
+              <option value="">Toute l'année</option>
+              {MONTHS.map((m, i) => (
                 <option key={i} value={i+1}>{m}</option>
               ))}
             </select>
           </div>
           <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Jour (Optionnel)</label>
+            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">Jour (Optionnel)</label>
             <input aria-label="Jour (Optionnel)" 
               type="number" min="1" max="31" 
               placeholder="DD"
-              className="w-24 bg-slate-50 border-2 border-slate-100 rounded-xl py-2 px-3 font-bold outline-none focus:border-amber-400"
+              className="w-24 disabled:opacity-50 bg-slate-50 border-2 border-slate-100 rounded-xl py-2 px-3 font-bold outline-none focus:border-amber-400"
               value={filters.day}
+              disabled={!filters.month}
               onChange={(e) => setFilters({...filters, day: e.target.value})}
             />
           </div>
@@ -144,7 +151,15 @@ export const VatReportTab: React.FC<{ notify: Notify }> = ({ notify }) => {
                 {isLoading ? (
                   <tr><td colSpan={6} className="py-20 text-center"><Loader2 className="animate-spin mx-auto text-amber-500" /></td></tr>
                 ) : vatData.length === 0 ? (
-                  <tr><td colSpan={6} className="py-20 text-center text-slate-400">Aucune donnée pour cette période</td></tr>
+                  <tr><td colSpan={6} className="py-16 px-6 text-center text-slate-400">
+                    <p>Aucune vente terminée pour {periodLabel}.</p>
+                    {filters.month && (
+                      <button type="button" onClick={() => setFilters({ ...filters, month: '', day: '' })}
+                        className="mt-3 font-bold text-amber-600 hover:underline">
+                        Voir toute l'année {filters.year}
+                      </button>
+                    )}
+                  </td></tr>
                 ) : (
                   vatData.map((row) => (
                     <tr key={row.saleId} className="hover:bg-slate-50 transition-colors">

@@ -61,16 +61,16 @@ const Customers = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3">
+          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 flex items-center gap-3">
             <Users className="text-amber-500" size={32} />
             Répertoire Customers (KYC)
           </h1>
           <p className="text-slate-500 font-bold">Base de données centralisée et historique transactionnel</p>
         </div>
         
-        <div className="flex gap-4">
+        <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
           <div className="flex gap-2">
-            <div className="relative">
+            <div className="relative w-full">
               {isLoading ? (
                 <Loader2 className="absolute left-4 top-1/2 -translate-y-1/2 text-amber-500 animate-spin" size={20} />
               ) : (
@@ -79,7 +79,7 @@ const Customers = () => {
               <input aria-label="Nom ou N° de Carte..." 
                 type="text" 
                 placeholder="Nom ou N° de Carte..."
-                className="bg-slate-50 border-2 border-slate-100 rounded-2xl py-3 pl-12 pr-4 font-bold outline-none focus:border-amber-400 w-64 transition-all"
+                className="bg-slate-50 border-2 border-slate-100 rounded-2xl py-3 pl-12 pr-4 font-bold outline-none focus:border-amber-400 w-full sm:w-64 transition-all"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
@@ -88,7 +88,7 @@ const Customers = () => {
           
           <button 
             onClick={() => setIsCreateModalOpen(true)}
-            className="flex items-center gap-2 bg-amber-500 text-white px-6 py-3 rounded-2xl font-black hover:bg-amber-600 shadow-lg shadow-amber-500/20 transition-all whitespace-nowrap"
+            className="flex items-center justify-center gap-2 bg-amber-500 text-white px-6 py-3 rounded-2xl font-black hover:bg-amber-600 shadow-lg shadow-amber-500/20 transition-all whitespace-nowrap"
           >
             <Plus size={20} />
             Ajouter un Client
@@ -131,25 +131,26 @@ const Customers = () => {
               onKeyDown={activateOnKey(() => openDetails(c))}
               className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 hover:shadow-xl hover:border-amber-100 transition-all cursor-pointer group relative"
             >
-              <div className="absolute top-4 right-4 transition-opacity flex gap-2 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
-                <button aria-label="Modifier le client" 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setEditingCustomer(c);
-                    setIsCreateModalOpen(true);
-                  }}
-                  className="p-2 bg-amber-50 text-amber-600 rounded-xl hover:bg-amber-100 transition-all"
-                >
-                  <Edit2 size={16} />
-                </button>
-              </div>
               <div className="flex justify-between items-start mb-6">
                 <div className="h-16 w-16 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 group-hover:bg-amber-50 group-hover:text-amber-500 transition-colors">
                   <User size={32} />
                 </div>
-                <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase border ${getRiskColor(c.riskRating)}`}>
-                  RISK: {c.riskRating}
-                </span>
+                {/* Badge and edit button side by side: the button used to sit on top of the badge. */}
+                <div className="flex items-center gap-2">
+                  <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase border whitespace-nowrap ${getRiskColor(c.riskRating)}`}>
+                    RISK: {c.riskRating}
+                  </span>
+                  <button aria-label="Modifier le client"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingCustomer(c);
+                      setIsCreateModalOpen(true);
+                    }}
+                    className="p-2 bg-amber-50 text-amber-600 rounded-xl hover:bg-amber-100 transition-all md:opacity-0 md:group-hover:opacity-100 md:focus:opacity-100"
+                  >
+                    <Edit2 size={16} />
+                  </button>
+                </div>
               </div>
 
               <div className="space-y-1 mb-6">
@@ -212,7 +213,7 @@ const Customers = () => {
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
               className="relative w-full max-w-2xl bg-white h-full shadow-2xl flex flex-col"
             >
-              <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+              <div className="p-5 sm:p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                 <div className="flex items-center gap-4">
                   <div className="h-14 w-14 bg-white rounded-2xl flex items-center justify-center border border-slate-200">
                     <User size={24} className="text-slate-400" />
@@ -230,7 +231,7 @@ const Customers = () => {
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-8 space-y-12">
+              <div className="flex-1 overflow-y-auto p-5 sm:p-8 space-y-12">
                 {/* Info Bar */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="p-6 bg-slate-50 rounded-3xl space-y-1">

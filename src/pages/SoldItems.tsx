@@ -28,7 +28,7 @@ const SoldItems = () => {
             <ArrowLeft size={18} />
             Retour au Stock
           </button>
-          <h1 className="text-3xl font-extrabold text-slate-900 flex items-center gap-3">
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 flex items-center gap-3">
             <History className="text-red-500" size={32} />
             Articles Vendus
           </h1>

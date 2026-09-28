@@ -160,7 +160,7 @@ const AuditLogs = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold text-slate-900 flex items-center gap-3">
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 flex items-center gap-3">
             <Fingerprint className="text-purple-600" size={32} />
             Journaux d'Audit
           </h1>
@@ -212,7 +212,7 @@ const AuditLogs = () => {
         <input aria-label="Rechercher par utilisateur, action ou détails..." 
           type="text" 
           placeholder="Rechercher par utilisateur, action ou détails..."
-          className="flex-1 bg-transparent border-none outline-none font-medium"
+          className="flex-1 min-w-0 bg-transparent border-none outline-none font-medium"
           value={searchQuery}
           onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
         />

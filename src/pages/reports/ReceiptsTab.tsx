@@ -45,7 +45,7 @@ export const ReceiptsTab: React.FC<{ notify: Notify }> = ({ notify }) => {
           <input aria-label="Rechercher par N° Facture ou Client..." 
             type="text" 
             placeholder="Rechercher par N° Facture ou Client..."
-            className="flex-1 bg-transparent border-none outline-none font-medium"
+            className="flex-1 min-w-0 bg-transparent border-none outline-none font-medium"
             value={receiptSearch}
             onChange={(e) => setReceiptSearch(e.target.value)}
           />

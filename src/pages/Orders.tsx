@@ -176,9 +176,9 @@ const Orders = () => {
   return (
     <div className="max-w-6xl mx-auto space-y-8">
       {/* Header */}
-      <div className="flex justify-between items-center bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3">
+          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 flex items-center gap-3">
             <Package className="text-amber-500" size={32} />
             Commandes Spéciales
           </h1>
@@ -186,7 +186,7 @@ const Orders = () => {
         </div>
         <button 
           onClick={() => setView(view === 'list' ? 'create' : 'list')}
-          className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-black transition-all ${
+          className={`flex items-center justify-center gap-2 px-6 py-3 rounded-2xl font-black transition-all whitespace-nowrap ${
             view === 'list' ? 'bg-slate-900 text-white hover:bg-slate-800' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
           }`}
         >
@@ -212,7 +212,7 @@ const Orders = () => {
 
             {/* Right: Form */}
             <form onSubmit={handleCreateOrder} className="lg:col-span-2 space-y-8">
-              <div className="bg-white p-8 rounded-[2rem] shadow-xl border border-slate-100 space-y-6">
+              <div className="bg-white p-5 sm:p-8 rounded-[2rem] shadow-xl border border-slate-100 space-y-6">
                 <div>
                   <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Date de Commande</label>
                   <input aria-label="Date de Commande" 
@@ -343,7 +343,7 @@ const Orders = () => {
               <input aria-label="Rechercher Commande ou Client..." 
                 type="text" 
                 placeholder="Rechercher Commande ou Client..."
-                className="flex-1 bg-transparent border-none outline-none font-medium"
+                className="flex-1 min-w-0 bg-transparent border-none outline-none font-medium"
                 value={orderSearch}
                 onChange={(e) => setOrderSearch(e.target.value)}
               />
@@ -409,7 +409,7 @@ const Orders = () => {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden mx-auto p-8"
+              className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden mx-auto p-5 sm:p-8"
             >
               <div className="text-center space-y-4">
                 <div className="mx-auto h-16 w-16 bg-red-50 text-red-600 rounded-full flex items-center justify-center">
@@ -462,7 +462,7 @@ const Orders = () => {
             >
               {completedOrderSaleId ? (
                 <div className="flex flex-col">
-                  <div className="bg-emerald-600 p-10 text-center text-white relative">
+                  <div className="bg-emerald-600 p-6 sm:p-10 text-center text-white relative">
                     <div className="absolute top-6 left-1/2 -translate-x-1/2 h-16 w-16 bg-white rounded-full flex items-center justify-center text-emerald-600 shadow-xl">
                       <Check size={36} strokeWidth={4} />
                     </div>
@@ -472,7 +472,7 @@ const Orders = () => {
                     </div>
                   </div>
 
-                  <div className="p-10 space-y-8">
+                  <div className="p-6 sm:p-10 space-y-8">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
                       <button type="button" className="p-6 bg-slate-50 rounded-3xl hover:bg-emerald-50 focus:bg-emerald-50 transition-colors group" onClick={handleDownloadFinalPDF}>
                         {isGeneratingPDF ? (
@@ -593,7 +593,7 @@ const Orders = () => {
 
                     <div className="space-y-6">
                       {finalizingOrder.deposit && (
-                        <div className="p-8 bg-amber-50 rounded-3xl border-2 border-amber-100 space-y-6">
+                        <div className="p-5 sm:p-8 bg-amber-50 rounded-3xl border-2 border-amber-100 space-y-6">
                           <h4 className="font-black text-amber-900 uppercase tracking-wider text-xs">Récapitulatif financier</h4>
                           <div className="space-y-4">
                             <div className="flex justify-between items-center text-lg">

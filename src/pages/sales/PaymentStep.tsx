@@ -42,7 +42,7 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
     >
       {/* Left: summary */}
       <div className="space-y-6">
-        <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100">
+        <div className="bg-white p-5 sm:p-8 rounded-3xl shadow-xl border border-slate-100">
           <h3 className="text-xl font-bold text-slate-900 mb-6 flex items-center gap-2">
             <ShoppingCart className="text-amber-500" size={20} aria-hidden="true" /> Panier d'Achat ({itemCount} article{itemCount > 1 ? 's' : ''})
           </h3>
@@ -55,7 +55,7 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
           </div>
         </div>
 
-        <div className="bg-slate-900 text-white p-8 rounded-3xl shadow-xl">
+        <div className="bg-slate-900 text-white p-5 sm:p-8 rounded-3xl shadow-xl">
           <dl className="space-y-3">
             <div className="flex justify-between items-center">
               <dt className="text-slate-400 font-bold uppercase text-xs tracking-widest">Sous-Total (Excl. TVA)</dt>
@@ -90,7 +90,7 @@ export const PaymentStep: React.FC<PaymentStepProps> = ({
       </div>
 
       {/* Right: payment */}
-      <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100">
+      <div className="bg-white p-5 sm:p-8 rounded-3xl shadow-xl border border-slate-100">
         <h2 className="text-2xl font-black text-slate-900 mb-8">Détails du Paiement</h2>
         <div className="space-y-6">
           <div>

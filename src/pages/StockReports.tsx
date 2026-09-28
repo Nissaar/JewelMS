@@ -76,7 +76,7 @@ const StockReports = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3">
+          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 flex items-center gap-3">
             <BarChart3 className="text-amber-500" size={32} />
             Rapport d'Inventaire
           </h1>
@@ -87,7 +87,7 @@ const StockReports = () => {
           <div className="flex items-center gap-2">
             <Filter className="text-slate-400" size={18} />
             <select aria-label="Filtrer par catégorie" 
-              className="bg-slate-50 border-2 border-slate-100 rounded-xl py-2 px-4 font-bold outline-none focus:border-amber-400"
+              className="max-w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-2 px-4 font-bold outline-none focus:border-amber-400"
               value={filters.category}
               onChange={(e) => handleFilterChange('category', e.target.value)}
             >
@@ -100,7 +100,7 @@ const StockReports = () => {
           </div>
           <div className="flex items-center gap-2">
             <select aria-label="Filtrer par sous-catégorie" 
-              className="bg-slate-50 border-2 border-slate-100 rounded-xl py-2 px-4 font-bold outline-none focus:border-amber-400"
+              className="max-w-full bg-slate-50 border-2 border-slate-100 rounded-xl py-2 px-4 font-bold outline-none focus:border-amber-400"
               value={filters.subCategory}
               onChange={(e) => handleFilterChange('subCategory', e.target.value)}
             >
@@ -131,9 +131,9 @@ const StockReports = () => {
           <motion.div 
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
-            className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-100 space-y-8"
+            className="bg-white p-5 sm:p-8 rounded-[2.5rem] shadow-xl border border-slate-100 space-y-8"
           >
-            <div className="flex justify-between items-center">
+            <div className="flex flex-wrap justify-between items-center gap-4">
               <div className="flex items-center gap-4">
                 <div className="h-14 w-14 bg-amber-50 text-amber-500 rounded-2xl flex items-center justify-center shadow-inner">
                   <TrendingUp size={28} />
@@ -144,7 +144,7 @@ const StockReports = () => {
                 </div>
               </div>
               <div className="text-right">
-                <span className="text-4xl font-black text-slate-900">
+                <span className="text-3xl sm:text-4xl font-black text-slate-900">
                   {((reportData?.Gold?.['on-display'] || 0) + (reportData?.Gold?.['in-store'] || 0)).toFixed(3)}
                 </span>
                 <span className="text-xl font-black text-amber-500 ml-1">g</span>
@@ -152,14 +152,14 @@ const StockReports = () => {
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <div className="bg-amber-50 p-6 rounded-3xl space-y-1">
+              <div className="bg-amber-50 p-4 sm:p-6 rounded-3xl space-y-1">
                 <div className="flex items-center gap-2 text-amber-600 mb-2">
                   <Eye size={18} />
                   <span className="text-[10px] font-black uppercase tracking-widest">En Vitrine</span>
                 </div>
-                <p className="text-2xl font-black text-amber-900">{(reportData?.Gold?.['on-display'] || 0).toFixed(3)} g</p>
+                <p className="text-xl sm:text-2xl font-black text-amber-900 whitespace-nowrap">{(reportData?.Gold?.['on-display'] || 0).toFixed(3)} g</p>
               </div>
-              <div className="bg-slate-50 p-6 rounded-3xl space-y-1">
+              <div className="bg-slate-50 p-4 sm:p-6 rounded-3xl space-y-1">
                 <div className="flex items-center gap-2 text-slate-400 mb-2">
                   <Store size={18} />
                   <span className="text-[10px] font-black uppercase tracking-widest">En Réserve</span>
@@ -196,9 +196,9 @@ const StockReports = () => {
           <motion.div 
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
-            className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-100 space-y-8"
+            className="bg-white p-5 sm:p-8 rounded-[2.5rem] shadow-xl border border-slate-100 space-y-8"
           >
-            <div className="flex justify-between items-center">
+            <div className="flex flex-wrap justify-between items-center gap-4">
               <div className="flex items-center gap-4">
                 <div className="h-14 w-14 bg-slate-50 text-slate-500 rounded-2xl flex items-center justify-center shadow-inner">
                   <Scale size={28} />
@@ -209,7 +209,7 @@ const StockReports = () => {
                 </div>
               </div>
               <div className="text-right">
-                <span className="text-4xl font-black text-slate-900">
+                <span className="text-3xl sm:text-4xl font-black text-slate-900">
                   {((reportData?.Silver?.['on-display'] || 0) + (reportData?.Silver?.['in-store'] || 0)).toFixed(3)}
                 </span>
                 <span className="text-xl font-black text-slate-400 ml-1">g</span>
@@ -217,12 +217,12 @@ const StockReports = () => {
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <div className="bg-slate-50 p-6 rounded-3xl space-y-1">
+              <div className="bg-slate-50 p-4 sm:p-6 rounded-3xl space-y-1">
                 <div className="flex items-center gap-2 text-slate-400 mb-2">
                   <Eye size={18} />
                   <span className="text-[10px] font-black uppercase tracking-widest">En Vitrine</span>
                 </div>
-                <p className="text-2xl font-black text-slate-900">{(reportData?.Silver?.['on-display'] || 0).toFixed(3)} g</p>
+                <p className="text-xl sm:text-2xl font-black text-slate-900 whitespace-nowrap">{(reportData?.Silver?.['on-display'] || 0).toFixed(3)} g</p>
               </div>
               <div className="bg-slate-100/50 p-6 rounded-3xl space-y-1">
                 <div className="flex items-center gap-2 text-slate-300 mb-2">
@@ -262,7 +262,7 @@ const StockReports = () => {
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="lg:col-span-2 bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-100"
+              className="lg:col-span-2 bg-white p-5 sm:p-8 rounded-[2.5rem] shadow-xl border border-slate-100"
             >
               <div className="flex items-center gap-4 mb-8">
                 <div className="h-12 w-12 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center">

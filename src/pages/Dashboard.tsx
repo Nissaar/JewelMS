@@ -86,7 +86,7 @@ const Dashboard = () => {
   return (
     <div className="space-y-8 max-w-6xl mx-auto">
       <header>
-        <h1 className="text-3xl font-black text-slate-900">Tableau de Bord</h1>
+        <h1 className="text-2xl sm:text-3xl font-black text-slate-900">Tableau de Bord</h1>
         <p className="text-slate-500 font-bold">Bienvenue chez Haujee Jewellery</p>
       </header>
 
@@ -115,7 +115,7 @@ const Dashboard = () => {
         <motion.div 
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
-          className="bg-white p-8 rounded-[3rem] shadow-xl border border-slate-100"
+          className="bg-white p-5 sm:p-8 rounded-[3rem] shadow-xl border border-slate-100"
         >
           <div className="flex items-center justify-between mb-8">
             <h2 className="text-xl font-black text-slate-900 flex items-center gap-3">
@@ -127,18 +127,18 @@ const Dashboard = () => {
               <p className="text-slate-400 font-bold italic text-center py-8">Aucune vente récente</p>
             ) : (
               data?.recentSales?.map((sale: any) => (
-                <div key={sale.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-3xl hover:bg-slate-100 transition-colors">
-                  <div className="flex items-center gap-4">
-                    <div className="h-12 w-12 bg-white rounded-2xl flex items-center justify-center text-amber-500 shadow-sm">
+                <div key={sale.id} className="flex items-center justify-between gap-3 p-4 bg-slate-50 rounded-3xl hover:bg-slate-100 transition-colors">
+                  <div className="flex items-center gap-4 min-w-0">
+                    <div className="h-12 w-12 shrink-0 bg-white rounded-2xl flex items-center justify-center text-amber-500 shadow-sm">
                       <ShoppingCart size={20} />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="font-black text-slate-900 truncate max-w-[150px]" title={getItemFullDescription(sale)}>{getItemFullDescription(sale) || 'Article'}</p>
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{sale.customerName || 'Client anonyme'}</p>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest truncate">{sale.customerName || 'Client anonyme'}</p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="font-black text-slate-900">{formatCurrency(sale.amount)}</p>
+                  <div className="text-right shrink-0">
+                    <p className="font-black text-slate-900 whitespace-nowrap">{formatCurrency(sale.amount)}</p>
                     <p className="text-[10px] font-bold text-slate-400">{new Date(sale.datetime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                   </div>
                 </div>
@@ -151,7 +151,7 @@ const Dashboard = () => {
         <motion.div 
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
-          className="bg-amber-50 p-8 rounded-[3rem] border border-amber-100 flex flex-col justify-center items-center text-center space-y-6"
+          className="bg-amber-50 p-5 sm:p-8 rounded-[3rem] border border-amber-100 flex flex-col justify-center items-center text-center space-y-6"
         >
           <div className="h-20 w-20 bg-white rounded-[2rem] flex items-center justify-center text-amber-500 shadow-lg">
             <Package size={40} />

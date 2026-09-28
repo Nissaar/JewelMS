@@ -192,8 +192,8 @@ const Settings = () => {
 
   return (
     <div className="max-w-6xl mx-auto">
-      <div className="flex items-center justify-between mb-8">
-        <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">Paramètres Système</h1>
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
+        <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Paramètres Système</h1>
         {message.text && (
           <motion.div
             initial={{ opacity: 0, x: 20 }}
@@ -209,10 +209,10 @@ const Settings = () => {
       </div>
 
       {/* Tabs */}
-      <div className="flex space-x-1 bg-slate-200 p-1 rounded-2xl mb-8 w-fit">
+      <div className="flex space-x-1 bg-slate-200 p-1 rounded-2xl mb-8 w-fit max-w-full overflow-x-auto">
         <button
           onClick={() => setActiveTab('general')}
-          className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${
+          className={`px-4 sm:px-6 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
             activeTab === 'general' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
           }`}
         >
@@ -220,7 +220,7 @@ const Settings = () => {
         </button>
         <button
           onClick={() => setActiveTab('users')}
-          className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${
+          className={`px-4 sm:px-6 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
             activeTab === 'users' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
           }`}
         >
@@ -228,7 +228,7 @@ const Settings = () => {
         </button>
         <button
           onClick={() => setActiveTab('pwa')}
-          className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${
+          className={`px-4 sm:px-6 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap shrink-0 ${
             activeTab === 'pwa' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
           }`}
         >
@@ -244,8 +244,8 @@ const Settings = () => {
         <div className="space-y-6">
           {activeTab === 'general' ? (
             <div className="grid grid-cols-1 gap-8">
-              <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
-                <div className="flex items-center justify-between mb-2">
+              <div className="bg-white p-5 sm:p-8 rounded-3xl shadow-sm border border-slate-100">
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
                   <h3 className="text-lg font-bold text-slate-800">Coordonnées de la boutique</h3>
                   <button
                     onClick={handleSaveShopDetails}
@@ -273,8 +273,8 @@ const Settings = () => {
               {['receipt_heading', 'receipt_policy_wording'].map((key) => {
                 const setting = settings.find(s => s.key === key);
                 return (
-                  <div key={key} className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
-                    <div className="flex items-center justify-between mb-4">
+                  <div key={key} className="bg-white p-5 sm:p-8 rounded-3xl shadow-sm border border-slate-100">
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                       <h3 className="text-lg font-bold text-slate-800 capitalize">
                         {key.replace(/_/g, ' ')}
                       </h3>
@@ -344,7 +344,7 @@ const Settings = () => {
             </div>
           ) : (
             <div className="max-w-3xl space-y-8">
-              <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
+              <div className="bg-white p-5 sm:p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
                 <div className="flex items-center space-x-4 mb-6">
                   <div className="h-14 w-14 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center">
                     <Smartphone size={32} />
@@ -356,7 +356,7 @@ const Settings = () => {
                 </div>
 
                 <div className="space-y-8">
-                  <div className="bg-slate-50 p-10 rounded-[2rem] border border-slate-100 flex flex-col items-center text-center space-y-6">
+                  <div className="bg-slate-50 p-6 sm:p-10 rounded-[2rem] border border-slate-100 flex flex-col items-center text-center space-y-6">
                     <div className="h-24 w-24 bg-white rounded-3xl flex items-center justify-center text-amber-500 shadow-xl shadow-amber-500/10 border border-slate-100">
                       <Smartphone size={48} />
                     </div>
@@ -404,7 +404,7 @@ const Settings = () => {
                 </div>
               </div>
 
-              <div className="bg-slate-900 p-8 rounded-[2.5rem] text-white">
+              <div className="bg-slate-900 p-5 sm:p-8 rounded-[2.5rem] text-white">
                 <h4 className="font-bold mb-4 flex items-center gap-2">
                   <Shield size={20} className="text-amber-500" /> 
                   Avantages du mode Standalone
@@ -439,8 +439,8 @@ const Settings = () => {
               exit={{ scale: 0.9, opacity: 0 }}
               className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden"
             >
-              <div className="p-8">
-                <div className="flex items-center justify-between mb-8">
+              <div className="p-5 sm:p-8">
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
                   <h3 className="text-2xl font-bold text-slate-900">Nouvel Utilisateur</h3>
                   <button aria-label="Fermer" onClick={() => setShowAddUser(false)} className="text-slate-400 hover:text-slate-900">
                     <X size={24} />
@@ -512,7 +512,7 @@ const Settings = () => {
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
               className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-4xl max-h-[95vh] flex flex-col overflow-hidden"
             >
-              <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 flex-shrink-0">
+              <div className="p-5 sm:p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 flex-shrink-0">
                 <div className="flex items-center space-x-4">
                   <div className="h-14 w-14 bg-amber-500 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-amber-500/20">
                     <Shield size={28} />
@@ -527,7 +527,7 @@ const Settings = () => {
                 </button>
               </div>
 
-              <div className="p-8 lg:p-10 overflow-y-auto flex-1">
+              <div className="p-5 sm:p-8 lg:p-10 overflow-y-auto flex-1">
                 <form onSubmit={handleSaveUser} className="space-y-10">
                   {/* Basic Info Section */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8 bg-slate-50 p-6 rounded-3xl border border-slate-100">

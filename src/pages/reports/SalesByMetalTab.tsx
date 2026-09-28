@@ -7,6 +7,9 @@ import { downloadCsv } from '../../lib/csv';
 import { downloadAuthenticatedFile } from '../../lib/openFile';
 import { currentMonthRange, type Notify } from './types';
 
+const formatDay = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('fr-FR');
+const startOfYear = () => `${new Date().getFullYear()}-01-01`;
+
 const EMPTY_SUMMARY = { totalWeight: 0, totalRevenue: 0, totalRevenueWithVat: 0, count: 0 };
 
 /** Sales per item, filtered by date, metal and fineness, with CSV and PDF export. */
@@ -93,7 +96,7 @@ export const SalesByMetalTab: React.FC<{ notify: Notify }> = ({ notify }) => {
       key="metal" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
       className="space-y-6"
     >
-      <div className="flex justify-end gap-2">
+      <div className="flex flex-wrap justify-end gap-2">
         <button
           id="export-sales-metal-excel-btn"
           onClick={handleExportSalesByMetalExcel}
@@ -148,12 +151,12 @@ export const SalesByMetalTab: React.FC<{ notify: Notify }> = ({ notify }) => {
       </div>
 
       {/* Filters */}
-      <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100 flex flex-wrap items-end gap-6">
+      <div className="bg-white p-5 sm:p-8 rounded-[2rem] shadow-sm border border-slate-100 grid grid-cols-1 sm:flex sm:flex-wrap sm:items-end gap-4 sm:gap-6">
         <div className="space-y-2">
           <label className="text-xs font-black text-slate-400 uppercase tracking-widest block">Date de Début / Start Date</label>
           <input aria-label="Date de Début / Start Date" 
             type="date" 
-            className="w-48 bg-slate-50 border-2 border-slate-100 rounded-xl py-2 px-3 font-bold outline-none focus:border-amber-400 text-sm"
+            className="w-full sm:w-48 bg-slate-50 border-2 border-slate-100 rounded-xl py-2 px-3 font-bold outline-none focus:border-amber-400 text-sm"
             value={metalFilters.startDate}
             onChange={(e) => setMetalFilters({...metalFilters, startDate: e.target.value})}
           />
@@ -162,7 +165,7 @@ export const SalesByMetalTab: React.FC<{ notify: Notify }> = ({ notify }) => {
           <label className="text-xs font-black text-slate-400 uppercase tracking-widest block">Date de Fin / End Date</label>
           <input aria-label="Date de Fin / End Date" 
             type="date" 
-            className="w-48 bg-slate-50 border-2 border-slate-100 rounded-xl py-2 px-3 font-bold outline-none focus:border-amber-400 text-sm"
+            className="w-full sm:w-48 bg-slate-50 border-2 border-slate-100 rounded-xl py-2 px-3 font-bold outline-none focus:border-amber-400 text-sm"
             value={metalFilters.endDate}
             onChange={(e) => setMetalFilters({...metalFilters, endDate: e.target.value})}
           />
@@ -170,7 +173,7 @@ export const SalesByMetalTab: React.FC<{ notify: Notify }> = ({ notify }) => {
         <div className="space-y-2">
           <label className="text-xs font-black text-slate-400 uppercase tracking-widest block">Métal / Metal</label>
           <select aria-label="Métal / Metal" 
-            className="w-48 bg-slate-50 border-2 border-slate-100 rounded-xl py-2 px-3 font-bold outline-none focus:border-amber-400 text-sm"
+            className="w-full sm:w-48 bg-slate-50 border-2 border-slate-100 rounded-xl py-2 px-3 font-bold outline-none focus:border-amber-400 text-sm"
             value={metalFilters.metalType}
             onChange={(e) => setMetalFilters({...metalFilters, metalType: e.target.value})}
           >
@@ -183,7 +186,7 @@ export const SalesByMetalTab: React.FC<{ notify: Notify }> = ({ notify }) => {
         <div className="space-y-2">
           <label className="text-xs font-black text-slate-400 uppercase tracking-widest block">Pureté / Purity</label>
           <select aria-label="Pureté / Purity" 
-            className="w-48 bg-slate-50 border-2 border-slate-100 rounded-xl py-2 px-3 font-bold outline-none focus:border-amber-400 text-sm"
+            className="w-full sm:w-48 bg-slate-50 border-2 border-slate-100 rounded-xl py-2 px-3 font-bold outline-none focus:border-amber-400 text-sm"
             value={metalFilters.fineness}
             onChange={(e) => setMetalFilters({...metalFilters, fineness: e.target.value})}
           >
@@ -238,8 +241,19 @@ export const SalesByMetalTab: React.FC<{ notify: Notify }> = ({ notify }) => {
                 </tr>
               ) : salesByMetalData.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-20 text-center text-slate-400 font-medium">
-                    Aucune transaction enregistrée pour ces critères de recherche
+                  <td colSpan={9} className="py-16 px-6 text-center text-slate-400 font-medium">
+                    <p>
+                      Aucune vente terminée
+                      {metalFilters.startDate && ` du ${formatDay(metalFilters.startDate)}`}
+                      {metalFilters.endDate && ` au ${formatDay(metalFilters.endDate)}`}
+                      {(metalFilters.metalType !== 'all' || metalFilters.fineness !== 'all') && ' pour ce métal / cette pureté'}.
+                    </p>
+                    {metalFilters.startDate !== startOfYear() && (
+                      <button type="button" onClick={() => setMetalFilters({ ...metalFilters, startDate: startOfYear() })}
+                        className="mt-3 font-bold text-amber-600 hover:underline">
+                        Voir depuis le 1er janvier
+                      </button>
+                    )}
                   </td>
                 </tr>
               ) : (

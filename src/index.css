@@ -13,6 +13,10 @@
   button, [role="button"], .btn {
     cursor: pointer !important;
   }
+  /* Icons keep their size in tight flex rows (on phones they were squeezed to nothing). */
+  svg.lucide {
+    flex-shrink: 0;
+  }
 }
 
 /* html5-qrcode scanner overrides */
