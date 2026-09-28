@@ -193,6 +193,11 @@ const CustomerModal: React.FC<CustomerModalProps> = ({ isOpen, onClose, onSucces
               {scanStage ? <Loader2 className="animate-spin" size={20} aria-hidden="true" /> : <ScanLine size={20} aria-hidden="true" />}
               {scanStage === 'loading' ? 'Préparation…' : scanStage === 'reading' ? 'Lecture de la carte…' : "Scanner la carte d'identité"}
             </button>
+            {!scanned && !scanStage && (
+              <p className="text-xs font-medium text-slate-400 text-center">
+                Carte à plat, bien éclairée, sans reflet, et qui remplit la photo.
+              </p>
+            )}
             {scanned && (
               <div role="status" className="p-3 rounded-2xl bg-amber-50 text-amber-800 text-sm font-bold space-y-1">
                 <p>Informations lues sur la carte : vérifiez-les avant d'enregistrer.</p>
