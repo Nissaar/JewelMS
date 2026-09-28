@@ -81,7 +81,7 @@ export const TradeInTab: React.FC<{ notify: Notify }> = ({ notify }) => {
       key="tradein" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
       className="space-y-6"
     >
-      <div className="flex justify-end gap-2">
+      <div className="flex flex-wrap justify-end gap-2">
         <button
           id="export-tradein-excel-btn"
           onClick={handleExportTradeInExcel}
@@ -100,7 +100,7 @@ export const TradeInTab: React.FC<{ notify: Notify }> = ({ notify }) => {
         </button>
       </div>
       {/* Filters */}
-      <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100 flex flex-wrap items-end gap-6">
+      <div className="bg-white p-5 sm:p-8 rounded-[2rem] shadow-sm border border-slate-100 flex flex-wrap items-end gap-6">
         <div className="space-y-2">
           <label className="text-xs font-black text-slate-400 uppercase tracking-widest">Date de Début / Start Date</label>
           <input aria-label="Date de Début / Start Date" 
@@ -204,7 +204,7 @@ export const TradeInTab: React.FC<{ notify: Notify }> = ({ notify }) => {
         </div>
 
         {/* Signature Blocks inside UI */}
-        <div className="p-8 bg-slate-50/50 border-t border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="p-5 sm:p-8 bg-slate-50/50 border-t border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-8">
           <div className="border border-dashed border-slate-200 p-6 rounded-2xl bg-white space-y-3">
             <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Preparer Signature</h4>
             <div className="h-12 border-b border-slate-200 flex items-end">
