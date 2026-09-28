@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { parseMauritianIdText, readingScore } from '../../src/lib/idCard';
+import { parseMauritianIdText, parseMauritianIdTexts, readingScore } from '../../src/lib/idCard';
 
 // Fictitious card data, laid out the way OCR returns a Mauritian ID card.
 const CLEAN = `
@@ -141,4 +141,40 @@ test('ID card: says when the surname does not match the ID initial', () => {
   const f = parseMauritianIdText(CLEAN.replace('RAMDIN', 'KAMDIN'));
   expect(f.verified).toBe(false);
   expect(f.warnings).toEqual(['Vérifiez le nom de famille : lu « Kamdin », alors que le numéro commence par R.']);
+});
+
+test('ID card: pools several readings, each field by majority', () => {
+  const misread = CLEAN.replace('Anjali Devi', 'Anjall Devl').replace('R1503904200123', 'R1503904200128');
+  const f = parseMauritianIdTexts([CLEAN, misread, CLEAN]);
+  expect(f.firstName).toBe('Anjali Devi');
+  expect(f.idNumber).toBe('R1503904200123');
+  expect(f.verified).toBe(true);
+});
+
+test('ID card: an uncertain reading only fills a name the sure one missed, and says so', () => {
+  const sure = CLEAN.replace('Anjali Devi\n', '');
+  const f = parseMauritianIdTexts([sure], [CLEAN.replace('Anjali Devi', 'Pag')]);
+  expect(f.firstName).toBe('Pag');
+  expect(f.guessed).toEqual(['firstName']);
+  expect(f.warnings).toEqual(['Prénom incertain : vérifiez-le.']);
+  // A sure reading always wins over an uncertain one.
+  expect(parseMauritianIdTexts([CLEAN], [CLEAN.replace('Anjali Devi', 'Pag')]).firstName).toBe('Anjali Devi');
+});
+
+test('ID card: finds the names when their labels are misread', () => {
+  const f = parseMauritianIdText(CLEAN.replace('Surname\nRAMDIN', 'Sumarne\nRAMDIN').replace('First Name', '/ tt'));
+  expect(f.surname).toBe('Ramdin');
+  expect(f.firstName).toBe('Anjali Devi');
+  expect(f.verified).toBe(true);
+});
+
+test('ID card: a leftover label word is not taken for a name', () => {
+  const f = parseMauritianIdText(CLEAN.replace('First Name\nAnjali Devi', 'Fi~st Name\n~~'));
+  expect(f.firstName).toBe(null);
+});
+
+test('ID card: a very short name is flagged for checking', () => {
+  const f = parseMauritianIdText(CLEAN.replace('Anjali Devi', 'Leh'));
+  expect(f.firstName).toBe('Leh');
+  expect(f.warnings).toEqual(['Prénom incertain : vérifiez-le.']);
 });

@@ -20,6 +20,8 @@ export interface IdCardFields {
   verified: boolean;
   /** Points a person should double-check before saving. */
   warnings: string[];
+  /** Names taken from uncertain OCR words only. */
+  guessed: ('surname' | 'firstName')[];
 }
 
 const MONTHS: Record<string, number> = {
@@ -42,6 +44,10 @@ const isSurnameLabel = (l: string) => squash(l).includes('surname') && !squash(l
 const isFirstNameLabel = (l: string) => /first\s*name/i.test(l);
 const isLabel = (l: string) => /surname|first\s*name|gender|date\s*of|birth|signature|id\s*number|republic|national|identity/i.test(l);
 
+// Words printed on every card, never part of a name (left over when OCR
+// misreads the rest of a label: "First" lost, "Name" kept).
+const CARD_WORDS = /^(surname|first|name|gender|date|birth|signature|number|republic|mauritius|national|identity|card)$/i;
+
 const titleCase = (s: string) =>
   s.toLowerCase().replace(/(^|[\s'-])\p{L}/gu, ch => ch.toUpperCase());
 
@@ -54,7 +60,8 @@ function nameRuns(line: string): string[] {
   let current: string[] = [];
   for (const token of line.split(/\s+/)) {
     const word = token.replace(/^[^\p{L}]+|[^\p{L}'-]+$/gu, '');
-    if (/^\p{Lu}[\p{Ll}'-]{2,}$/u.test(word) || /^\p{Lu}{3,}$/u.test(word)) current.push(word);
+    const nameLike = /^\p{Lu}[\p{Ll}'-]{2,}$/u.test(word) || /^\p{Lu}{3,}$/u.test(word);
+    if (nameLike && !CARD_WORDS.test(word)) current.push(word);
     else if (current.length) { runs.push(current.join(' ')); current = []; }
   }
   if (current.length) runs.push(current.join(' '));
@@ -136,42 +143,110 @@ function dateInId(id: string): ReadDate | null {
 
 const showDate = (d: ReadDate) => d.iso.split('-').reverse().join('/');
 
-export function parseMauritianIdText(text: string): IdCardFields {
+/** What one OCR text offers: every candidate value, before choosing. */
+function extract(text: string) {
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-  const warnings: string[] = [];
   const dates = findDates(text);
-
+  const ids = findIdNumbers(text);
   const genderMatch = text.match(/(?:^|\s)([MF])\s+\d{1,2}\s*[A-Za-z]{3}[a-z]*\.?\s*\d{4}/m);
-  const gender = genderMatch ? (genderMatch[1].toUpperCase() as 'M' | 'F') : null;
+  // The surname starts with the ID number's first letter: use it to pick the right words.
+  const initial = (ids.find(id => dates.some(d => d.ddmmyy === id.slice(1, 7))) ?? ids[0])?.[0];
+  let surname = pickName(valueLines(lines, isSurnameLabel), initial);
+  let firstName = pickName(valueLines(lines, isFirstNameLabel));
 
-  // The ID number is read first: its first letter is the surname's initial,
-  // then comes the date of birth.
-  const candidates = findIdNumbers(text);
+  // A misread label ("Surnarne", "/ tt"): the surname is still the name that
+  // starts with the ID's initial, and the first name is printed just below it.
+  const surnameLine = surname ? lines.findIndex(l => l.toLowerCase().includes(surname!.split(' ')[0].toLowerCase())) : -1;
+  if (!surname && initial) {
+    const i = lines.findIndex(l => !isLabel(l) && nameRuns(l).some(r => r[0].toUpperCase() === initial));
+    if (i >= 0) surname = pickName([lines[i]], initial);
+  }
+  if (!firstName && surname) {
+    const i = surnameLine >= 0 ? surnameLine : lines.findIndex(l => l.toLowerCase().includes(surname!.split(' ')[0].toLowerCase()));
+    const below = lines.slice(i + 1, i + 3).find(l => !isLabel(l) && nameRuns(l).length > 0);
+    if (i >= 0 && below) firstName = pickName([below]);
+  }
+
+  return {
+    dates,
+    ids,
+    gender: genderMatch ? (genderMatch[1].toUpperCase() as 'M' | 'F') : null,
+    surname,
+    firstName,
+  };
+}
+
+/** Values ordered from most to least often read. */
+function byVotes<T>(values: (T | null)[], key: (v: T) => string = String): T[] {
+  const counts = new Map<string, { value: T; n: number }>();
+  for (const v of values) {
+    if (v === null) continue;
+    const k = key(v);
+    counts.set(k, { value: v, n: (counts.get(k)?.n ?? 0) + 1 });
+  }
+  return [...counts.values()].sort((a, b) => b.n - a.n).map(c => c.value);
+}
+
+export function parseMauritianIdText(text: string): IdCardFields {
+  return parseMauritianIdTexts([text]);
+}
+
+/**
+ * Reads the card from one or more OCR texts of the same photo (e.g. prepared
+ * in different ways). Each field is the value read most often, and the ID
+ * number the one that best agrees with the surname and date of birth.
+ * `fallbackTexts` (less certain readings) supply a name only when `texts`
+ * give none; their ID numbers and dates count, since those are cross-checked.
+ */
+export function parseMauritianIdTexts(texts: string[], fallbackTexts: string[] = []): IdCardFields {
+  const reads = texts.map(extract);
+  const fallback = fallbackTexts.map(extract);
+  const all = [...reads, ...fallback];
+  const warnings: string[] = [];
+  const dates = all.flatMap(r => r.dates);
+  const guessed: IdCardFields['guessed'] = [];
+  const vote = <K extends 'surname' | 'firstName' | 'gender'>(key: K) => {
+    const sure = byVotes(reads.map(r => r[key]));
+    if (sure.length) return sure;
+    const unsure = byVotes(fallback.map(r => r[key]));
+    if (unsure.length && key !== 'gender') guessed.push(key as 'surname' | 'firstName');
+    return unsure;
+  };
+  const surnames = vote('surname');
+  const firstName = vote('firstName')[0] ?? null;
+  // Three letters or fewer is more often a fragment of the background read
+  // as a word ("Leh", "Ene") than a name: ask for a check.
+  const short = (name: string | null) => !!name && name.replace(/[^\p{L}]/gu, '').length < 4;
+  if (short(firstName) && !guessed.includes('firstName')) guessed.push('firstName');
+  const gender = vote('gender')[0] ?? null;
+
   const matchesADate = (id: string) => dates.some(d => d.ddmmyy === id.slice(1, 7));
-  const provisional = candidates.find(matchesADate) ?? candidates[0];
+  const initialFits = (id: string) => surnames.some(s => s[0].toUpperCase() === id[0]);
+  const score = (id: string) => (initialFits(id) ? 1 : 0) + (matchesADate(id) ? 2 : dateInId(id) ? 1 : 0);
+  // Ties go to the number read most often.
+  const idNumber = byVotes(all.flatMap(r => r.ids)).sort((a, b) => score(b) - score(a))[0] ?? null;
 
-  const surname = pickName(valueLines(lines, isSurnameLabel), provisional?.[0]);
-  const firstName = pickName(valueLines(lines, isFirstNameLabel));
-
-  const initialOk = (id: string) => !!surname && id[0] === surname[0].toUpperCase();
-  const score = (id: string) => (initialOk(id) ? 1 : 0) + (matchesADate(id) ? 2 : dateInId(id) ? 1 : 0);
-  const idNumber = [...candidates].sort((a, b) => score(b) - score(a))[0] ?? null;
+  const surname = (idNumber && surnames.find(s => s[0].toUpperCase() === idNumber[0])) || surnames[0] || null;
+  if (short(surname) && !guessed.includes('surname')) guessed.push('surname');
+  const initialOk = !!idNumber && !!surname && idNumber[0] === surname[0].toUpperCase();
 
   // The date printed on the card, preferring the one that agrees with the ID.
-  const printed = (idNumber && dates.find(d => d.ddmmyy === idNumber.slice(1, 7))) || dates[0] || null;
+  const printed = (idNumber && dates.find(d => d.ddmmyy === idNumber.slice(1, 7))) || byVotes(dates, d => d.iso)[0] || null;
   const encoded = idNumber ? dateInId(idNumber) : null;
   const date = printed ?? encoded;
   const dateOk = !!idNumber && !!encoded && (!printed || printed.ddmmyy === idNumber.slice(1, 7));
-  const verified = !!idNumber && initialOk(idNumber) && dateOk;
+  const verified = initialOk && dateOk;
 
   if (!idNumber) warnings.push("Numéro d'identité non lu.");
   else {
     if (!encoded) warnings.push(`Vérifiez le numéro d'identité : « ${idNumber.slice(1, 7)} » n'est pas une date de naissance valide.`);
     else if (printed && !dateOk) warnings.push(`Vérifiez le numéro d'identité ou la date de naissance : la carte indique le ${showDate(printed)}, le numéro le ${showDate(encoded)}.`);
-    if (surname && !initialOk(idNumber)) warnings.push(`Vérifiez le nom de famille : lu « ${surname} », alors que le numéro commence par ${idNumber[0]}.`);
+    if (surname && !initialOk) warnings.push(`Vérifiez le nom de famille : lu « ${surname} », alors que le numéro commence par ${idNumber[0]}.`);
   }
   if (!surname) warnings.push('Nom de famille non lu.');
+  else if (guessed.includes('surname')) warnings.push('Nom de famille incertain : vérifiez-le.');
   if (!firstName) warnings.push('Prénom non lu.');
+  else if (guessed.includes('firstName')) warnings.push('Prénom incertain : vérifiez-le.');
 
   return {
     surname,
@@ -182,9 +257,11 @@ export function parseMauritianIdText(text: string): IdCardFields {
     gender,
     verified,
     warnings,
+    guessed,
   };
 }
 
 /** How complete a reading is, to pick the best of several attempts (e.g. rotations). */
 export const readingScore = (f: IdCardFields) =>
-  (f.idNumber ? 2 : 0) + (f.verified ? 3 : 0) + (f.surname ? 1 : 0) + (f.firstName ? 1 : 0) + (f.dateOfBirth ? 1 : 0);
+  (f.idNumber ? 2 : 0) + (f.verified ? 3 : 0) + (f.surname ? 1 : 0) + (f.firstName ? 1 : 0) + (f.dateOfBirth ? 1 : 0)
+  - f.guessed.length / 2;
