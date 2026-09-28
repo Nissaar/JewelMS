@@ -103,3 +103,42 @@ test('ID card: text from a sideways photo reads as nothing', () => {
   expect(f.fullName).toBe(null);
   expect(readingScore(f) < readingScore(parseMauritianIdText(CLEAN))).toBeTruthy();
 });
+
+test('ID card: tolerates OCR slips in the date of birth', () => {
+  for (const printed of ['F l5 Mar 199O', 'F 15Mar1990', 'F 15 MAR 1990', 'F 15/03/1990']) {
+    const f = parseMauritianIdText(CLEAN.replace('F 15 Mar 1990', printed));
+    expect(f.dateOfBirth, printed).toBe('1990-03-15');
+    expect(f.verified, printed).toBe(true);
+    expect(f.warnings, printed).toEqual([]);
+  }
+});
+
+test('ID card: reads the month even when a letter is misread as a digit', () => {
+  const f = parseMauritianIdText(CLEAN.replace('F 15 Mar 1990', 'F 15 Ju1 1990').replace('R1503904200123', 'R1507904200123'));
+  expect(f.dateOfBirth).toBe('1990-07-15');
+  expect(f.verified).toBe(true);
+});
+
+test('ID card: "Juin" is June, "Juil" is July', () => {
+  expect(parseMauritianIdText(CLEAN.replace('15 Mar', '15 Juin')).dateOfBirth).toBe('1990-06-15');
+  expect(parseMauritianIdText(CLEAN.replace('15 Mar', '15 Juil')).dateOfBirth).toBe('1990-07-15');
+});
+
+test('ID card: an unreadable date of birth is taken from the ID number, without a warning', () => {
+  const f = parseMauritianIdText(CLEAN.replace('F 15 Mar 1990', 'F ~~ ### ####'));
+  expect(f.dateOfBirth).toBe('1990-03-15');
+  expect(f.verified).toBe(true);
+  expect(f.warnings).toEqual([]);
+});
+
+test('ID card: says which date disagrees with the ID number', () => {
+  const f = parseMauritianIdText(CLEAN.replace('15 Mar 1990', '18 Mar 1990'));
+  expect(f.verified).toBe(false);
+  expect(f.warnings).toEqual(["Vérifiez le numéro d'identité ou la date de naissance : la carte indique le 18/03/1990, le numéro le 15/03/1990."]);
+});
+
+test('ID card: says when the surname does not match the ID initial', () => {
+  const f = parseMauritianIdText(CLEAN.replace('RAMDIN', 'KAMDIN'));
+  expect(f.verified).toBe(false);
+  expect(f.warnings).toEqual(['Vérifiez le nom de famille : lu « Kamdin », alors que le numéro commence par R.']);
+});

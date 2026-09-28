@@ -23,9 +23,17 @@ export interface IdCardFields {
 }
 
 const MONTHS: Record<string, number> = {
-  jan: 1, feb: 2, fev: 2, mar: 3, apr: 4, avr: 4, may: 5, mai: 5, jun: 6, jui: 7, jul: 7,
+  jan: 1, feb: 2, fev: 2, mar: 3, apr: 4, avr: 4, may: 5, mai: 5, jun: 6, jul: 7,
   aug: 8, aou: 8, sep: 9, oct: 10, nov: 11, dec: 12,
 };
+
+/** Month number from its (possibly OCR-garbled) name: "Jul", "JUL", "Ju1", "Juil", "Juin"... */
+function monthNumber(name: string): number | undefined {
+  const m = name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/1/g, 'l').replace(/0/g, 'o');
+  if (m.startsWith('juin')) return 6;
+  if (m.startsWith('jui')) return 7;
+  return MONTHS[m.slice(0, 3)];
+}
 
 // Labels are matched anywhere in a line (OCR often adds stray marks around them),
 // after lower-casing and dropping everything but letters.
@@ -93,41 +101,75 @@ function findIdNumbers(text: string): string[] {
   return out;
 }
 
-function parseDate(text: string): { iso: string; ddmmyy: string } | null {
-  const m = text.match(/\b(\d{1,2})\s*([A-Za-zéû]{3})[A-Za-zéû]*\.?\s*(\d{4})\b/);
-  if (!m) return null;
-  const month = MONTHS[m[2].toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').slice(0, 3)];
-  const day = Number(m[1]);
-  const year = Number(m[3]);
-  if (!month || day < 1 || day > 31 || year < 1900) return null;
+interface ReadDate { iso: string; ddmmyy: string }
+
+function toDate(day: number, month: number | undefined, year: number): ReadDate | null {
+  if (!month || month > 12 || day < 1 || day > 31 || year < 1900 || year > 2100) return null;
   const dd = String(day).padStart(2, '0');
   const mm = String(month).padStart(2, '0');
   return { iso: `${year}-${mm}-${dd}`, ddmmyy: `${dd}${mm}${String(year).slice(2)}` };
 }
 
+/** Digits in a date as OCR tends to misread them ("l3", "2O00"). */
+const fixDigits = (s: string) => s.replace(/[Oo]/g, '0').replace(/[Il|]/g, '1').replace(/S/g, '5').replace(/B/g, '8');
+
+/** Every date in the text: "13 Jul 2000" (tolerating OCR slips) or "13/07/2000". */
+function findDates(text: string): ReadDate[] {
+  const out: ReadDate[] = [];
+  for (const m of text.matchAll(/(?<![\p{L}\d])([\dOoIl|]{1,2})\s*([A-Za-zéû][A-Za-zéû10]{2}[A-Za-zéû]*)\.?\s*([\dOoIlSB]{4})(?![\p{L}\d])/gu)) {
+    const date = toDate(Number(fixDigits(m[1])), monthNumber(m[2]), Number(fixDigits(m[3])));
+    if (date) out.push(date);
+  }
+  for (const m of text.matchAll(/\b(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})\b/g)) {
+    const date = toDate(Number(m[1]), Number(m[2]), Number(m[3]));
+    if (date) out.push(date);
+  }
+  return out;
+}
+
+/** The date of birth encoded in an ID number (characters 2-7, DDMMYY). */
+function dateInId(id: string): ReadDate | null {
+  const [dd, mm, yy] = [id.slice(1, 3), id.slice(3, 5), id.slice(5, 7)].map(Number);
+  const thisYear = new Date().getFullYear() % 100;
+  return toDate(dd, mm, (yy > thisYear ? 1900 : 2000) + yy);
+}
+
+const showDate = (d: ReadDate) => d.iso.split('-').reverse().join('/');
+
 export function parseMauritianIdText(text: string): IdCardFields {
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   const warnings: string[] = [];
-  const date = parseDate(text);
+  const dates = findDates(text);
 
   const genderMatch = text.match(/(?:^|\s)([MF])\s+\d{1,2}\s*[A-Za-z]{3}[a-z]*\.?\s*\d{4}/m);
   const gender = genderMatch ? (genderMatch[1].toUpperCase() as 'M' | 'F') : null;
 
-  // The ID number is read first: its first letter is the surname's initial.
+  // The ID number is read first: its first letter is the surname's initial,
+  // then comes the date of birth.
   const candidates = findIdNumbers(text);
-  const byDate = candidates.filter(id => date && id.slice(1, 7) === date.ddmmyy);
-  const provisional = byDate[0] ?? candidates[0];
+  const matchesADate = (id: string) => dates.some(d => d.ddmmyy === id.slice(1, 7));
+  const provisional = candidates.find(matchesADate) ?? candidates[0];
 
   const surname = pickName(valueLines(lines, isSurnameLabel), provisional?.[0]);
   const firstName = pickName(valueLines(lines, isFirstNameLabel));
 
-  const score = (id: string) =>
-    (surname && id[0] === surname[0].toUpperCase() ? 1 : 0) + (date && id.slice(1, 7) === date.ddmmyy ? 2 : 0);
+  const initialOk = (id: string) => !!surname && id[0] === surname[0].toUpperCase();
+  const score = (id: string) => (initialOk(id) ? 1 : 0) + (matchesADate(id) ? 2 : dateInId(id) ? 1 : 0);
   const idNumber = [...candidates].sort((a, b) => score(b) - score(a))[0] ?? null;
-  const verified = !!idNumber && score(idNumber) === 3;
+
+  // The date printed on the card, preferring the one that agrees with the ID.
+  const printed = (idNumber && dates.find(d => d.ddmmyy === idNumber.slice(1, 7))) || dates[0] || null;
+  const encoded = idNumber ? dateInId(idNumber) : null;
+  const date = printed ?? encoded;
+  const dateOk = !!idNumber && !!encoded && (!printed || printed.ddmmyy === idNumber.slice(1, 7));
+  const verified = !!idNumber && initialOk(idNumber) && dateOk;
 
   if (!idNumber) warnings.push("Numéro d'identité non lu.");
-  else if (!verified) warnings.push("Vérifiez le numéro d'identité : il ne correspond pas entièrement au nom et à la date de naissance lus.");
+  else {
+    if (!encoded) warnings.push(`Vérifiez le numéro d'identité : « ${idNumber.slice(1, 7)} » n'est pas une date de naissance valide.`);
+    else if (printed && !dateOk) warnings.push(`Vérifiez le numéro d'identité ou la date de naissance : la carte indique le ${showDate(printed)}, le numéro le ${showDate(encoded)}.`);
+    if (surname && !initialOk(idNumber)) warnings.push(`Vérifiez le nom de famille : lu « ${surname} », alors que le numéro commence par ${idNumber[0]}.`);
+  }
   if (!surname) warnings.push('Nom de famille non lu.');
   if (!firstName) warnings.push('Prénom non lu.');
 
